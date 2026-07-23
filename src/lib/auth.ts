@@ -1,8 +1,51 @@
 import { redirect } from "next/navigation";
+import { getLocalDb, isLocalMode } from "@/lib/local/db";
+import { getLocalSessionUserId } from "@/lib/local/session";
 import { createClient } from "@/lib/supabase/server";
-import type { UserProfile, UserRole } from "@/lib/types";
+import {
+  normalizeUserRole,
+  type UserProfile,
+  type UserRole,
+} from "@/lib/types";
+
+function asProfile(row: {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+}): UserProfile {
+  return {
+    id: row.id,
+    email: row.email,
+    full_name: row.full_name,
+    role: normalizeUserRole(row.role),
+  };
+}
 
 export async function getSessionUser() {
+  if (isLocalMode()) {
+    const userId = await getLocalSessionUserId();
+    if (!userId) return null;
+    const db = getLocalDb();
+    const profile = db
+      .prepare(
+        "select id, email, full_name, role from user_profiles where id = ?",
+      )
+      .get(userId) as
+      | { id: string; email: string; full_name: string | null; role: string }
+      | undefined;
+    if (!profile) return null;
+    const normalized = asProfile(profile);
+    return {
+      id: normalized.id,
+      email: normalized.email,
+      user_metadata: {
+        full_name: normalized.full_name,
+        role: normalized.role,
+      },
+    };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -11,6 +54,20 @@ export async function getSessionUser() {
 }
 
 export async function getCurrentProfile(): Promise<UserProfile | null> {
+  if (isLocalMode()) {
+    const userId = await getLocalSessionUserId();
+    if (!userId) return null;
+    const db = getLocalDb();
+    const profile = db
+      .prepare(
+        "select id, email, full_name, role from user_profiles where id = ?",
+      )
+      .get(userId) as
+      | { id: string; email: string; full_name: string | null; role: string }
+      | undefined;
+    return profile ? asProfile(profile) : null;
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -23,22 +80,107 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
     .eq("id", user.id)
     .maybeSingle();
 
-  return data as UserProfile | null;
+  return data
+    ? asProfile(data as {
+        id: string;
+        email: string;
+        full_name: string | null;
+        role: string;
+      })
+    : null;
 }
 
 export async function requireProfile(roles?: UserRole[]) {
   const profile = await getCurrentProfile();
-  if (!profile) redirect("/login");
+  if (!profile) {
+    if (isLocalMode() && (await getLocalSessionUserId())) {
+      redirect("/api/auth/logout?next=/login");
+    }
+    redirect("/login");
+  }
   if (roles && !roles.includes(profile.role)) {
     redirect("/dashboard?error=forbidden");
   }
   return profile;
 }
 
-export function canEditPricing(role: UserRole) {
-  return role === "admin" || role === "estimator";
+export function canManageAdmin(role: UserRole) {
+  return role === "administrator";
 }
 
-export function canManageAdmin(role: UserRole) {
-  return role === "admin";
+/** BOM commercial + material editing */
+export function canEditBom(role: UserRole) {
+  return role === "administrator" || role === "project_manager";
+}
+
+/** @deprecated use canEditBom — kept for existing call sites */
+export function canEditPricing(role: UserRole) {
+  return canEditBom(role);
+}
+
+export function canManageProjects(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "purchasing"
+  );
+}
+
+export function canManageProcurement(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "purchasing"
+  );
+}
+
+export function canManageVendors(role: UserRole) {
+  return role === "administrator" || role === "purchasing";
+}
+
+export function canReceive(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "purchasing" ||
+    role === "warehouse" ||
+    role === "project_manager"
+  );
+}
+
+export function canEditLabor(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "field"
+  );
+}
+
+export function canApproveLabor(role: UserRole) {
+  return role === "administrator" || role === "project_manager";
+}
+
+export function canEditExpenses(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "accounting" ||
+    role === "field"
+  );
+}
+
+export function canApproveExpenses(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "accounting"
+  );
+}
+
+export function canViewFinancials(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "purchasing" ||
+    role === "accounting"
+  );
 }

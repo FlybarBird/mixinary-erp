@@ -1,0 +1,137 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile, canEditPricing } from "@/lib/auth";
+import type { ProjectStatus } from "@/lib/types";
+
+const STATUSES: ProjectStatus[] = [
+  "draft",
+  "active",
+  "on_hold",
+  "complete",
+  "archived",
+];
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const profile = await getCurrentProfile();
+  if (!profile || !canEditPricing(profile.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const body = await request.json();
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if ("project_number" in body) {
+    const projectNumber = String(body.project_number ?? "").trim();
+    if (!projectNumber) {
+      return NextResponse.json(
+        { error: "Project number is required" },
+        { status: 400 },
+      );
+    }
+    patch.project_number = projectNumber;
+  }
+
+  if ("name" in body) {
+    const name = String(body.name ?? "").trim();
+    if (!name) {
+      return NextResponse.json(
+        { error: "Project name is required" },
+        { status: 400 },
+      );
+    }
+    patch.name = name;
+  }
+
+  if ("client_id" in body) {
+    patch.client_id = body.client_id || null;
+  }
+
+  if ("notes" in body) {
+    patch.notes = body.notes ? String(body.notes) : null;
+  }
+
+  if ("default_override_pct" in body) {
+    const pct = Number(body.default_override_pct);
+    if (Number.isNaN(pct)) {
+      return NextResponse.json(
+        { error: "Invalid default override %" },
+        { status: 400 },
+      );
+    }
+    patch.default_override_pct = pct;
+  }
+
+  if ("status" in body) {
+    const status = String(body.status) as ProjectStatus;
+    if (!STATUSES.includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+    patch.status = status;
+  }
+
+  if ("project_manager_id" in body) {
+    patch.project_manager_id = body.project_manager_id || null;
+  }
+
+  if ("material_budget" in body) {
+    const value = body.material_budget;
+    patch.material_budget =
+      value == null || value === "" ? null : Number(value);
+  }
+
+  if ("labor_budget" in body) {
+    const value = body.labor_budget;
+    patch.labor_budget = value == null || value === "" ? null : Number(value);
+  }
+
+  if (Object.keys(patch).length === 1) {
+    return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .update(patch)
+    .eq("id", id)
+    .select(
+      "id, project_number, name, status, client_id, project_manager_id, default_override_pct, material_budget, labor_budget, notes",
+    )
+    .single();
+
+  if (error) {
+    const lower = error.message.toLowerCase();
+    const message =
+      lower.includes("unique") || error.code === "23505"
+        ? "A project with that number already exists"
+        : error.message;
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  return NextResponse.json({ data });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const profile = await getCurrentProfile();
+  if (!profile || !canEditPricing(profile.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const supabase = await createClient();
+  const { error } = await supabase.from("projects").delete().eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

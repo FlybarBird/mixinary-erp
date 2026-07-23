@@ -1,7 +1,35 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { formatMoney } from "@/lib/pricing";
+import { formatMoney, formatSignedMoney, outOfPocketStyle } from "@/lib/pricing";
+import type { ProjectStatus } from "@/lib/types";
+
+const STATUS_COLORS: Record<string, string> = {
+  active: "var(--chart-1)",
+  complete: "var(--chart-2)",
+  on_hold: "var(--chart-3)",
+  draft: "var(--chart-5)",
+  archived: "var(--chart-4)",
+};
+
+function donutBackground(counts: { key: string; value: number }[]) {
+  const total = counts.reduce((sum, c) => sum + c.value, 0);
+  if (total === 0) {
+    return "conic-gradient(var(--line) 0deg 360deg)";
+  }
+  let cursor = 0;
+  const parts: string[] = [];
+  for (const item of counts) {
+    if (!item.value) continue;
+    const start = (cursor / total) * 360;
+    cursor += item.value;
+    const end = (cursor / total) * 360;
+    parts.push(
+      `${STATUS_COLORS[item.key] ?? "var(--muted)"} ${start}deg ${end}deg`,
+    );
+  }
+  return `conic-gradient(${parts.join(", ")})`;
+}
 
 export default async function DashboardPage() {
   await requireProfile();
@@ -9,6 +37,7 @@ export default async function DashboardPage() {
 
   const [
     { data: projects },
+    { data: allStatuses },
     { data: ordered },
     { data: shipped },
     { data: reviewJobs },
@@ -18,7 +47,8 @@ export default async function DashboardPage() {
       .select("id, project_number, name, status, clients(name)")
       .eq("status", "active")
       .order("updated_at", { ascending: false })
-      .limit(8),
+      .limit(5),
+    supabase.from("projects").select("status"),
     supabase
       .from("line_items")
       .select("id, description, tracking, projects(project_number, name)")
@@ -43,6 +73,7 @@ export default async function DashboardPage() {
     .limit(500);
 
   let openOop = 0;
+  let openQuote = 0;
   for (const line of sampleLines ?? []) {
     const qty = Number(line.qty);
     const msrp = Number(line.msrp);
@@ -55,142 +86,257 @@ export default async function DashboardPage() {
           )
         : Number(line.override_pct);
     const unitSale = unitQuote + msrp * override;
+    openQuote += qty * unitQuote;
     openOop += qty * unitSale - qty * unitQuote;
   }
 
+  const statusOrder: ProjectStatus[] = [
+    "active",
+    "complete",
+    "on_hold",
+    "draft",
+    "archived",
+  ];
+  const statusCounts = statusOrder.map((key) => ({
+    key,
+    value: (allStatuses ?? []).filter((p) => p.status === key).length,
+  }));
+  const totalProjects = statusCounts.reduce((sum, c) => sum + c.value, 0);
+  const archivedCount =
+    statusCounts.find((c) => c.key === "archived")?.value ?? 0;
+  const activeCount =
+    statusCounts.find((c) => c.key === "active")?.value ?? 0;
+
+  const orderedBars = [0.35, 0.55, 0.4, 0.7, 0.5, 0.85, 0.6, 1].map(
+    (h, i) => ({ h, key: i }),
+  );
+
   return (
     <div className="stack">
-      <div>
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-sub">Open work, shipments, and AI review queue.</p>
-      </div>
-
-      <div className="stat-grid">
-        <div className="panel stat">
-          <div className="k">Active projects</div>
-          <div className="v">{projects?.length ?? 0}</div>
+      <section>
+        <div className="section-head">
+          <h2 className="section-title">Recent projects</h2>
+          <Link href="/projects" className="section-link">
+            View all
+          </Link>
         </div>
-        <div className="panel stat">
-          <div className="k">Lines ordered</div>
-          <div className="v">{ordered?.length ?? 0}</div>
-        </div>
-        <div className="panel stat">
-          <div className="k">Lines shipped</div>
-          <div className="v">{shipped?.length ?? 0}</div>
-        </div>
-        <div className="panel stat">
-          <div className="k">AI awaiting review</div>
-          <div className="v">{reviewJobs?.length ?? 0}</div>
-        </div>
-      </div>
-
-      <div className="panel" style={{ padding: "1rem" }}>
-        <div className="muted" style={{ fontSize: "0.85rem" }}>
-          Approx. out-of-pocket across loaded lines
-        </div>
-        <div style={{ fontSize: "1.4rem", fontWeight: 700 }}>
-          {formatMoney(openOop)}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.2fr 1fr",
-          gap: "1rem",
-        }}
-      >
-        <section className="panel" style={{ padding: "1rem" }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Active projects</h2>
-            <Link href="/projects" className="btn">
-              View all
+        <div className="project-card-grid">
+          {(projects ?? []).map((p) => (
+            <Link key={p.id} href={`/projects/${p.id}`} className="project-card">
+              <div className="project-card-top">
+                <span className="project-card-number">{p.project_number}</span>
+              </div>
+              <div className="project-card-name">{p.name}</div>
+              <div className="project-card-meta">
+                {(p.clients as { name?: string } | null)?.name ?? "No client"}
+              </div>
+              <div className="project-card-footer">
+                <span className="badge badge-active">active</span>
+              </div>
             </Link>
+          ))}
+        </div>
+        {!projects?.length ? (
+          <div className="panel" style={{ padding: "1.25rem" }}>
+            <p className="muted" style={{ margin: 0 }}>
+              No active projects yet.
+            </p>
           </div>
-          <div className="stack" style={{ marginTop: "0.85rem" }}>
-            {(projects ?? []).map((p) => (
-              <Link key={p.id} href={`/projects/${p.id}`} className="row">
-                <span style={{ fontWeight: 650 }}>{p.project_number}</span>
-                <span>{p.name}</span>
-                <span className="muted" style={{ marginLeft: "auto" }}>
-                  {(p.clients as { name?: string } | null)?.name}
-                </span>
-              </Link>
-            ))}
-            {!projects?.length ? (
-              <p className="muted">No active projects yet. Import the master workbook or create one.</p>
-            ) : null}
-          </div>
-        </section>
+        ) : null}
+      </section>
 
-        <section className="panel" style={{ padding: "1rem" }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h2 style={{ margin: 0, fontSize: "1.05rem" }}>AI review queue</h2>
-            <Link href="/review" className="btn">
-              Open
-            </Link>
-          </div>
-          <div className="stack" style={{ marginTop: "0.85rem" }}>
-            {(reviewJobs ?? []).map((job) => (
-              <Link key={job.id} href={`/review/${job.id}`} className="row">
-                <span className="badge badge-review">{job.type}</span>
-                <span>
-                  {(job.projects as { project_number?: string } | null)
-                    ?.project_number ?? "—"}
-                </span>
-                <span className="muted" style={{ marginLeft: "auto", fontSize: "0.8rem" }}>
-                  {new Date(job.created_at).toLocaleString()}
-                </span>
-              </Link>
-            ))}
-            {!reviewJobs?.length ? (
-              <p className="muted">No AI proposals waiting.</p>
-            ) : null}
-          </div>
-        </section>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "1rem",
-        }}
-      >
-        <section className="panel" style={{ padding: "1rem" }}>
-          <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.05rem" }}>
-            Awaiting order / in transit
+      <section>
+        <div className="section-head">
+          <h2 className="section-title">
+            Insights ({5})
           </h2>
-          <div className="stack">
-            {(ordered ?? []).map((line) => (
-              <div key={line.id} className="row">
-                <span className="badge badge-ordered">ordered</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {line.description}
-                </span>
+          <Link href="/projects" className="section-link">
+            View projects
+          </Link>
+        </div>
+        <div className="insight-grid">
+          <article className="insight-card">
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">Active projects</h3>
+                <p className="insight-card-sub">Open work</p>
               </div>
-            ))}
-            {!ordered?.length ? <p className="muted">No ordered lines.</p> : null}
-          </div>
-        </section>
-        <section className="panel" style={{ padding: "1rem" }}>
-          <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.05rem" }}>Shipped</h2>
-          <div className="stack">
-            {(shipped ?? []).map((line) => (
-              <div key={line.id} className="row">
-                <span className="badge badge-shipped">shipped</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {line.description}
-                </span>
-                <span className="muted" style={{ marginLeft: "auto" }}>
-                  {line.tracking}
-                </span>
+            </div>
+            <div className="insight-metric">{activeCount}</div>
+            <div className="insight-metric-label">Currently active</div>
+            <div className="bar-track" aria-hidden>
+              {orderedBars.map((b) => (
+                <div
+                  key={b.key}
+                  className="bar-col"
+                  style={{ height: `${b.h * 100}%` }}
+                />
+              ))}
+            </div>
+          </article>
+
+          <article className="insight-card">
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">Out of pocket</h3>
+                <p className="insight-card-sub">Approx. across loaded lines</p>
               </div>
-            ))}
-            {!shipped?.length ? <p className="muted">No shipped lines.</p> : null}
-          </div>
-        </section>
-      </div>
+            </div>
+            <div
+              className="insight-metric"
+              style={{
+                fontSize: "1.55rem",
+                ...outOfPocketStyle(openOop, openQuote),
+              }}
+            >
+              {formatSignedMoney(openOop)}
+            </div>
+            <div className="insight-metric-label">Sale − quote exposure</div>
+          </article>
+
+          <article className="insight-card">
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">Project status</h3>
+                <p className="insight-card-sub">
+                  {archivedCount} to be archived
+                </p>
+              </div>
+            </div>
+            <div className="donut-wrap">
+              <div
+                className="donut"
+                style={{ background: donutBackground(statusCounts) }}
+              >
+                <div className="donut-hole">
+                  <div className="n">{totalProjects}</div>
+                  <div className="l">total</div>
+                </div>
+              </div>
+              <div className="donut-legend">
+                {statusCounts
+                  .filter((c) => c.value > 0)
+                  .map((c) => (
+                    <span key={c.key}>
+                      <i
+                        className="swatch"
+                        style={{ background: STATUS_COLORS[c.key] }}
+                      />
+                      {c.key.replace("_", " ")} ({c.value})
+                    </span>
+                  ))}
+              </div>
+            </div>
+          </article>
+
+          <article className="insight-card">
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">Procurement</h3>
+                <p className="insight-card-sub">Ordered vs shipped</p>
+              </div>
+            </div>
+            <div className="row" style={{ gap: "1.5rem", marginTop: "0.5rem" }}>
+              <div>
+                <div className="insight-metric">{ordered?.length ?? 0}</div>
+                <div className="insight-metric-label">Ordered</div>
+              </div>
+              <div>
+                <div className="insight-metric">{shipped?.length ?? 0}</div>
+                <div className="insight-metric-label">Shipped</div>
+              </div>
+            </div>
+          </article>
+
+          <article className="insight-card">
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">AI review</h3>
+                <p className="insight-card-sub">Needs attention</p>
+              </div>
+              <Link href="/review" className="section-link">
+                Open
+              </Link>
+            </div>
+            <div className="insight-list">
+              {(reviewJobs ?? []).slice(0, 4).map((job) => (
+                <Link
+                  key={job.id}
+                  href={`/review/${job.id}`}
+                  className="insight-list-row"
+                >
+                  <span className="badge badge-review">{job.type}</span>
+                  <span className="grow">
+                    {(job.projects as { project_number?: string } | null)
+                      ?.project_number ?? "—"}
+                  </span>
+                </Link>
+              ))}
+              {!reviewJobs?.length ? (
+                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                  No AI proposals waiting.
+                </p>
+              ) : null}
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div className="section-head">
+          <h2 className="section-title">
+            To-Dos ({(ordered?.length ?? 0) + (reviewJobs?.length ?? 0)})
+          </h2>
+        </div>
+        <div className="insight-grid">
+          <article className="insight-card" style={{ minHeight: "auto" }}>
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">In transit</h3>
+                <p className="insight-card-sub">Ordered lines</p>
+              </div>
+            </div>
+            <div className="insight-list">
+              {(ordered ?? []).slice(0, 5).map((line) => (
+                <div key={line.id} className="insight-list-row">
+                  <span className="badge badge-ordered">ordered</span>
+                  <span className="grow">{line.description}</span>
+                </div>
+              ))}
+              {!ordered?.length ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  No ordered lines.
+                </p>
+              ) : null}
+            </div>
+          </article>
+
+          <article className="insight-card" style={{ minHeight: "auto" }}>
+            <div className="insight-card-head">
+              <div>
+                <h3 className="insight-card-title">Shipped</h3>
+                <p className="insight-card-sub">Recent</p>
+              </div>
+            </div>
+            <div className="insight-list">
+              {(shipped ?? []).slice(0, 5).map((line) => (
+                <div key={line.id} className="insight-list-row">
+                  <span className="badge badge-shipped">shipped</span>
+                  <span className="grow">{line.description}</span>
+                  <span className="muted" style={{ fontSize: "0.75rem" }}>
+                    {line.tracking}
+                  </span>
+                </div>
+              ))}
+              {!shipped?.length ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  No shipped lines.
+                </p>
+              ) : null}
+            </div>
+          </article>
+        </div>
+      </section>
     </div>
   );
 }

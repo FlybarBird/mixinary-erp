@@ -17,7 +17,7 @@ export default async function ReviewQueuePage() {
       <div>
         <h1 className="page-title">AI Review</h1>
         <p className="page-sub">
-          MSRP fetches and PDF quote proposals awaiting acceptance.
+          MSRP fetches, PDF quotes, and parts scrapes awaiting acceptance.
         </p>
       </div>
       <div className="table-wrap panel-light">
@@ -35,7 +35,15 @@ export default async function ReviewQueuePage() {
             {(jobs ?? []).map((job) => (
               <tr key={job.id}>
                 <td>{new Date(job.created_at).toLocaleString()}</td>
-                <td>{job.type}</td>
+                <td>
+                  {job.type === "catalog_scrape"
+                    ? "Parts scrape"
+                    : job.type === "msrp_fetch"
+                      ? "MSRP fetch"
+                      : job.type === "pdf_quote"
+                        ? "PDF quote"
+                        : job.type}
+                </td>
                 <td>
                   {(job.projects as { project_number?: string; name?: string } | null)
                     ?.project_number ?? "—"}{" "}

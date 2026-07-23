@@ -1,11 +1,9 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
 import { BomEditor } from "@/components/BomEditor";
-import { canEditPricing, requireProfile } from "@/lib/auth";
+import { canEditBom, requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { LineItem, ProjectSection, Vendor } from "@/lib/types";
 
-export default async function ProjectDetailPage({
+export default async function ProjectBomPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -18,7 +16,7 @@ export default async function ProjectDetailPage({
     await Promise.all([
       supabase
         .from("projects")
-        .select("*, clients(name)")
+        .select("id, default_override_pct")
         .eq("id", id)
         .maybeSingle(),
       supabase
@@ -34,33 +32,16 @@ export default async function ProjectDetailPage({
       supabase.from("vendors").select("*").order("code"),
     ]);
 
-  if (!project) notFound();
+  if (!project) return null;
 
   return (
-    <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div>
-          <p className="muted" style={{ margin: 0 }}>
-            <Link href="/projects">Projects</Link> / {project.project_number}
-          </p>
-          <h1 className="page-title">
-            {project.project_number} · {project.name}
-          </h1>
-          <p className="page-sub">
-            {(project.clients as { name?: string } | null)?.name ?? "No client"} ·
-            default override {(Number(project.default_override_pct) * 100).toFixed(2)}%
-          </p>
-        </div>
-      </div>
-
-      <BomEditor
-        projectId={project.id}
-        defaultOverridePct={Number(project.default_override_pct)}
-        initialSections={(sections ?? []) as ProjectSection[]}
-        initialLines={(lines ?? []) as LineItem[]}
-        vendors={(vendors ?? []) as Vendor[]}
-        canEditPricing={canEditPricing(profile.role)}
-      />
-    </div>
+    <BomEditor
+      projectId={project.id}
+      defaultOverridePct={Number(project.default_override_pct)}
+      initialSections={(sections ?? []) as ProjectSection[]}
+      initialLines={(lines ?? []) as LineItem[]}
+      vendors={(vendors ?? []) as Vendor[]}
+      canEditPricing={canEditBom(profile.role)}
+    />
   );
 }

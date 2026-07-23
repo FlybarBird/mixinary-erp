@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CatalogScrapeReview } from "@/components/CatalogScrapeReview";
 import { MsrpReview } from "@/components/MsrpReview";
 import { QuoteReview } from "@/components/QuoteReview";
 import { requireProfile } from "@/lib/auth";
+import { loadCatalogDuplicateIndex } from "@/lib/parts/find-duplicate";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ReviewDetailPage({
@@ -61,6 +63,103 @@ export default async function ReviewDetailPage({
             } | null,
           }))}
         />
+      </div>
+    );
+  }
+
+  if (job.type === "catalog_scrape") {
+    const { data: proposals } = await supabase
+      .from("catalog_part_proposals")
+      .select("*")
+      .eq("job_id", job.id)
+      .order("created_at");
+    const input = (job.input || {}) as {
+      url?: string;
+      company_id?: string | null;
+    };
+    const result = (job.result || {}) as {
+      finalUrl?: string;
+      count?: number;
+      withImages?: number;
+      candidateImageCount?: number;
+    };
+    const imageCount =
+      result.withImages ??
+      (proposals ?? []).filter((p) => Boolean(p.image_url)).length;
+
+    const dupIndex = await loadCatalogDuplicateIndex(supabase);
+    const seenInBatch = new Set<string>();
+    const annotated = (proposals ?? []).map((p) => {
+      const companyId =
+        (p.company_id as string | null) || input.company_id || null;
+      let duplicate = dupIndex.find({
+        sku: p.sku,
+        upc: p.upc,
+        name: p.name,
+        company_id: companyId,
+        product_url: p.product_url,
+      });
+
+      const batchKey = [
+        String(p.upc || "").trim().toLowerCase(),
+        String(p.sku || "").trim().toLowerCase(),
+        String(p.product_url || "").trim().toLowerCase(),
+        String(p.name || "").trim().toLowerCase(),
+      ].find((k) => k);
+      if (!duplicate && batchKey) {
+        if (seenInBatch.has(batchKey)) {
+          duplicate = {
+            id: "",
+            name: String(p.name),
+            reason: "name",
+          };
+        } else {
+          seenInBatch.add(batchKey);
+        }
+      } else if (batchKey) {
+        seenInBatch.add(batchKey);
+      }
+
+      return {
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        upc: p.upc,
+        description: p.description,
+        msrp: p.msrp,
+        image_url: p.image_url,
+        product_url: p.product_url,
+        brand: p.brand ?? null,
+        company_name: p.company_name ?? null,
+        source_name: p.source_name ?? null,
+        confidence: p.confidence,
+        duplicate,
+      };
+    });
+    const duplicateCount = annotated.filter((p) => p.duplicate).length;
+
+    return (
+      <div className="stack">
+        <div>
+          <p className="muted" style={{ margin: 0 }}>
+            <Link href="/review">AI Review</Link> / Catalog scrape
+          </p>
+          <h1 className="page-title">Parts scrape review</h1>
+          <p className="page-sub">
+            {result.count ?? proposals?.length ?? 0} proposed · {imageCount} with
+            images
+            {duplicateCount ? ` · ${duplicateCount} duplicates` : ""}
+            {result.candidateImageCount != null
+              ? ` · ${result.candidateImageCount} images found on page`
+              : ""}{" "}
+            · {job.status}
+            {result.finalUrl || input.url
+              ? ` · ${result.finalUrl || input.url}`
+              : ""}
+          </p>
+        </div>
+        {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
+        <CatalogScrapeReview jobId={job.id} proposals={annotated} />
       </div>
     );
   }

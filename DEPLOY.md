@@ -57,5 +57,14 @@ Optional: `npx supabase start` if you use the local Supabase CLI stack, then app
 | Role | Can do |
 |------|--------|
 | admin | Everything + users, vendors, price sources, Excel import |
-| estimator | Clients, projects, templates, pricing, AI MSRP/PDF apply |
-| tech | View projects; update status / tracking / notes only |
+| estimator | Clients, projects, parts catalog, templates, pricing, AI MSRP/PDF apply |
+| tech | View projects/parts; update status / tracking / notes only |
+
+## 6. Parts catalog enrichment (optional)
+
+For **Enrich** on `/parts` (images/name/specs from brand+SKU or UPC):
+
+- `ICECAT_USERNAME` / `ICECAT_PASSWORD` — Open Icecat account
+- `UPCITEMDB_USER_KEY` — UPCitemdb API key (trial works at low volume)
+
+Also run migration `004_catalog_parts.sql` and ensure Storage bucket `part-images` exists.

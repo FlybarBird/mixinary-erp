@@ -1,0 +1,218 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { canManageProcurement, canReceive, getCurrentProfile } from "@/lib/auth";
+import { newId } from "@/lib/local/db";
+import { createNotification, rollupBomLineQuantities } from "@/lib/projects/workspace";
+
+const ALERT_STATUSES = new Set(["delayed", "backordered"]);
+
+const RECEIVE_FIELDS = new Set([
+  "qty_received",
+  "qty_shipped",
+  "carrier_id",
+  "tracking_number",
+  "tracking_url",
+  "latest_tracking_update",
+  "expected_delivery_date",
+  "expected_ship_date",
+]);
+
+async function recalcPoTotals(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  poId: string,
+) {
+  const [{ data: po }, { data: items }] = await Promise.all([
+    supabase
+      .from("purchase_orders")
+      .select("tax, shipping")
+      .eq("id", poId)
+      .maybeSingle(),
+    supabase
+      .from("purchase_order_items")
+      .select("line_total")
+      .eq("po_id", poId),
+  ]);
+
+  const subtotal = (items ?? []).reduce(
+    (s, i) => s + Number(i.line_total || 0),
+    0,
+  );
+  const tax = Number(po?.tax || 0);
+  const shipping = Number(po?.shipping || 0);
+  const total = subtotal + tax + shipping;
+
+  await supabase
+    .from("purchase_orders")
+    .update({
+      subtotal,
+      total,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", poId);
+
+  return { subtotal, total, tax, shipping };
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string; poId: string; itemId: string }> },
+) {
+  const { id: projectId, poId, itemId } = await params;
+  const profile = await getCurrentProfile();
+  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const isManager = canManageProcurement(profile.role);
+  const isReceiver = canReceive(profile.role);
+  if (!isManager && !isReceiver) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await request.json() as Record<string, unknown>;
+
+  if (!isManager) {
+    const attemptedKeys = Object.keys(body);
+    const disallowed = attemptedKeys.filter(
+      (k) => !RECEIVE_FIELDS.has(k) && k !== "item_status",
+    );
+    if (disallowed.length > 0) {
+      return NextResponse.json(
+        { error: `Forbidden fields: ${disallowed.join(", ")}` },
+        { status: 403 },
+      );
+    }
+  }
+
+  const supabase = await createClient();
+
+  const { data: existing } = await supabase
+    .from("purchase_order_items")
+    .select("*")
+    .eq("id", itemId)
+    .eq("po_id", poId)
+    .maybeSingle();
+
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const { data: parentPo } = await supabase
+    .from("purchase_orders")
+    .select("project_id")
+    .eq("id", poId)
+    .maybeSingle();
+
+  if (!parentPo || parentPo.project_id !== projectId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const prevStatus = existing.item_status;
+  const prevQtyReceived = Number(existing.qty_received ?? 0);
+
+  const updatePayload: Record<string, unknown> = { ...body };
+  delete updatePayload.id;
+  delete updatePayload.po_id;
+
+  const newQty =
+    body.qty_ordered != null
+      ? Number(body.qty_ordered)
+      : Number(existing.qty_ordered ?? 0);
+
+  if (body.line_total != null) {
+    const lineTotal = Number(body.line_total);
+    updatePayload.line_total = lineTotal;
+    if (newQty > 0) {
+      updatePayload.unit_price = lineTotal / newQty;
+    }
+    if (body.qty_ordered != null) updatePayload.qty_ordered = newQty;
+  } else if (body.qty_ordered != null || body.unit_price != null) {
+    const newPrice =
+      body.unit_price != null
+        ? Number(body.unit_price)
+        : Number(existing.unit_price ?? 0);
+    updatePayload.line_total = newQty * newPrice;
+    updatePayload.unit_price = newPrice;
+    if (body.qty_ordered != null) updatePayload.qty_ordered = newQty;
+  }
+
+  // Ignore per-item shipping — freight lives on the PO.
+
+  // Strip item shipping if clients still send it
+  delete updatePayload.shipping;
+
+  updatePayload.updated_at = new Date().toISOString();
+
+  const { data: updated, error } = await supabase
+    .from("purchase_order_items")
+    .update(updatePayload)
+    .eq("id", itemId)
+    .select()
+    .maybeSingle();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  const poTotals = await recalcPoTotals(supabase, poId);
+
+  const newStatus = (updated as { item_status?: string } | null)?.item_status;
+  const newQtyReceived = Number(
+    (updated as { qty_received?: number } | null)?.qty_received ?? 0,
+  );
+  const lineItemId = (existing as { line_item_id?: string | null }).line_item_id;
+
+  const statusChanged = newStatus && newStatus !== prevStatus;
+  const qtyChanged = newQtyReceived !== prevQtyReceived;
+
+  if (statusChanged || qtyChanged) {
+    await supabase.from("tracking_events").insert({
+      id: newId(),
+      po_item_id: itemId,
+      event_at: new Date().toISOString(),
+      status: newStatus ?? prevStatus,
+      message: statusChanged
+        ? `Status changed from ${prevStatus} to ${newStatus}`
+        : `Received qty updated to ${newQtyReceived}`,
+      created_by: profile.id,
+    });
+
+    if (lineItemId) {
+      await rollupBomLineQuantities(supabase, lineItemId);
+    }
+
+    if (statusChanged && newStatus && ALERT_STATUSES.has(newStatus)) {
+      const { data: project } = await supabase
+        .from("projects")
+        .select("id, created_by, project_manager_id")
+        .eq("id", projectId)
+        .maybeSingle();
+
+      const notifyIds = new Set<string>();
+      const proj = project as {
+        created_by?: string | null;
+        project_manager_id?: string | null;
+      } | null;
+      if (proj?.project_manager_id) notifyIds.add(proj.project_manager_id);
+      if (proj?.created_by) notifyIds.add(proj.created_by);
+
+      const { data: purchasers } = await supabase
+        .from("user_profiles")
+        .select("id")
+        .eq("role", "purchasing");
+      for (const u of purchasers ?? []) notifyIds.add(u.id);
+
+      const itemDesc = (existing as { description?: string }).description ?? "item";
+      const statusLabel = newStatus === "delayed" ? "Delayed" : "Backordered";
+      const href = `/projects/${projectId}/procurement`;
+
+      await Promise.all(
+        [...notifyIds].map((userId) =>
+          createNotification(supabase, {
+            userId,
+            projectId,
+            title: `${statusLabel}: ${itemDesc.slice(0, 80)}`,
+            body: `PO item status changed to ${newStatus}.`,
+            href,
+          }),
+        ),
+      );
+    }
+  }
+
+  return NextResponse.json({ data: updated, poTotals });
+}

@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
-import { DM_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
+import { Source_Sans_3, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const sans = DM_Sans({
+const sans = Source_Sans_3({
   variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const display = Space_Grotesk({
-  variable: "--font-display",
   subsets: ["latin"],
 });
 
@@ -28,10 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${sans.variable} ${display.variable} ${mono.variable} h-full`}
-    >
+    <html lang="en" className={`${sans.variable} ${mono.variable} h-full`}>
       <body className="min-h-full antialiased">{children}</body>
     </html>
   );

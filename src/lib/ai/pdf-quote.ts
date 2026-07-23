@@ -1,7 +1,10 @@
+import { getPath } from "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { extractJson } from "@/lib/ai/openai";
 import { bestMatch } from "@/lib/ai/match";
 import type { LineItem } from "@/lib/types";
+
+PDFParse.setWorker(getPath());
 
 export interface ExtractedQuoteLine {
   sku: string | null;

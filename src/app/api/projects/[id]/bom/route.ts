@@ -63,11 +63,19 @@ export async function PUT(
         sort_order: index,
         description: String(line.description ?? ""),
         sku: (line.sku as string | null) ?? null,
+        category: (line.category as string | null) ?? null,
+        uom: (line.uom as string | null) || "ea",
         qty: Number(line.qty ?? 0),
         msrp: Number(line.msrp ?? 0),
         quote: line.quote == null ? null : Number(line.quote),
         override_pct: line.override_pct == null ? null : Number(line.override_pct),
+        estimated_unit_cost:
+          line.estimated_unit_cost == null || line.estimated_unit_cost === ""
+            ? null
+            : Number(line.estimated_unit_cost),
+        required_by_date: (line.required_by_date as string | null) || null,
         vendor_id: (line.vendor_id as string | null) ?? null,
+        catalog_part_id: (line.catalog_part_id as string | null) ?? null,
         order_status: (line.order_status as string) || "none",
         tracking: (line.tracking as string | null) ?? null,
         notes: (line.notes as string | null) ?? null,

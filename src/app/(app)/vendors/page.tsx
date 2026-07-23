@@ -1,4 +1,4 @@
-import { canManageAdmin, requireProfile } from "@/lib/auth";
+import { canManageVendors, requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { VendorManager } from "@/components/VendorManager";
 
@@ -14,11 +14,14 @@ export default async function VendorsPage() {
     <div className="stack">
       <div>
         <h1 className="page-title">Vendors</h1>
-        <p className="page-sub">Dealer and supplier codes used on BOM lines.</p>
+        <p className="page-sub">
+          Dealer and supplier codes, account numbers, and notes used on BOM
+          lines.
+        </p>
       </div>
       <VendorManager
         initialVendors={vendors ?? []}
-        canEdit={canManageAdmin(profile.role)}
+        canEdit={canManageVendors(profile.role)}
       />
     </div>
   );

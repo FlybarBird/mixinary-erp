@@ -18,15 +18,12 @@ export async function updateSession(request: NextRequest) {
 
   if (localMode) {
     const userId = request.cookies.get(LOCAL_SESSION_COOKIE)?.value;
+    // Never bounce /login away based on cookie alone — the cookie can be
+    // stale after a local DB reset and that creates a redirect loop.
     if (!userId && !isPublic && pathname !== "/") {
       const redirect = request.nextUrl.clone();
       redirect.pathname = "/login";
       redirect.searchParams.set("next", pathname);
-      return NextResponse.redirect(redirect);
-    }
-    if (userId && pathname === "/login") {
-      const redirect = request.nextUrl.clone();
-      redirect.pathname = "/dashboard";
       return NextResponse.redirect(redirect);
     }
     return NextResponse.next({ request });

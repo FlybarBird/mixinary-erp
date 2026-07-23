@@ -6,12 +6,18 @@ const JSON_FIELDS: Record<string, string[]> = {
   ai_jobs: ["input", "result"],
   price_fetch_results: ["raw"],
   quote_extracted_lines: ["raw"],
+  catalog_parts: ["specs"],
+  catalog_part_proposals: ["raw"],
+  audit_events: ["before_json", "after_json"],
 };
 
 const BOOL_FIELDS: Record<string, string[]> = {
   price_sources: ["enabled", "supports_search"],
   price_fetch_results: ["accepted"],
   quote_extracted_lines: ["selected"],
+  catalog_parts: ["active"],
+  catalog_part_proposals: ["accepted"],
+  project_expenses: ["is_additional_charge"],
 };
 
 function decodeRow(table: string, row: Row | undefined): Row | null {
@@ -116,6 +122,11 @@ class QueryBuilder {
     return this;
   }
 
+  neq(column: string, value: unknown) {
+    this.filters.push({ sql: `${column} != ?`, value });
+    return this;
+  }
+
   in(column: string, values: unknown[]) {
     if (!values.length) {
       this.filters.push({ sql: "1 = 0", value: null });
@@ -209,11 +220,14 @@ class QueryBuilder {
           .get(row.project_id) as Row | undefined;
         out.projects = project ?? null;
       }
-      // vendors(code, name)
-      if (this.embed!.includes("vendors(") && row.vendor_id) {
+      // vendors(code, name) — line_items.vendor_id or catalog_parts.default_vendor_id
+      const vendorFk =
+        (row.vendor_id as string | undefined) ||
+        (row.default_vendor_id as string | undefined);
+      if (this.embed!.includes("vendors(") && vendorFk) {
         const vendor = db
-          .prepare("select code, name from vendors where id = ?")
-          .get(row.vendor_id) as Row | undefined;
+          .prepare("select id, code, name from vendors where id = ?")
+          .get(vendorFk) as Row | undefined;
         out.vendors = vendor ?? null;
       }
       // line_items(...) on price_fetch_results
@@ -236,6 +250,20 @@ class QueryBuilder {
           .prepare("select description, quote from line_items where id = ?")
           .get(row.matched_line_item_id) as Row | undefined;
         out.line_items = line ?? null;
+      }
+      if (this.embed!.includes("part_categories(") && row.category_id) {
+        const category = db
+          .prepare("select id, name, parent_id, sort_order from part_categories where id = ?")
+          .get(row.category_id) as Row | undefined;
+        out.part_categories = category ?? null;
+      }
+      if (this.embed!.includes("part_companies(") && row.company_id) {
+        const company = db
+          .prepare(
+            "select id, name, website, logo_path, notes, icecat_vendor_name from part_companies where id = ?",
+          )
+          .get(row.company_id) as Row | undefined;
+        out.part_companies = company ?? null;
       }
       return out;
     });

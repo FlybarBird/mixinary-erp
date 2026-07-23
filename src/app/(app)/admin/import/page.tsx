@@ -2,7 +2,7 @@ import { requireProfile } from "@/lib/auth";
 import { ExcelImportForm } from "@/components/ExcelImportForm";
 
 export default async function ImportPage() {
-  await requireProfile(["admin"]);
+  await requireProfile(["administrator"]);
 
   return (
     <div className="stack">

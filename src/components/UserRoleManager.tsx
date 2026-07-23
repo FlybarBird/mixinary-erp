@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { UserProfile, UserRole } from "@/lib/types";
+import {
+  USER_ROLE_LABELS,
+  USER_ROLES,
+  type UserProfile,
+  type UserRole,
+} from "@/lib/types";
 
 export function UserRoleManager({
   initialUsers,
@@ -48,9 +53,11 @@ export function UserRoleManager({
                       setRole(user.id, e.target.value as UserRole)
                     }
                   >
-                    <option value="admin">admin</option>
-                    <option value="estimator">estimator</option>
-                    <option value="tech">tech</option>
+                    {USER_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {USER_ROLE_LABELS[role]}
+                      </option>
+                    ))}
                   </select>
                 </td>
               </tr>

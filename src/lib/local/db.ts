@@ -3,6 +3,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
+import { normalizeUserRole } from "@/lib/types";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DB_PATH = path.join(DATA_DIR, "mixinary-local.sqlite");
@@ -28,7 +29,7 @@ function seed(database: Database.Database) {
         `insert into user_profiles (id, email, full_name, role, password_hash)
          values (?, ?, ?, ?, ?)`,
       )
-      .run(id, "admin@mixinary.local", "Mixinary Admin", "admin", hash);
+      .run(id, "admin@mixinary.local", "Mixinary Admin", "administrator", hash);
   }
 
   const vendorCount = database
@@ -121,16 +122,449 @@ function seed(database: Database.Database) {
       stmt.run(randomUUID(), name, slug);
     }
   }
+
+  const categoryCount = database
+    .prepare("select count(*) as c from part_categories")
+    .get() as { c: number };
+  if (categoryCount.c === 0) {
+    const categories = [
+      "Audio",
+      "Video",
+      "Networking",
+      "Racks/Materials",
+      "Cables",
+      "Power",
+    ];
+    const stmt = database.prepare(
+      "insert into part_categories (id, name, sort_order) values (?, ?, ?)",
+    );
+    categories.forEach((name, index) => {
+      stmt.run(randomUUID(), name, index);
+    });
+  }
+
+  const companyCount = database
+    .prepare("select count(*) as c from part_companies")
+    .get() as { c: number };
+  if (companyCount.c === 0) {
+    const companies: Array<[string, string | null, string | null]> = [
+      ["Shure", "https://www.shure.com", "Shure"],
+      ["Blackmagic Design", "https://www.blackmagicdesign.com", "Blackmagic"],
+      ["Middle Atlantic", "https://www.middleatlantic.com", "Middle Atlantic"],
+      ["Netgear", "https://www.netgear.com", "NETGEAR"],
+      ["Audinate", "https://www.audinate.com", "Audinate"],
+      ["Apple", "https://www.apple.com", "Apple"],
+      ["FS", "https://www.fs.com", "FS"],
+      ["Elite Core", "https://www.elitecoreaudio.com", null],
+      ["Radial", "https://www.radialeng.com", "Radial"],
+      ["Juice Goose", "https://www.juicegoose.com", null],
+    ];
+    const stmt = database.prepare(
+      `insert into part_companies (id, name, website, icecat_vendor_name)
+       values (?, ?, ?, ?)`,
+    );
+    for (const [name, website, icecat] of companies) {
+      stmt.run(randomUUID(), name, website, icecat);
+    }
+  }
+
+  // Sample catalog parts for demo browsing
+  const partCount = database
+    .prepare("select count(*) as c from catalog_parts")
+    .get() as { c: number };
+  if (partCount.c === 0) {
+    const audio = database
+      .prepare("select id from part_categories where name = ?")
+      .get("Audio") as { id: string } | undefined;
+    const video = database
+      .prepare("select id from part_categories where name = ?")
+      .get("Video") as { id: string } | undefined;
+    const racks = database
+      .prepare("select id from part_categories where name = ?")
+      .get("Racks/Materials") as { id: string } | undefined;
+    const shure = database
+      .prepare("select id from part_companies where name = ?")
+      .get("Shure") as { id: string } | undefined;
+    const bmd = database
+      .prepare("select id from part_companies where name = ?")
+      .get("Blackmagic Design") as { id: string } | undefined;
+    const ma = database
+      .prepare("select id from part_companies where name = ?")
+      .get("Middle Atlantic") as { id: string } | undefined;
+    const sp = database
+      .prepare("select id from vendors where code = ?")
+      .get("SP") as { id: string } | undefined;
+
+    const samples = [
+      {
+        sku: "AD4Q",
+        name: "Shure AD4Q Quad Channel Receiver",
+        description: "Axient Digital Quad Channel Receiver",
+        category_id: audio?.id ?? null,
+        company_id: shure?.id ?? null,
+        msrp: 7873,
+        default_quote: 5510,
+      },
+      {
+        sku: "AD1",
+        name: "Shure AD1 Bodypack Transmitter",
+        description: "Axient Digital Bodypack Transmitter",
+        category_id: audio?.id ?? null,
+        company_id: shure?.id ?? null,
+        msrp: 978,
+        default_quote: 733,
+      },
+      {
+        sku: "SWATEMSCN2/2ME4/4K/P",
+        name: "Blackmagic ATEM Constellation 4K Plus",
+        description: "ATEM 4 M/E Constellation 4K Plus Ultra HD",
+        category_id: video?.id ?? null,
+        company_id: bmd?.id ?? null,
+        msrp: 14295,
+        default_quote: 12995,
+      },
+      {
+        sku: "BGR-2527",
+        name: "Middle Atlantic BGR-2527",
+        description: "25U BGR Series Rack Enclosure",
+        category_id: racks?.id ?? null,
+        company_id: ma?.id ?? null,
+        msrp: 1467.9,
+        default_quote: 1467.9,
+      },
+    ];
+    const stmt = database.prepare(
+      `insert into catalog_parts
+        (id, sku, name, description, category_id, company_id, default_vendor_id,
+         msrp, default_quote, source, active)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1)`,
+    );
+    for (const sample of samples) {
+      stmt.run(
+        randomUUID(),
+        sample.sku,
+        sample.name,
+        sample.description,
+        sample.category_id,
+        sample.company_id,
+        sp?.id ?? null,
+        sample.msrp,
+        sample.default_quote,
+      );
+    }
+  }
+}
+
+function migrate(database: Database.Database) {
+  const cols = database
+    .prepare("pragma table_info(line_items)")
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "catalog_part_id")) {
+    database.exec("alter table line_items add column catalog_part_id text");
+  }
+
+  const tables = database
+    .prepare("select name from sqlite_master where type = 'table'")
+    .all() as Array<{ name: string }>;
+  if (!tables.some((t) => t.name === "catalog_part_proposals")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS catalog_part_proposals (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES ai_jobs(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        sku TEXT,
+        upc TEXT,
+        description TEXT,
+        msrp REAL,
+        image_url TEXT,
+        product_url TEXT,
+        brand TEXT,
+        company_name TEXT,
+        source_name TEXT,
+        confidence REAL,
+        category_id TEXT REFERENCES part_categories(id),
+        company_id TEXT REFERENCES part_companies(id),
+        accepted INTEGER,
+        raw TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS catalog_part_proposals_job_idx
+        ON catalog_part_proposals(job_id);
+    `);
+  }
+
+  const proposalCols = database
+    .prepare("pragma table_info(catalog_part_proposals)")
+    .all() as Array<{ name: string }>;
+  if (proposalCols.length) {
+    if (!proposalCols.some((c) => c.name === "brand")) {
+      database.exec("alter table catalog_part_proposals add column brand text");
+    }
+    if (!proposalCols.some((c) => c.name === "company_name")) {
+      database.exec(
+        "alter table catalog_part_proposals add column company_name text",
+      );
+    }
+    if (!proposalCols.some((c) => c.name === "source_name")) {
+      database.exec(
+        "alter table catalog_part_proposals add column source_name text",
+      );
+    }
+  }
+
+  if (!tables.some((t) => t.name === "app_settings")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  }
+
+  const vendorCols = database
+    .prepare("pragma table_info(vendors)")
+    .all() as Array<{ name: string }>;
+  if (vendorCols.length && !vendorCols.some((c) => c.name === "account_number")) {
+    database.exec("alter table vendors add column account_number text");
+  }
+
+  // Role migration
+  database.exec(`
+    update user_profiles set role = 'administrator' where role = 'admin';
+    update user_profiles set role = 'project_manager' where role = 'estimator';
+    update user_profiles set role = 'field' where role = 'tech';
+  `);
+
+  const projectCols = database
+    .prepare("pragma table_info(projects)")
+    .all() as Array<{ name: string }>;
+  if (projectCols.length) {
+    if (!projectCols.some((c) => c.name === "project_manager_id")) {
+      database.exec(
+        "alter table projects add column project_manager_id text references user_profiles(id)",
+      );
+    }
+    if (!projectCols.some((c) => c.name === "material_budget")) {
+      database.exec("alter table projects add column material_budget real");
+    }
+    if (!projectCols.some((c) => c.name === "labor_budget")) {
+      database.exec("alter table projects add column labor_budget real");
+    }
+  }
+
+  const lineCols = database
+    .prepare("pragma table_info(line_items)")
+    .all() as Array<{ name: string }>;
+  if (lineCols.length) {
+    const addLine = (name: string, sql: string) => {
+      if (!lineCols.some((c) => c.name === name)) database.exec(sql);
+    };
+    addLine("category", "alter table line_items add column category text");
+    addLine("uom", "alter table line_items add column uom text default 'ea'");
+    addLine(
+      "estimated_unit_cost",
+      "alter table line_items add column estimated_unit_cost real",
+    );
+    addLine(
+      "required_by_date",
+      "alter table line_items add column required_by_date text",
+    );
+    addLine(
+      "procurement_status",
+      "alter table line_items add column procurement_status text default 'not_ordered'",
+    );
+    addLine(
+      "qty_ordered",
+      "alter table line_items add column qty_ordered real not null default 0",
+    );
+    addLine(
+      "qty_received",
+      "alter table line_items add column qty_received real not null default 0",
+    );
+  }
+
+  const workspaceTables: Array<[string, string]> = [
+    [
+      "purchase_orders",
+      `CREATE TABLE IF NOT EXISTS purchase_orders (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        vendor_id TEXT NOT NULL REFERENCES vendors(id),
+        po_number TEXT NOT NULL,
+        order_date TEXT,
+        ordered_by TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        expected_delivery_date TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        shipping REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        vendor_contact TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, po_number)
+      )`,
+    ],
+    [
+      "purchase_order_items",
+      `CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id TEXT PRIMARY KEY,
+        po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        line_item_id TEXT REFERENCES line_items(id),
+        sku TEXT,
+        vendor_sku TEXT,
+        description TEXT NOT NULL,
+        qty_ordered REAL NOT NULL DEFAULT 0,
+        unit_price REAL NOT NULL DEFAULT 0,
+        line_total REAL NOT NULL DEFAULT 0,
+        shipping REAL NOT NULL DEFAULT 0,
+        expected_ship_date TEXT,
+        expected_delivery_date TEXT,
+        qty_shipped REAL NOT NULL DEFAULT 0,
+        qty_received REAL NOT NULL DEFAULT 0,
+        item_status TEXT NOT NULL DEFAULT 'not_ordered',
+        carrier_id TEXT REFERENCES carriers(id),
+        tracking_number TEXT,
+        tracking_url TEXT,
+        latest_tracking_update TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "tracking_events",
+      `CREATE TABLE IF NOT EXISTS tracking_events (
+        id TEXT PRIMARY KEY,
+        po_item_id TEXT NOT NULL REFERENCES purchase_order_items(id) ON DELETE CASCADE,
+        event_at TEXT NOT NULL DEFAULT (datetime('now')),
+        status TEXT NOT NULL,
+        message TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "labor_entries",
+      `CREATE TABLE IF NOT EXISTS labor_entries (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        worker_name TEXT NOT NULL,
+        user_id TEXT,
+        work_category TEXT,
+        task_description TEXT,
+        work_date TEXT NOT NULL,
+        estimated_hours REAL NOT NULL DEFAULT 0,
+        actual_hours REAL NOT NULL DEFAULT 0,
+        regular_hours REAL NOT NULL DEFAULT 0,
+        overtime_hours REAL NOT NULL DEFAULT 0,
+        hourly_rate REAL NOT NULL DEFAULT 0,
+        total_cost REAL NOT NULL DEFAULT 0,
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "project_expenses",
+      `CREATE TABLE IF NOT EXISTS project_expenses (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        expense_date TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'miscellaneous',
+        payee TEXT,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        cost_code TEXT,
+        submitted_by TEXT,
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        is_additional_charge INTEGER NOT NULL DEFAULT 0,
+        receipt_path TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "attachments",
+      `CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        uploaded_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "audit_events",
+      `CREATE TABLE IF NOT EXISTS audit_events (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        before_json TEXT,
+        after_json TEXT,
+        actor_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "app_notifications",
+      `CREATE TABLE IF NOT EXISTS app_notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        body TEXT,
+        href TEXT,
+        read_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+  ];
+
+  const tableNames = database
+    .prepare("select name from sqlite_master where type = 'table'")
+    .all() as Array<{ name: string }>;
+  const have = new Set(tableNames.map((t) => t.name));
+  for (const [name, ddl] of workspaceTables) {
+    if (!have.has(name)) database.exec(ddl);
+  }
+
+  const poItemCols = database
+    .prepare("pragma table_info(purchase_order_items)")
+    .all() as Array<{ name: string }>;
+  if (
+    poItemCols.length &&
+    !poItemCols.some((c) => c.name === "shipping")
+  ) {
+    database.exec(
+      "alter table purchase_order_items add column shipping real not null default 0",
+    );
+  }
 }
 
 export function getLocalDb() {
   if (db) return db;
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(path.join(DATA_DIR, "quote-pdfs"), { recursive: true });
+  fs.mkdirSync(path.join(DATA_DIR, "part-images"), { recursive: true });
+  fs.mkdirSync(path.join(DATA_DIR, "project-files"), { recursive: true });
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(readSchema());
+  migrate(db);
   seed(db);
   return db;
 }
@@ -165,6 +599,6 @@ export function verifyLocalPassword(email: string, password: string) {
     id: user.id,
     email: user.email,
     full_name: user.full_name,
-    role: user.role as "admin" | "estimator" | "tech",
+    role: normalizeUserRole(user.role),
   };
 }

@@ -1,9 +1,10 @@
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { UserRoleManager } from "@/components/UserRoleManager";
+import { normalizeUserRole } from "@/lib/types";
 
 export default async function UsersPage() {
-  await requireProfile(["admin"]);
+  await requireProfile(["administrator"]);
   const supabase = await createClient();
   const { data: users } = await supabase
     .from("user_profiles")
@@ -15,11 +16,17 @@ export default async function UsersPage() {
       <div>
         <h1 className="page-title">Users</h1>
         <p className="page-sub">
-          Invite teammates from the Supabase Auth dashboard, then set roles here
-          (admin / estimator / tech).
+          Invite teammates from the Supabase Auth dashboard, then set roles here.
         </p>
       </div>
-      <UserRoleManager initialUsers={users ?? []} />
+      <UserRoleManager
+        initialUsers={(users ?? []).map((u) => ({
+          id: u.id,
+          email: u.email,
+          full_name: u.full_name,
+          role: normalizeUserRole(String(u.role)),
+        }))}
+      />
     </div>
   );
 }

@@ -23,17 +23,18 @@ export function LoginForm() {
     if (localMode) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      setLoading(false);
       if (!res.ok) {
+        setLoading(false);
         setError(data.error || "Login failed");
         return;
       }
-      router.push(params.get("next") || "/dashboard");
-      router.refresh();
+      // Hard navigate so the new session cookie is always applied.
+      window.location.assign(params.get("next") || "/dashboard");
       return;
     }
 
@@ -54,30 +55,14 @@ export function LoginForm() {
   return (
     <div className="login-shell">
       <div className="login-card stack">
-        <div className="row" style={{ gap: "0.75rem" }}>
-          <Image
-            src="/brand/mark.png"
-            alt="Mixinary"
-            width={44}
-            height={44}
-            priority
-          />
-          <div>
-            <div
-              style={{
-                fontFamily: "var(--font-display), sans-serif",
-                fontWeight: 700,
-                fontSize: "1.35rem",
-                color: "#032d60",
-              }}
-            >
-              Mixinary ERP
-            </div>
-            <div className="muted" style={{ fontSize: "0.85rem" }}>
-              High Quality Production
-            </div>
-          </div>
-        </div>
+        <Image
+          src="/brand/logo-2.png"
+          alt="Mixinary — High Quality Production"
+          width={260}
+          height={64}
+          priority
+          style={{ width: "auto", height: "3.25rem", objectFit: "contain" }}
+        />
         <div>
           <h1 className="page-title" style={{ fontSize: "1.25rem" }}>
             Sign in

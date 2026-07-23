@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PriceSourceManager } from "@/components/PriceSourceManager";
 
 export default async function PriceSourcesPage() {
-  await requireProfile(["admin"]);
+  await requireProfile(["administrator"]);
   const supabase = await createClient();
   const { data: sources } = await supabase
     .from("price_sources")

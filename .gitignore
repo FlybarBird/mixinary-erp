@@ -34,7 +34,7 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local demo database / uploads
+# local database / uploads
 .data/
 
 # vercel

@@ -4,6 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+/**
+ * Bootstraps an empty local SQLite database (schema only + optional first admin).
+ * Does not insert demo projects, parts, or other test data.
+ *
+ * Set LOCAL_ADMIN_EMAIL / LOCAL_ADMIN_PASSWORD to create the first admin.
+ * If unset and no users exist, no admin is created.
+ */
 const root = process.cwd();
 const dataDir = path.join(root, ".data");
 const dbPath = path.join(dataDir, "mixinary-local.sqlite");
@@ -20,16 +27,24 @@ db.pragma("foreign_keys = ON");
 db.exec(schema);
 
 const userCount = db.prepare("select count(*) as c from user_profiles").get().c;
-if (userCount === 0) {
+const email = process.env.LOCAL_ADMIN_EMAIL?.trim();
+const password = process.env.LOCAL_ADMIN_PASSWORD;
+
+if (userCount === 0 && email && password) {
   db.prepare(
     `insert into user_profiles (id, email, full_name, role, password_hash)
      values (?, ?, ?, ?, ?)`,
   ).run(
     randomUUID(),
-    "admin@mixinary.local",
-    "Mixinary Admin",
+    email,
+    "Local Admin",
     "admin",
-    bcrypt.hashSync("mixinary123", 10),
+    bcrypt.hashSync(password, 10),
+  );
+  console.log("Created local admin:", email);
+} else if (userCount === 0) {
+  console.log(
+    "No users yet. Set LOCAL_ADMIN_EMAIL and LOCAL_ADMIN_PASSWORD to create an admin.",
   );
 }
 
@@ -38,4 +53,3 @@ console.log(
   "Users:",
   db.prepare("select email, role, full_name from user_profiles").all(),
 );
-console.log("Login: admin@mixinary.local / mixinary123");

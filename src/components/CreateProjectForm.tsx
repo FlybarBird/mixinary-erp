@@ -51,7 +51,7 @@ export function CreateProjectForm({
       >
         <div>
           <label className="label">Project #</label>
-          <input className="field" name="project_number" required placeholder="2606" />
+          <input className="field" name="project_number" required placeholder="Project #" />
         </div>
         <div>
           <label className="label">Name</label>

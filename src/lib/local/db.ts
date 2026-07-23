@@ -22,14 +22,18 @@ function seed(database: Database.Database) {
     .prepare("select count(*) as c from user_profiles")
     .get() as { c: number };
   if (userCount.c === 0) {
-    const id = randomUUID();
-    const hash = bcrypt.hashSync("mixinary123", 10);
-    database
-      .prepare(
-        `insert into user_profiles (id, email, full_name, role, password_hash)
-         values (?, ?, ?, ?, ?)`,
-      )
-      .run(id, "admin@mixinary.local", "Mixinary Admin", "administrator", hash);
+    const email = process.env.LOCAL_ADMIN_EMAIL?.trim();
+    const password = process.env.LOCAL_ADMIN_PASSWORD;
+    if (email && password) {
+      const id = randomUUID();
+      const hash = bcrypt.hashSync(password, 10);
+      database
+        .prepare(
+          `insert into user_profiles (id, email, full_name, role, password_hash)
+           values (?, ?, ?, ?, ?)`,
+        )
+        .run(id, email, "Local Admin", "administrator", hash);
+    }
   }
 
   const vendorCount = database
@@ -165,92 +169,6 @@ function seed(database: Database.Database) {
     );
     for (const [name, website, icecat] of companies) {
       stmt.run(randomUUID(), name, website, icecat);
-    }
-  }
-
-  // Sample catalog parts for demo browsing
-  const partCount = database
-    .prepare("select count(*) as c from catalog_parts")
-    .get() as { c: number };
-  if (partCount.c === 0) {
-    const audio = database
-      .prepare("select id from part_categories where name = ?")
-      .get("Audio") as { id: string } | undefined;
-    const video = database
-      .prepare("select id from part_categories where name = ?")
-      .get("Video") as { id: string } | undefined;
-    const racks = database
-      .prepare("select id from part_categories where name = ?")
-      .get("Racks/Materials") as { id: string } | undefined;
-    const shure = database
-      .prepare("select id from part_companies where name = ?")
-      .get("Shure") as { id: string } | undefined;
-    const bmd = database
-      .prepare("select id from part_companies where name = ?")
-      .get("Blackmagic Design") as { id: string } | undefined;
-    const ma = database
-      .prepare("select id from part_companies where name = ?")
-      .get("Middle Atlantic") as { id: string } | undefined;
-    const sp = database
-      .prepare("select id from vendors where code = ?")
-      .get("SP") as { id: string } | undefined;
-
-    const samples = [
-      {
-        sku: "AD4Q",
-        name: "Shure AD4Q Quad Channel Receiver",
-        description: "Axient Digital Quad Channel Receiver",
-        category_id: audio?.id ?? null,
-        company_id: shure?.id ?? null,
-        msrp: 7873,
-        default_quote: 5510,
-      },
-      {
-        sku: "AD1",
-        name: "Shure AD1 Bodypack Transmitter",
-        description: "Axient Digital Bodypack Transmitter",
-        category_id: audio?.id ?? null,
-        company_id: shure?.id ?? null,
-        msrp: 978,
-        default_quote: 733,
-      },
-      {
-        sku: "SWATEMSCN2/2ME4/4K/P",
-        name: "Blackmagic ATEM Constellation 4K Plus",
-        description: "ATEM 4 M/E Constellation 4K Plus Ultra HD",
-        category_id: video?.id ?? null,
-        company_id: bmd?.id ?? null,
-        msrp: 14295,
-        default_quote: 12995,
-      },
-      {
-        sku: "BGR-2527",
-        name: "Middle Atlantic BGR-2527",
-        description: "25U BGR Series Rack Enclosure",
-        category_id: racks?.id ?? null,
-        company_id: ma?.id ?? null,
-        msrp: 1467.9,
-        default_quote: 1467.9,
-      },
-    ];
-    const stmt = database.prepare(
-      `insert into catalog_parts
-        (id, sku, name, description, category_id, company_id, default_vendor_id,
-         msrp, default_quote, source, active)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1)`,
-    );
-    for (const sample of samples) {
-      stmt.run(
-        randomUUID(),
-        sample.sku,
-        sample.name,
-        sample.description,
-        sample.category_id,
-        sample.company_id,
-        sp?.id ?? null,
-        sample.msrp,
-        sample.default_quote,
-      );
     }
   }
 }

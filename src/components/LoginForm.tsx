@@ -10,8 +10,8 @@ const localMode = process.env.NEXT_PUBLIC_MIXINARY_LOCAL_MODE === "true";
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [email, setEmail] = useState(localMode ? "admin@mixinary.local" : "");
-  const [password, setPassword] = useState(localMode ? "mixinary123" : "");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -69,7 +69,7 @@ export function LoginForm() {
           </h1>
           <p className="page-sub">
             {localMode
-              ? "Local demo · admin@mixinary.local / mixinary123"
+              ? "Local development mode."
               : "Projects, BOMs, quotes, and procurement."}
           </p>
         </div>

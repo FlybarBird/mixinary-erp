@@ -8,12 +8,12 @@
    - `supabase/migrations/002_seed_carriers.sql`
    - `supabase/migrations/003_storage_quote_pdfs.sql`
 3. Confirm Storage bucket `quote-pdfs` exists (private).
-4. **Authentication → Users**: invite your first admin user (email/password).
-5. After first login, in SQL set admin role:
+4. Open the app once — if no users exist, **`/setup`** creates the first administrator.
+5. Or invite a user in **Authentication → Users**, then set the role:
 
 ```sql
 update public.user_profiles
-set role = 'admin'
+set role = 'administrator'
 where email = 'you@mixinary.com';
 ```
 

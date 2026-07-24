@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
-import { rollupBomLineQuantities, writeAuditEvent } from "@/lib/projects/workspace";
+import {
+  rollupBomLineQuantities,
+  rollupBomLinesForPo,
+  writeAuditEvent,
+} from "@/lib/projects/workspace";
 import {
   recalcPurchaseOrderEconomics,
   suggestPoStatus,
 } from "@/lib/projects/procurement";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 export async function PATCH(
   request: Request,
@@ -130,22 +135,16 @@ export async function PATCH(
     });
   }
 
-  // If cascade changed item statuses, roll up BOM lines
+  // If cascade changed item statuses, roll up BOM qty/status fields only.
+  let bomLines = null;
   if (cascadeItemStatus && item_status) {
-    const { data: cascaded } = await supabase
-      .from("purchase_order_items")
-      .select("line_item_id")
-      .eq("po_id", poId);
-    const lineIds = [
-      ...new Set(
-        (cascaded ?? [])
-          .map((i) => i.line_item_id)
-          .filter(Boolean) as string[],
-      ),
-    ];
-    for (const lineItemId of lineIds) {
-      await rollupBomLineQuantities(supabase, lineItemId);
-    }
+    bomLines = await rollupBomLinesForPo(supabase, poId);
+  }
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
   }
 
   const [{ data: po }, { data: items }] = await Promise.all([
@@ -159,6 +158,7 @@ export async function PATCH(
 
   return NextResponse.json({
     data: po ? { ...po, items: items ?? [] } : updated,
+    bomLines,
   });
 }
 
@@ -175,15 +175,19 @@ export async function DELETE(
 
   const supabase = await createClient();
 
-  // Collect line item IDs before deleting
+  // Collect linked BOM lines before delete, then roll up after items are gone.
   const { data: items } = await supabase
     .from("purchase_order_items")
     .select("line_item_id")
     .eq("po_id", poId);
 
-  const lineItemIds = [...new Set(
-    (items ?? []).map((i) => i.line_item_id).filter(Boolean) as string[],
-  )];
+  const lineItemIds = [
+    ...new Set(
+      (items ?? [])
+        .map((i) => i.line_item_id)
+        .filter(Boolean) as string[],
+    ),
+  ];
 
   const { error } = await supabase
     .from("purchase_orders")
@@ -195,6 +199,12 @@ export async function DELETE(
 
   for (const lineItemId of lineItemIds) {
     await rollupBomLineQuantities(supabase, lineItemId);
+  }
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
   }
 
   return NextResponse.json({ ok: true });

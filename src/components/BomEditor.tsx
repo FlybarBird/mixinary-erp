@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, type DragEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateLinePricing,
@@ -43,6 +43,21 @@ export function BomEditor({
     initialLines.map((l) => ({ ...l, _key: l.id })),
   );
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Refresh pricing fields pushed from procurement (quote / estimated cost).
+  useEffect(() => {
+    setLines((prev) =>
+      prev.map((line) => {
+        const fresh = initialLines.find((l) => l.id === line.id);
+        if (!fresh) return line;
+        return {
+          ...line,
+          quote: fresh.quote,
+          estimated_unit_cost: fresh.estimated_unit_cost,
+        };
+      }),
+    );
+  }, [initialLines]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [productUrl, setProductUrl] = useState("");
@@ -68,6 +83,22 @@ export function BomEditor({
     [lines, defaultOverridePct],
   );
   const totals = useMemo(() => sumPricing(priced), [priced]);
+
+  const costTotals = useMemo(() => {
+    let cost = 0;
+    for (const line of lines) {
+      const unit =
+        line.estimated_unit_cost != null
+          ? Number(line.estimated_unit_cost)
+          : line.quote != null
+            ? Number(line.quote)
+            : Number(line.msrp || 0);
+      cost += Number(line.qty || 0) * unit;
+    }
+    const profit = totals.totalSale - cost;
+    const margin = totals.totalSale > 0 ? profit / totals.totalSale : null;
+    return { cost, profit, margin };
+  }, [lines, totals.totalSale]);
 
   const sectionMap = useMemo(
     () => new Map(sections.map((s) => [s.id, s])),
@@ -527,7 +558,27 @@ export function BomEditor({
         <span>Sale {formatMoney(totals.totalSale)}</span>
         <span>Savings {formatMoney(totals.clientSavings)}</span>
         <span style={outOfPocketStyle(totals.outOfPocket, totals.totalQuote)}>
-          Out of pocket {formatSignedMoney(totals.outOfPocket)}
+          Quoted Material Profit {formatSignedMoney(totals.outOfPocket)}
+        </span>
+        <span>Cost {formatMoney(costTotals.cost)}</span>
+        <span
+          style={{
+            color:
+              costTotals.profit > 0
+                ? "#00c853"
+                : costTotals.profit < 0
+                  ? "#e53935"
+                  : undefined,
+            fontWeight: 650,
+          }}
+        >
+          Profit {formatSignedMoney(costTotals.profit)}
+        </span>
+        <span>
+          Margin{" "}
+          {costTotals.margin != null
+            ? `${(costTotals.margin * 100).toFixed(2)}%`
+            : "—"}
         </span>
         {selected.size ? (
           <span className="muted">{selected.size} selected</span>
@@ -586,7 +637,7 @@ export function BomEditor({
               <th title="Override %">%</th>
               <th title="Unit sale">Sale</th>
               <th title="Total sale">Total&nbsp;sale</th>
-              <th title="Out of pocket">OOP</th>
+              <th title="Quoted Material Profit (Sale − Quote)">QMP</th>
               <th title="Vendor">Vendor</th>
               <th title="Required by date">Required&nbsp;by</th>
               <th title="Procurement status">Procurement</th>

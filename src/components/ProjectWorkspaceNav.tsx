@@ -13,7 +13,13 @@ const TABS = [
   { href: "/dashboard", label: "Dashboard", match: "dashboard" },
 ] as const;
 
-export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
+export function ProjectWorkspaceNav({
+  projectId,
+  canViewFinancials = false,
+}: {
+  projectId: string;
+  canViewFinancials?: boolean;
+}) {
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
 
@@ -24,9 +30,13 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
     return pathname.startsWith(`${base}${tab.href}`);
   }
 
+  const tabs = TABS.filter(
+    (tab) => tab.match !== "dashboard" || canViewFinancials,
+  );
+
   return (
     <nav className="project-workspace-nav" aria-label="Project views">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = isActive(tab);
         return (
           <Link

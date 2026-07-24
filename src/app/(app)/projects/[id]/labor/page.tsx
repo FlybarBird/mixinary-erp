@@ -1,6 +1,11 @@
 import { notFound } from "next/navigation";
 import { LaborView } from "@/components/LaborView";
-import { canEditLabor, canApproveLabor, requireProfile } from "@/lib/auth";
+import {
+  canEditLabor,
+  canApproveLabor,
+  canViewFinancials,
+  requireProfile,
+} from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { LaborEntry } from "@/lib/types";
 
@@ -33,6 +38,7 @@ export default async function LaborPage({
       initialEntries={(entries ?? []) as LaborEntry[]}
       canEdit={canEditLabor(profile.role)}
       canApprove={canApproveLabor(profile.role)}
+      canViewRates={canViewFinancials(profile.role)}
     />
   );
 }

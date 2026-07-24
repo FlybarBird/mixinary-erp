@@ -3,7 +3,7 @@ import { ProjectHeader } from "@/components/ProjectHeader";
 import { ProjectWorkspaceNav } from "@/components/ProjectWorkspaceNav";
 import { ProjectExportMenu } from "@/components/ProjectExportMenu";
 import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
-import { canEditBom, requireProfile } from "@/lib/auth";
+import { canEditBom, canViewFinancials, requireProfile } from "@/lib/auth";
 import {
   canAccessProject,
   canEditProjectContent,
@@ -80,6 +80,35 @@ export default async function ProjectLayout({
             null,
           labor_budget:
             (project as { labor_budget?: number | null }).labor_budget ?? null,
+          expense_budget:
+            (project as { expense_budget?: number | null }).expense_budget ??
+            null,
+          subcontractor_budget:
+            (project as { subcontractor_budget?: number | null })
+              .subcontractor_budget ?? null,
+          overhead_budget:
+            (project as { overhead_budget?: number | null }).overhead_budget ??
+            null,
+          original_revenue:
+            (project as { original_revenue?: number | null }).original_revenue ??
+            null,
+          revenue_additions: Number(
+            (project as { revenue_additions?: number | null })
+              .revenue_additions ?? 0,
+          ),
+          revenue_credits: Number(
+            (project as { revenue_credits?: number | null }).revenue_credits ??
+              0,
+          ),
+          start_date:
+            (project as { start_date?: string | null }).start_date ?? null,
+          target_completion_date:
+            (project as { target_completion_date?: string | null })
+              .target_completion_date ?? null,
+          percent_complete: Number(
+            (project as { percent_complete?: number | null }).percent_complete ??
+              0,
+          ),
           status: project.status as ProjectStatus,
           default_override_pct: Number(project.default_override_pct),
           notes: project.notes,
@@ -93,6 +122,7 @@ export default async function ProjectLayout({
           name: m.full_name || m.email,
         }))}
         canEdit={canEdit}
+        canEditFinancials={canEdit && canViewFinancials(profile.role)}
       />
       <ProjectMembersPanel
         projectId={id}
@@ -101,7 +131,10 @@ export default async function ProjectLayout({
         canManage={canManageMembers}
       />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-        <ProjectWorkspaceNav projectId={id} />
+        <ProjectWorkspaceNav
+          projectId={id}
+          canViewFinancials={canViewFinancials(profile.role)}
+        />
         <ProjectExportMenu projectId={id} />
       </div>
       {children}

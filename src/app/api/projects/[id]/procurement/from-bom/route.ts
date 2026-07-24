@@ -5,6 +5,7 @@ import { newId } from "@/lib/local/db";
 import { rollupBomLineQuantities } from "@/lib/projects/workspace";
 import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
 import { allocateNextPoNumbers } from "@/lib/projects/numbering";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 export async function POST(
   request: Request,
@@ -140,6 +141,12 @@ export async function POST(
 
   for (const lineItemId of allLineItemIds) {
     await rollupBomLineQuantities(supabase, lineItemId);
+  }
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
   }
 
   return NextResponse.json({ ok: true, created, warnings }, { status: 201 });

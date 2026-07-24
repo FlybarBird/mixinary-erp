@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS projects (
   default_override_pct REAL NOT NULL DEFAULT 0,
   material_budget REAL,
   labor_budget REAL,
+  expense_budget REAL,
+  subcontractor_budget REAL,
+  overhead_budget REAL,
+  original_revenue REAL,
+  revenue_additions REAL NOT NULL DEFAULT 0,
+  revenue_credits REAL NOT NULL DEFAULT 0,
+  start_date TEXT,
+  target_completion_date TEXT,
+  percent_complete REAL NOT NULL DEFAULT 0,
+  financials_updated_at TEXT,
   notes TEXT,
   created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -369,6 +379,7 @@ CREATE TABLE IF NOT EXISTS project_expenses (
   amount REAL NOT NULL DEFAULT 0,
   tax REAL NOT NULL DEFAULT 0,
   cost_code TEXT,
+  po_id TEXT REFERENCES purchase_orders(id) ON DELETE SET NULL,
   submitted_by TEXT,
   approval_status TEXT NOT NULL DEFAULT 'pending',
   payment_status TEXT NOT NULL DEFAULT 'unpaid',
@@ -377,6 +388,29 @@ CREATE TABLE IF NOT EXISTS project_expenses (
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_cost_ledger (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  vendor_or_person TEXT,
+  description TEXT,
+  budget_amount REAL NOT NULL DEFAULT 0,
+  committed_amount REAL NOT NULL DEFAULT 0,
+  actual_amount REAL NOT NULL DEFAULT 0,
+  forecast_amount REAL NOT NULL DEFAULT 0,
+  transaction_date TEXT,
+  approval_status TEXT,
+  payment_status TEXT,
+  billable INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT,
+  updated_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (source_type, source_id, category)
 );
 
 CREATE TABLE IF NOT EXISTS attachments (
@@ -448,6 +482,8 @@ CREATE INDEX IF NOT EXISTS purchase_orders_project_idx ON purchase_orders(projec
 CREATE INDEX IF NOT EXISTS purchase_order_items_po_idx ON purchase_order_items(po_id);
 CREATE INDEX IF NOT EXISTS labor_entries_project_idx ON labor_entries(project_id);
 CREATE INDEX IF NOT EXISTS project_expenses_project_idx ON project_expenses(project_id);
+CREATE INDEX IF NOT EXISTS project_cost_ledger_project_idx ON project_cost_ledger(project_id);
+CREATE INDEX IF NOT EXISTS project_cost_ledger_category_idx ON project_cost_ledger(project_id, category);
 CREATE INDEX IF NOT EXISTS attachments_project_idx ON attachments(project_id);
 CREATE INDEX IF NOT EXISTS audit_events_project_idx ON audit_events(project_id);
 CREATE INDEX IF NOT EXISTS app_notifications_user_idx ON app_notifications(user_id);

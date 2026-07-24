@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canEditLabor, canApproveLabor, getCurrentProfile } from "@/lib/auth";
 import { writeAuditEvent } from "@/lib/projects/workspace";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 function computeTotalCost(body: {
   regular_hours?: number | null;
@@ -95,6 +96,12 @@ export async function PATCH(
     actorId: profile.id,
   });
 
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
+
   return NextResponse.json({ entry: data });
 }
 
@@ -141,6 +148,12 @@ export async function DELETE(
     before: existing,
     actorId: profile.id,
   });
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
 
   return NextResponse.json({ ok: true });
 }

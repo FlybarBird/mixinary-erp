@@ -170,8 +170,12 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
         <KpiCard
           label="Current Project Revenue"
           value={d.currentRevenue == null ? "—" : formatMoney(d.currentRevenue)}
-          href={`${base}?edit=1`}
-          hint="Contract revenue"
+          href={`${base}/change-orders`}
+          hint={
+            d.revenueBreakdown
+              ? `Orig ${formatMoney(d.revenueBreakdown.original || 0)} · CO ${formatSignedMoney(d.revenueBreakdown.approvedChangeOrders)} · Manual ${formatSignedMoney(d.revenueBreakdown.manualAdjustments)}`
+              : "Contract revenue"
+          }
         />
         <KpiCard
           label="Original Cost Budget"
@@ -181,6 +185,16 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
               : formatMoney(d.originalCostBudget)
           }
           href={`${base}?edit=1`}
+        />
+        <KpiCard
+          label="Revised Cost Budget"
+          value={
+            d.revisedCostBudget == null
+              ? "—"
+              : formatMoney(d.revisedCostBudget)
+          }
+          href={`${base}/change-orders`}
+          hint="Includes approved CO budget deltas"
         />
         <KpiCard
           label="Committed Cost"
@@ -228,7 +242,7 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
           value={
             d.costVariance == null ? "—" : formatSignedMoney(d.costVariance)
           }
-          hint="Budget − forecast"
+          hint="Revised budget − forecast"
           tone={
             d.costVariance == null
               ? "neutral"
@@ -236,6 +250,49 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
                 ? "good"
                 : "bad"
           }
+        />
+      </div>
+
+      {/* Cash / AR KPIs */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+          gap: "0.65rem",
+        }}
+      >
+        <KpiCard
+          label="Billed to Date"
+          value={formatMoney(d.billed)}
+          href={`${base}/billing`}
+        />
+        <KpiCard
+          label="Unbilled"
+          value={d.unbilled == null ? "—" : formatMoney(d.unbilled)}
+          href={`${base}/billing`}
+          hint="Contract − billed"
+        />
+        <KpiCard
+          label="Collected"
+          value={formatMoney(d.collected)}
+          href={`${base}/billing`}
+        />
+        <KpiCard
+          label="AR Outstanding"
+          value={formatMoney(d.arOutstanding)}
+          href={`${base}/billing`}
+          tone={d.arOutstanding > 0 ? "bad" : "neutral"}
+        />
+        <KpiCard
+          label="Vendor AP Unpaid"
+          value={formatMoney(d.apUnpaid)}
+          href={`${base}/billing#ap`}
+        />
+        <KpiCard
+          label="Labor Billable Value"
+          value={formatMoney(d.laborBillableValue)}
+          href={`${base}/labor`}
+          hint="Approved hours × billing rate"
         />
       </div>
 
@@ -307,6 +364,12 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
           value={d.unapprovedExpenseCount}
           href={`${base}/expenses`}
           warn={d.unapprovedExpenseCount > 0}
+        />
+        <OpsCard
+          label="Pending change orders"
+          value={d.pendingChangeOrderCount}
+          href={`${base}/change-orders`}
+          warn={d.pendingChangeOrderCount > 0}
         />
       </div>
 
@@ -414,6 +477,71 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
         </table>
       </div>
 
+      {/* Profit waterfall / history */}
+      <div className="panel" style={{ padding: "1rem", overflowX: "auto" }}>
+        <strong style={{ fontSize: "0.9rem" }}>Profit waterfall history</strong>
+        <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0.65rem" }}>
+          Snapshots captured on CO approve, invoice send, and payment.
+        </p>
+        {d.snapshots.length === 0 ? (
+          <div className="muted" style={{ fontSize: "0.85rem" }}>
+            No snapshots yet — approve a change order or record a payment to start history.
+          </div>
+        ) : (
+          <table className="data-table" style={{ width: "100%", fontSize: "0.8rem" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>When</th>
+                <th>Trigger</th>
+                <th style={{ textAlign: "right" }}>Revenue</th>
+                <th style={{ textAlign: "right" }}>Forecast cost</th>
+                <th style={{ textAlign: "right" }}>Profit</th>
+                <th style={{ textAlign: "right" }}>Billed</th>
+                <th style={{ textAlign: "right" }}>AR</th>
+                <th style={{ textAlign: "right" }}>Δ Profit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.snapshots.map((s, idx) => {
+                const newer = d.snapshots[idx - 1];
+                const delta =
+                  s.forecast_profit == null || newer?.forecast_profit == null
+                    ? null
+                    : newer.forecast_profit - s.forecast_profit;
+                return (
+                  <tr key={s.id}>
+                    <td style={{ textAlign: "left" }}>
+                      {new Date(s.captured_at).toLocaleString()}
+                    </td>
+                    <td>{s.trigger}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {s.current_revenue == null
+                        ? "—"
+                        : formatMoney(s.current_revenue)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {formatMoney(s.forecast_final)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {s.forecast_profit == null
+                        ? "—"
+                        : formatSignedMoney(s.forecast_profit)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>{formatMoney(s.billed)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {formatMoney(s.ar_outstanding)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {delta == null ? "—" : formatSignedMoney(delta)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* Action center */}
       <div className="panel" style={{ padding: "1rem" }}>
         <strong style={{ fontSize: "0.9rem" }}>Action & risk center</strong>
@@ -432,11 +560,46 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
                     {a.label}
                     {a.count > 1 ? ` (${a.count})` : ""}
                   </Link>
+                  {a.detail ? (
+                    <span className="muted" style={{ fontSize: "0.8rem" }}>
+                      {" "}
+                      — {a.detail}
+                    </span>
+                  ) : null}
                 </li>
               );
             })
           )}
         </ul>
+        {d.duplicateAlerts?.length ? (
+          <>
+            <strong
+              style={{
+                fontSize: "0.85rem",
+                display: "block",
+                marginTop: "0.85rem",
+              }}
+            >
+              Duplicate-cost suggestions
+            </strong>
+            <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.1rem" }}>
+              {d.duplicateAlerts.map((a) => {
+                const sev = severityStyle(a.severity);
+                return (
+                  <li key={a.key} style={{ marginBottom: "0.35rem" }}>
+                    <span style={{ color: sev.color, fontWeight: 700 }}>
+                      [{sev.label}]
+                    </span>{" "}
+                    <Link href={a.href}>{a.label}</Link>
+                    <div className="muted" style={{ fontSize: "0.8rem" }}>
+                      {a.detail}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : null}
       </div>
 
       {/* Ledger drill */}

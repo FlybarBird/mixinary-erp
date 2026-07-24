@@ -80,6 +80,8 @@ export async function POST(
     regular_hours,
     overtime_hours,
     hourly_rate,
+    burden_pct: Number(body.burden_pct ?? 0) || 0,
+    billing_rate: Number(body.billing_rate ?? 0) || 0,
     total_cost,
     approval_status: "pending" as const,
     notes: (body.notes as string | null) ?? null,

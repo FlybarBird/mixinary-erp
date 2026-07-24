@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS projects (
   target_completion_date TEXT,
   percent_complete REAL NOT NULL DEFAULT 0,
   financials_updated_at TEXT,
+  labor_burden_enabled INTEGER NOT NULL DEFAULT 0,
+  default_burden_pct REAL NOT NULL DEFAULT 0,
   notes TEXT,
   created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -361,6 +363,8 @@ CREATE TABLE IF NOT EXISTS labor_entries (
   regular_hours REAL NOT NULL DEFAULT 0,
   overtime_hours REAL NOT NULL DEFAULT 0,
   hourly_rate REAL NOT NULL DEFAULT 0,
+  burden_pct REAL NOT NULL DEFAULT 0,
+  billing_rate REAL NOT NULL DEFAULT 0,
   total_cost REAL NOT NULL DEFAULT 0,
   approval_status TEXT NOT NULL DEFAULT 'pending',
   notes TEXT,
@@ -478,12 +482,158 @@ CREATE TABLE IF NOT EXISTS project_members (
   UNIQUE (project_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS project_change_orders (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  co_number TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  revenue_delta REAL NOT NULL DEFAULT 0,
+  budget_material_delta REAL NOT NULL DEFAULT 0,
+  budget_labor_delta REAL NOT NULL DEFAULT 0,
+  budget_expense_delta REAL NOT NULL DEFAULT 0,
+  budget_subcontractor_delta REAL NOT NULL DEFAULT 0,
+  budget_overhead_delta REAL NOT NULL DEFAULT 0,
+  requested_by TEXT,
+  approved_by TEXT,
+  approved_at TEXT,
+  effective_date TEXT,
+  customer_reference TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_id, co_number)
+);
+
+CREATE TABLE IF NOT EXISTS project_invoices (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  invoice_number TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  invoice_date TEXT NOT NULL,
+  due_date TEXT,
+  subtotal REAL NOT NULL DEFAULT 0,
+  tax REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  amount_paid REAL NOT NULL DEFAULT 0,
+  notes TEXT,
+  sent_at TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_id, invoice_number)
+);
+
+CREATE TABLE IF NOT EXISTS project_invoice_lines (
+  id TEXT PRIMARY KEY,
+  invoice_id TEXT NOT NULL REFERENCES project_invoices(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price REAL NOT NULL DEFAULT 0,
+  amount REAL NOT NULL DEFAULT 0,
+  change_order_id TEXT REFERENCES project_change_orders(id) ON DELETE SET NULL,
+  category TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS project_payments (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  payment_date TEXT NOT NULL,
+  amount REAL NOT NULL DEFAULT 0,
+  method TEXT,
+  reference TEXT,
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_payment_applications (
+  id TEXT PRIMARY KEY,
+  payment_id TEXT NOT NULL REFERENCES project_payments(id) ON DELETE CASCADE,
+  invoice_id TEXT NOT NULL REFERENCES project_invoices(id) ON DELETE CASCADE,
+  amount REAL NOT NULL DEFAULT 0,
+  UNIQUE (payment_id, invoice_id)
+);
+
+CREATE TABLE IF NOT EXISTS project_financial_snapshots (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+  trigger TEXT NOT NULL DEFAULT 'manual',
+  current_revenue REAL,
+  original_cost_budget REAL,
+  revised_cost_budget REAL,
+  committed REAL NOT NULL DEFAULT 0,
+  actual REAL NOT NULL DEFAULT 0,
+  forecast_final REAL NOT NULL DEFAULT 0,
+  forecast_profit REAL,
+  forecast_margin REAL,
+  billed REAL NOT NULL DEFAULT 0,
+  collected REAL NOT NULL DEFAULT 0,
+  ar_outstanding REAL NOT NULL DEFAULT 0,
+  material_sale REAL NOT NULL DEFAULT 0,
+  material_only_profit REAL NOT NULL DEFAULT 0,
+  percent_complete REAL NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS vendor_bills (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  purchase_order_id TEXT REFERENCES purchase_orders(id) ON DELETE SET NULL,
+  vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
+  vendor_invoice_number TEXT,
+  bill_date TEXT,
+  due_date TEXT,
+  amount REAL NOT NULL DEFAULT 0,
+  amount_paid REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'accrued',
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_subcontracts (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
+  sub_name TEXT,
+  description TEXT NOT NULL,
+  contract_amount REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft',
+  billed_to_date REAL NOT NULL DEFAULT 0,
+  paid_to_date REAL NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_subcontract_bills (
+  id TEXT PRIMARY KEY,
+  subcontract_id TEXT NOT NULL REFERENCES project_subcontracts(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  bill_date TEXT NOT NULL,
+  description TEXT,
+  amount REAL NOT NULL DEFAULT 0,
+  amount_paid REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'billed',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS purchase_orders_project_idx ON purchase_orders(project_id);
 CREATE INDEX IF NOT EXISTS purchase_order_items_po_idx ON purchase_order_items(po_id);
 CREATE INDEX IF NOT EXISTS labor_entries_project_idx ON labor_entries(project_id);
 CREATE INDEX IF NOT EXISTS project_expenses_project_idx ON project_expenses(project_id);
 CREATE INDEX IF NOT EXISTS project_cost_ledger_project_idx ON project_cost_ledger(project_id);
 CREATE INDEX IF NOT EXISTS project_cost_ledger_category_idx ON project_cost_ledger(project_id, category);
+CREATE INDEX IF NOT EXISTS project_change_orders_project_idx ON project_change_orders(project_id);
+CREATE INDEX IF NOT EXISTS project_invoices_project_idx ON project_invoices(project_id);
+CREATE INDEX IF NOT EXISTS project_payments_project_idx ON project_payments(project_id);
+CREATE INDEX IF NOT EXISTS project_financial_snapshots_project_idx ON project_financial_snapshots(project_id);
+CREATE INDEX IF NOT EXISTS vendor_bills_project_idx ON vendor_bills(project_id);
+CREATE INDEX IF NOT EXISTS project_subcontracts_project_idx ON project_subcontracts(project_id);
 CREATE INDEX IF NOT EXISTS attachments_project_idx ON attachments(project_id);
 CREATE INDEX IF NOT EXISTS audit_events_project_idx ON audit_events(project_id);
 CREATE INDEX IF NOT EXISTS app_notifications_user_idx ON app_notifications(user_id);

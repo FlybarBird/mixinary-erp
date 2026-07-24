@@ -21,6 +21,7 @@ const BOOL_FIELDS: Record<string, string[]> = {
   project_cost_ledger: ["billable"],
   clients: ["active"],
   user_profiles: ["active"],
+  projects: ["labor_burden_enabled"],
 };
 
 function decodeRow(table: string, row: Row | undefined): Row | null {

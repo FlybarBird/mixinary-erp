@@ -10,7 +10,10 @@ const TABS = [
   { href: "/procurement", label: "Procurement", match: "procurement" },
   { href: "/tracking", label: "Tracking", match: "tracking" },
   { href: "/expenses", label: "Expenses", match: "expenses" },
-  { href: "/dashboard", label: "Dashboard", match: "dashboard" },
+  { href: "/change-orders", label: "Change Orders", match: "change-orders", financial: true },
+  { href: "/billing", label: "Billing", match: "billing", financial: true },
+  { href: "/subcontracts", label: "Subs", match: "subcontracts", financial: true },
+  { href: "/dashboard", label: "Dashboard", match: "dashboard", financial: true },
 ] as const;
 
 export function ProjectWorkspaceNav({
@@ -31,7 +34,7 @@ export function ProjectWorkspaceNav({
   }
 
   const tabs = TABS.filter(
-    (tab) => tab.match !== "dashboard" || canViewFinancials,
+    (tab) => !("financial" in tab && tab.financial) || canViewFinancials,
   );
 
   return (

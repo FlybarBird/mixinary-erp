@@ -36,6 +36,8 @@ export function ProjectHeader({
     original_revenue: number | null;
     revenue_additions: number;
     revenue_credits: number;
+    labor_burden_enabled?: boolean;
+    default_burden_pct?: number;
     start_date: string | null;
     target_completion_date: string | null;
     percent_complete: number;
@@ -102,6 +104,9 @@ export function ProjectHeader({
       body.original_revenue = numOrNull("original_revenue");
       body.revenue_additions = Number(form.get("revenue_additions") || 0) || 0;
       body.revenue_credits = Number(form.get("revenue_credits") || 0) || 0;
+      body.labor_burden_enabled = form.get("labor_burden_enabled") === "on";
+      body.default_burden_pct =
+        Number(form.get("default_burden_pct") || 0) / 100 || 0;
     }
     const ok = await patch(body);
     if (ok) setEditing(false);
@@ -402,6 +407,30 @@ export function ProjectHeader({
                     step="0.01"
                     defaultValue={project.overhead_budget ?? ""}
                   />
+                </div>
+                <div>
+                  <label className="label">Default burden %</label>
+                  <input
+                    className="field"
+                    name="default_burden_pct"
+                    type="number"
+                    step="0.01"
+                    defaultValue={(
+                      Number(project.default_burden_pct || 0) * 100
+                    ).toFixed(2)}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "end" }}>
+                  <label className="row" style={{ gap: "0.4rem" }}>
+                    <input
+                      type="checkbox"
+                      name="labor_burden_enabled"
+                      defaultChecked={Boolean(project.labor_burden_enabled)}
+                    />
+                    <span className="label" style={{ margin: 0 }}>
+                      Enable labor burden on cost ledger
+                    </span>
+                  </label>
                 </div>
               </>
             ) : null}

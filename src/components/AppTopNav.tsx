@@ -7,10 +7,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/format";
+import { canViewFinancials } from "@/lib/auth";
 
 const primaryLinks = [
   { href: "/dashboard", label: "My Home" },
   { href: "/projects", label: "Project Management" },
+  { href: "/reports/portfolio", label: "Portfolio", financial: true },
   { href: "/parts", label: "Parts" },
   { href: "/clients", label: "Clients" },
   { href: "/vendors", label: "Vendors" },
@@ -31,6 +33,7 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
   const pathname = usePathname();
   const router = useRouter();
   const isAdmin = profile.role === "administrator";
+  const showFinancials = canViewFinancials(profile.role);
   const adminActive = pathname === "/admin" || pathname.startsWith("/admin/");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -129,7 +132,12 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
       <div className="shell-tabs">
         <div className="shell-tabs-inner">
           <nav className="shell-tab-list" aria-label="Primary">
-            {primaryLinks.map((link) => {
+            {primaryLinks
+              .filter(
+                (link) =>
+                  !("financial" in link && link.financial) || showFinancials,
+              )
+              .map((link) => {
               const active =
                 pathname === link.href || pathname.startsWith(`${link.href}/`);
               return (

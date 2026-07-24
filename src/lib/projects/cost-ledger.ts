@@ -62,10 +62,12 @@ export async function rebuildProjectCostLedger(
     { data: labor },
     { data: expenses },
     { data: lines },
+    { data: subcontracts },
+    { data: subBills },
   ] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, default_override_pct")
+      .select("id, default_override_pct, labor_burden_enabled, default_burden_pct")
       .eq("id", projectId)
       .maybeSingle(),
     supabase
@@ -75,7 +77,7 @@ export async function rebuildProjectCostLedger(
     supabase
       .from("labor_entries")
       .select(
-        "id, worker_name, estimated_hours, actual_hours, hourly_rate, total_cost, approval_status, work_date",
+        "id, worker_name, estimated_hours, actual_hours, hourly_rate, burden_pct, billing_rate, total_cost, approval_status, work_date",
       )
       .eq("project_id", projectId),
     supabase
@@ -90,9 +92,21 @@ export async function rebuildProjectCostLedger(
         "id, description, qty, qty_ordered, msrp, quote, override_pct, estimated_unit_cost",
       )
       .eq("project_id", projectId),
+    supabase
+      .from("project_subcontracts")
+      .select(
+        "id, sub_name, description, contract_amount, status, billed_to_date, paid_to_date, vendor_id",
+      )
+      .eq("project_id", projectId),
+    supabase
+      .from("project_subcontract_bills")
+      .select("id, subcontract_id, amount, amount_paid, status, bill_date, description")
+      .eq("project_id", projectId),
   ]);
 
   if (!project) return { count: 0 };
+  const burdenEnabled = Boolean(project.labor_burden_enabled);
+  const defaultBurden = Number(project.default_burden_pct || 0);
 
   const rows: LedgerInsert[] = [];
   const push = (row: Omit<LedgerInsert, "id" | "project_id" | "updated_at">) => {
@@ -228,12 +242,25 @@ export async function rebuildProjectCostLedger(
 
   for (const entry of labor ?? []) {
     const approved = entry.approval_status === "approved";
-    const actual = approved ? money(Number(entry.total_cost || 0)) : 0;
     const estH = Number(entry.estimated_hours || 0);
     const actH = Number(entry.actual_hours || 0);
     const rate = Number(entry.hourly_rate || 0);
+    const burdenPct = Number(
+      entry.burden_pct != null ? entry.burden_pct : defaultBurden,
+    );
+    const burdenMult = burdenEnabled ? 1 + burdenPct : 1;
+    const baseActual = Number(entry.total_cost || 0);
+    const actual = approved
+      ? money(
+          burdenEnabled
+            ? actH > 0
+              ? actH * rate * burdenMult
+              : baseActual * burdenMult
+            : baseActual,
+        )
+      : 0;
     const remainingH = Math.max(0, estH - actH);
-    const forecast = money(remainingH * rate);
+    const forecast = money(remainingH * rate * burdenMult);
 
     if (!actual && !forecast) continue;
     push({
@@ -249,7 +276,7 @@ export async function rebuildProjectCostLedger(
       transaction_date: entry.work_date ?? null,
       approval_status: entry.approval_status ?? null,
       payment_status: null,
-      billable: false,
+      billable: Number(entry.billing_rate || 0) > 0,
     });
   }
 
@@ -273,6 +300,38 @@ export async function rebuildProjectCostLedger(
       transaction_date: (exp.expense_date as string) ?? null,
       approval_status: status,
       payment_status: (exp.payment_status as string) ?? null,
+      billable: false,
+    });
+  }
+
+  // Subcontracts: active → committed remaining; actual from bills
+  const billsBySub = new Map<string, number>();
+  for (const bill of subBills ?? []) {
+    const sid = String(bill.subcontract_id);
+    billsBySub.set(sid, (billsBySub.get(sid) || 0) + Number(bill.amount || 0));
+  }
+  for (const sub of subcontracts ?? []) {
+    const status = String(sub.status || "");
+    if (status === "draft" || status === "cancelled") continue;
+    const contract = Number(sub.contract_amount || 0);
+    const billed =
+      billsBySub.get(sub.id) ?? Number(sub.billed_to_date || 0);
+    const actual = money(billed);
+    const committed = money(Math.max(0, contract - billed));
+    if (!actual && !committed) continue;
+    push({
+      category: "subcontractors",
+      source_type: "subcontract",
+      source_id: sub.id,
+      vendor_or_person: (sub.sub_name as string) ?? null,
+      description: (sub.description as string) ?? "Subcontract",
+      budget_amount: 0,
+      committed_amount: committed,
+      actual_amount: actual,
+      forecast_amount: 0,
+      transaction_date: null,
+      approval_status: status,
+      payment_status: null,
       billable: false,
     });
   }

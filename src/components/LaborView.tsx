@@ -46,6 +46,8 @@ function emptyForm() {
     regular_hours: "",
     overtime_hours: "",
     hourly_rate: "",
+    burden_pct: "",
+    billing_rate: "",
     notes: "",
   };
 }
@@ -107,6 +109,10 @@ export function LaborView({
       regular_hours: String(entry.regular_hours ?? ""),
       overtime_hours: String(entry.overtime_hours ?? ""),
       hourly_rate: String(entry.hourly_rate ?? ""),
+      burden_pct: String(
+        entry.burden_pct != null ? Number(entry.burden_pct) * 100 : "",
+      ),
+      billing_rate: String(entry.billing_rate ?? ""),
       notes: entry.notes ?? "",
     });
     setShowForm(true);
@@ -133,6 +139,8 @@ export function LaborView({
         regular_hours: form.regular_hours ? Number(form.regular_hours) : 0,
         overtime_hours: form.overtime_hours ? Number(form.overtime_hours) : 0,
         hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : 0,
+        burden_pct: form.burden_pct ? Number(form.burden_pct) / 100 : 0,
+        billing_rate: form.billing_rate ? Number(form.billing_rate) : 0,
         notes: form.notes || null,
       };
 
@@ -312,10 +320,20 @@ export function LaborView({
               <input type="date" value={form.work_date} onChange={(e) => fieldVal("work_date", e.target.value)} />
             </label>
             {canViewRates ? (
-              <label className="field">
-                <span>Hourly Rate ($)</span>
-                <input type="number" min="0" step="0.01" value={form.hourly_rate} onChange={(e) => fieldVal("hourly_rate", e.target.value)} />
-              </label>
+              <>
+                <label className="field">
+                  <span>Hourly Rate ($)</span>
+                  <input type="number" min="0" step="0.01" value={form.hourly_rate} onChange={(e) => fieldVal("hourly_rate", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Burden %</span>
+                  <input type="number" min="0" step="0.01" value={form.burden_pct} onChange={(e) => fieldVal("burden_pct", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Billing Rate ($)</span>
+                  <input type="number" min="0" step="0.01" value={form.billing_rate} onChange={(e) => fieldVal("billing_rate", e.target.value)} />
+                </label>
+              </>
             ) : null}
             <label className="field">
               <span>Est. Hours</span>

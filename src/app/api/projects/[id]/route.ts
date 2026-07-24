@@ -116,6 +116,8 @@ export async function PATCH(
     "revenue_credits",
     "material_budget",
     "labor_budget",
+    "labor_burden_enabled",
+    "default_burden_pct",
   ] as const;
 
   const touchesFinancials = financialKeys.some((k) => k in body);
@@ -158,6 +160,12 @@ export async function PATCH(
     patch.percent_complete = Number.isFinite(pct)
       ? Math.min(100, Math.max(0, pct))
       : 0;
+  }
+  if ("labor_burden_enabled" in body) {
+    patch.labor_burden_enabled = Boolean(body.labor_burden_enabled);
+  }
+  if ("default_burden_pct" in body) {
+    patch.default_burden_pct = Number(body.default_burden_pct ?? 0) || 0;
   }
 
   if (Object.keys(patch).length === 1) {

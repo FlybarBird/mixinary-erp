@@ -1,5 +1,9 @@
 import { BomEditor } from "@/components/BomEditor";
 import { canEditBom, requireProfile } from "@/lib/auth";
+import {
+  canEditProjectContent,
+  getProjectAccessRole,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { LineItem, ProjectSection, Vendor } from "@/lib/types";
 
@@ -10,6 +14,7 @@ export default async function ProjectBomPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
+  const access = await getProjectAccessRole(profile.id, profile.role, id);
   const supabase = await createClient();
 
   const [{ data: project }, { data: sections }, { data: lines }, { data: vendors }] =
@@ -41,7 +46,11 @@ export default async function ProjectBomPage({
       initialSections={(sections ?? []) as ProjectSection[]}
       initialLines={(lines ?? []) as LineItem[]}
       vendors={(vendors ?? []) as Vendor[]}
-      canEditPricing={canEditBom(profile.role)}
+      canEditPricing={canEditProjectContent(
+        profile.role,
+        access,
+        canEditBom(profile.role),
+      )}
     />
   );
 }

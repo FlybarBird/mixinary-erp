@@ -125,6 +125,48 @@ export interface UserProfile {
   email: string;
   full_name: string | null;
   role: UserRole;
+  active?: boolean;
+}
+
+export type ProjectAccessRole = "viewer" | "editor" | "manager";
+
+export const PROJECT_ACCESS_ROLES: ProjectAccessRole[] = [
+  "viewer",
+  "editor",
+  "manager",
+];
+
+export const PROJECT_ACCESS_LABELS: Record<ProjectAccessRole, string> = {
+  viewer: "Viewer",
+  editor: "Editor",
+  manager: "Manager",
+};
+
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  user_id: string;
+  access_role: ProjectAccessRole;
+  user_profiles?: Pick<UserProfile, "id" | "email" | "full_name" | "role"> | null;
+}
+
+export interface UserAuditEvent {
+  id: string;
+  actor_id: string | null;
+  target_user_id: string | null;
+  action: string;
+  details: string | Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface UserInvite {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  token: string;
+  expires_at: string;
+  accepted_at: string | null;
 }
 
 export interface Client {

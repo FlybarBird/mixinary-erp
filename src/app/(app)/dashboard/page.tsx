@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { requireProfile } from "@/lib/auth";
+import { canViewFinancials, requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { formatMoney, formatSignedMoney, outOfPocketStyle } from "@/lib/pricing";
+import { listAccessibleProjectIds } from "@/lib/project-access";
+import { formatSignedMoney, outOfPocketStyle } from "@/lib/pricing";
 import type { ProjectStatus } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -32,8 +33,28 @@ function donutBackground(counts: { key: string; value: number }[]) {
 }
 
 export default async function DashboardPage() {
-  await requireProfile();
+  const profile = await requireProfile();
   const supabase = await createClient();
+  const showFinancials = canViewFinancials(profile.role);
+  const accessible = await listAccessibleProjectIds(profile.id, profile.role);
+
+  let recentProjectsQuery = supabase
+    .from("projects")
+    .select("id, project_number, name, status, clients(name)")
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(5);
+  let statusQuery = supabase.from("projects").select("status");
+
+  if (accessible !== "all") {
+    if (accessible.length === 0) {
+      recentProjectsQuery = recentProjectsQuery.eq("id", "__none__");
+      statusQuery = statusQuery.eq("id", "__none__");
+    } else {
+      recentProjectsQuery = recentProjectsQuery.in("id", accessible);
+      statusQuery = statusQuery.in("id", accessible);
+    }
+  }
 
   const [
     { data: projects },
@@ -42,13 +63,8 @@ export default async function DashboardPage() {
     { data: shipped },
     { data: reviewJobs },
   ] = await Promise.all([
-    supabase
-      .from("projects")
-      .select("id, project_number, name, status, clients(name)")
-      .eq("status", "active")
-      .order("updated_at", { ascending: false })
-      .limit(5),
-    supabase.from("projects").select("status"),
+    recentProjectsQuery,
+    statusQuery,
     supabase
       .from("line_items")
       .select("id, description, tracking, projects(project_number, name)")
@@ -67,10 +83,18 @@ export default async function DashboardPage() {
       .limit(10),
   ]);
 
-  const { data: sampleLines } = await supabase
+  let sampleLinesQuery = supabase
     .from("line_items")
     .select("qty, msrp, quote, override_pct, project_id, projects(default_override_pct)")
     .limit(500);
+  if (accessible !== "all") {
+    if (accessible.length === 0) {
+      sampleLinesQuery = sampleLinesQuery.eq("project_id", "__none__");
+    } else {
+      sampleLinesQuery = sampleLinesQuery.in("project_id", accessible);
+    }
+  }
+  const { data: sampleLines } = await sampleLinesQuery;
 
   let openOop = 0;
   let openQuote = 0;
@@ -182,16 +206,29 @@ export default async function DashboardPage() {
                 <p className="insight-card-sub">Approx. across loaded lines</p>
               </div>
             </div>
-            <div
-              className="insight-metric"
-              style={{
-                fontSize: "1.55rem",
-                ...outOfPocketStyle(openOop, openQuote),
-              }}
-            >
-              {formatSignedMoney(openOop)}
-            </div>
-            <div className="insight-metric-label">Sale − quote exposure</div>
+            {showFinancials ? (
+              <>
+                <div
+                  className="insight-metric"
+                  style={{
+                    fontSize: "1.55rem",
+                    ...outOfPocketStyle(openOop, openQuote),
+                  }}
+                >
+                  {formatSignedMoney(openOop)}
+                </div>
+                <div className="insight-metric-label">Sale − quote exposure</div>
+              </>
+            ) : (
+              <>
+                <div className="insight-metric" style={{ fontSize: "1.1rem" }}>
+                  Restricted
+                </div>
+                <div className="insight-metric-label">
+                  Financials hidden for your role
+                </div>
+              </>
+            )}
           </article>
 
           <article className="insight-card">

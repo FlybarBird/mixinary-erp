@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   email TEXT NOT NULL UNIQUE,
   full_name TEXT,
   role TEXT NOT NULL DEFAULT 'project_manager',
-  password_hash TEXT NOT NULL,
+  password_hash TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -395,6 +396,37 @@ CREATE TABLE IF NOT EXISTS app_notifications (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS user_audit_events (
+  id TEXT PRIMARY KEY,
+  actor_id TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+  target_user_id TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  details TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_invites (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  full_name TEXT,
+  role TEXT NOT NULL DEFAULT 'project_manager',
+  token TEXT NOT NULL UNIQUE,
+  invited_by TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+  accepted_at TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS project_members (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  access_role TEXT NOT NULL DEFAULT 'viewer',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (project_id, user_id)
+);
+
 CREATE INDEX IF NOT EXISTS purchase_orders_project_idx ON purchase_orders(project_id);
 CREATE INDEX IF NOT EXISTS purchase_order_items_po_idx ON purchase_order_items(po_id);
 CREATE INDEX IF NOT EXISTS labor_entries_project_idx ON labor_entries(project_id);
@@ -402,3 +434,6 @@ CREATE INDEX IF NOT EXISTS project_expenses_project_idx ON project_expenses(proj
 CREATE INDEX IF NOT EXISTS attachments_project_idx ON attachments(project_id);
 CREATE INDEX IF NOT EXISTS audit_events_project_idx ON audit_events(project_id);
 CREATE INDEX IF NOT EXISTS app_notifications_user_idx ON app_notifications(user_id);
+CREATE INDEX IF NOT EXISTS user_audit_events_created_idx ON user_audit_events(created_at);
+CREATE INDEX IF NOT EXISTS project_members_project_idx ON project_members(project_id);
+CREATE INDEX IF NOT EXISTS project_members_user_idx ON project_members(user_id);

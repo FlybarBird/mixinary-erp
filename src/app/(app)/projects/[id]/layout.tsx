@@ -2,7 +2,16 @@ import { notFound } from "next/navigation";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { ProjectWorkspaceNav } from "@/components/ProjectWorkspaceNav";
 import { ProjectExportMenu } from "@/components/ProjectExportMenu";
+import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
 import { canEditBom, requireProfile } from "@/lib/auth";
+import {
+  canAccessProject,
+  canEditProjectContent,
+  canManageProjectMembers,
+  getProjectAccessRole,
+  listProjectMembers,
+} from "@/lib/project-access";
+import { listUsers } from "@/lib/users";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectStatus } from "@/lib/types";
 
@@ -15,9 +24,15 @@ export default async function ProjectLayout({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
+
+  if (!(await canAccessProject(profile.id, profile.role, id))) {
+    notFound();
+  }
+
+  const access = await getProjectAccessRole(profile.id, profile.role, id);
   const supabase = await createClient();
 
-  const [{ data: project }, { data: clients }, { data: managers }] =
+  const [{ data: project }, { data: clients }, { data: managers }, members, users] =
     await Promise.all([
       supabase
         .from("projects")
@@ -29,6 +44,8 @@ export default async function ProjectLayout({
         .from("user_profiles")
         .select("id, full_name, email")
         .order("full_name"),
+      listProjectMembers(id),
+      listUsers({ active: true }),
     ]);
 
   if (!project) notFound();
@@ -37,6 +54,12 @@ export default async function ProjectLayout({
     (project as { project_manager_id?: string | null }).project_manager_id ??
     null;
   const manager = managers?.find((m) => m.id === managerId);
+  const canEdit = canEditProjectContent(
+    profile.role,
+    access,
+    canEditBom(profile.role),
+  );
+  const canManageMembers = canManageProjectMembers(access);
 
   return (
     <div className="stack">
@@ -64,7 +87,13 @@ export default async function ProjectLayout({
           id: m.id,
           name: m.full_name || m.email,
         }))}
-        canEdit={canEditBom(profile.role)}
+        canEdit={canEdit}
+      />
+      <ProjectMembersPanel
+        projectId={id}
+        initialMembers={members}
+        users={users}
+        canManage={canManageMembers}
       />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
         <ProjectWorkspaceNav projectId={id} />

@@ -9,6 +9,12 @@ const adminApps = [
     icon: "AI",
   },
   {
+    href: "/admin/email",
+    title: "Email",
+    sub: "Resend / SMTP status and test send",
+    icon: "MAIL",
+  },
+  {
     href: "/admin/price-sources",
     title: "Price Sources",
     sub: "Allowlisted MSRP domains",

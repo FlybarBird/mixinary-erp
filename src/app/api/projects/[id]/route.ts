@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, canEditPricing } from "@/lib/auth";
+import { getCurrentProfile, canEditBom } from "@/lib/auth";
+import {
+  canAccessProject,
+  canEditProjectContent,
+  getProjectAccessRole,
+} from "@/lib/project-access";
 import type { ProjectStatus } from "@/lib/types";
 
 const STATUSES: ProjectStatus[] = [
@@ -11,16 +16,27 @@ const STATUSES: ProjectStatus[] = [
   "archived",
 ];
 
+async function requireProjectEditor(projectId: string) {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+  const access = await getProjectAccessRole(profile.id, profile.role, projectId);
+  if (!canEditProjectContent(profile.role, access, canEditBom(profile.role))) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+  return { profile };
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const profile = await getCurrentProfile();
-  if (!profile || !canEditPricing(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { id } = await params;
+  const gate = await requireProjectEditor(id);
+  if ("error" in gate && gate.error) return gate.error;
+
   const body = await request.json();
   const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -120,12 +136,10 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const profile = await getCurrentProfile();
-  if (!profile || !canEditPricing(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const { id } = await params;
+  const gate = await requireProjectEditor(id);
+  if ("error" in gate && gate.error) return gate.error;
+
   const supabase = await createClient();
   const { error } = await supabase.from("projects").delete().eq("id", id);
 

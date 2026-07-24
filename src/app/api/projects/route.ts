@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, canEditPricing } from "@/lib/auth";
+import { getCurrentProfile, canManageProjects } from "@/lib/auth";
+import { addProjectMember } from "@/lib/project-access";
 
 export async function POST(request: Request) {
   const profile = await getCurrentProfile();
-  if (!profile || !canEditPricing(profile.role)) {
+  if (!profile || !canManageProjects(profile.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -30,6 +31,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  await addProjectMember({
+    projectId: project.id,
+    userId: profile.id,
+    accessRole: "manager",
+  });
 
   if (body.template_id) {
     const { data: templateSections } = await supabase

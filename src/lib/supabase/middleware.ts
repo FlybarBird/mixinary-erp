@@ -15,8 +15,11 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     isAuthRoute ||
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/brand") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/setup") ||
+    pathname.startsWith("/api/invite") ||
+    pathname.startsWith("/invite") ||
     pathname === "/favicon.ico";
 
   if (localMode) {

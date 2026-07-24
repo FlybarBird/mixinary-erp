@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { requireProfile, canEditPricing } from "@/lib/auth";
+import { requireProfile, canManageProjects } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { CreateProjectForm } from "@/components/CreateProjectForm";
 import { ProjectListActions } from "@/components/ProjectListActions";
+import { listAccessibleProjectIds } from "@/lib/project-access";
 import type { ProjectStatus } from "@/lib/types";
 import { cn } from "@/lib/format";
 
@@ -16,11 +17,20 @@ export default async function ProjectsPage({
   const supabase = await createClient();
   const showArchived = statusFilter === "archived";
   const showAll = statusFilter === "all";
+  const accessible = await listAccessibleProjectIds(profile.id, profile.role);
 
   let projectsQuery = supabase
     .from("projects")
     .select("id, project_number, name, status, default_override_pct, clients(name)")
     .order("project_number", { ascending: false });
+
+  if (accessible !== "all") {
+    if (accessible.length === 0) {
+      projectsQuery = projectsQuery.eq("id", "__none__");
+    } else {
+      projectsQuery = projectsQuery.in("id", accessible);
+    }
+  }
 
   if (showArchived) {
     projectsQuery = projectsQuery.eq("status", "archived");
@@ -35,7 +45,7 @@ export default async function ProjectsPage({
       supabase.from("project_templates").select("id, name").order("name"),
     ]);
 
-  const canEdit = canEditPricing(profile.role);
+  const canEdit = canManageProjects(profile.role);
   const filter = showArchived ? "archived" : showAll ? "all" : "active";
 
   return (

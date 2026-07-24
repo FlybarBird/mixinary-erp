@@ -13,12 +13,14 @@ function asProfile(row: {
   email: string;
   full_name: string | null;
   role: string;
+  active?: boolean | number;
 }): UserProfile {
   return {
     id: row.id,
     email: row.email,
     full_name: row.full_name,
     role: normalizeUserRole(row.role),
+    active: row.active === undefined ? true : Boolean(row.active),
   };
 }
 
@@ -60,12 +62,23 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
     const db = getLocalDb();
     const profile = db
       .prepare(
-        "select id, email, full_name, role from user_profiles where id = ?",
+        `select id, email, full_name, role, coalesce(active, 1) as active
+         from user_profiles where id = ?`,
       )
       .get(userId) as
-      | { id: string; email: string; full_name: string | null; role: string }
+      | {
+          id: string;
+          email: string;
+          full_name: string | null;
+          role: string;
+          active: number;
+        }
       | undefined;
-    return profile ? asProfile(profile) : null;
+    if (!profile || !profile.active) return null;
+    return {
+      ...asProfile(profile),
+      active: Boolean(profile.active),
+    };
   }
 
   const supabase = await createClient();
@@ -76,18 +89,21 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
 
   const { data } = await supabase
     .from("user_profiles")
-    .select("id, email, full_name, role")
+    .select("id, email, full_name, role, active")
     .eq("id", user.id)
     .maybeSingle();
 
-  return data
-    ? asProfile(data as {
-        id: string;
-        email: string;
-        full_name: string | null;
-        role: string;
-      })
-    : null;
+  if (!data || data.active === false) return null;
+
+  return {
+    ...asProfile(data as {
+      id: string;
+      email: string;
+      full_name: string | null;
+      role: string;
+    }),
+    active: data.active !== false,
+  };
 }
 
 export async function requireProfile(roles?: UserRole[]) {

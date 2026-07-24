@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/lib/types";
@@ -31,6 +32,16 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
   const router = useRouter();
   const isAdmin = profile.role === "administrator";
   const adminActive = pathname === "/admin" || pathname.startsWith("/admin/");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   async function signOut() {
     if (process.env.NEXT_PUBLIC_MIXINARY_LOCAL_MODE === "true") {
@@ -66,15 +77,51 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
               </div>
               <div className="shell-user-role">{profile.role}</div>
             </div>
-            <button
-              type="button"
-              className="shell-avatar"
-              title="Sign out"
-              onClick={signOut}
-              aria-label="Sign out"
-            >
-              {initials(profile)}
-            </button>
+            <div ref={menuRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="shell-avatar"
+                title="Account menu"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                {initials(profile)}
+              </button>
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  className="panel-light"
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "calc(100% + 6px)",
+                    minWidth: "10rem",
+                    zIndex: 40,
+                    padding: "0.35rem",
+                    display: "grid",
+                    gap: "0.15rem",
+                  }}
+                >
+                  <Link
+                    href="/account"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Account
+                  </Link>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => void signOut()}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -96,7 +143,6 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
               );
             })}
             {isAdmin ? (
-              // Full navigation avoids stuck client-side transitions.
               <a
                 href="/admin"
                 className={cn("shell-tab", adminActive ? "active" : "")}

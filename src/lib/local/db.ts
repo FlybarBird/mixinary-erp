@@ -470,6 +470,84 @@ function migrate(database: Database.Database) {
       "alter table purchase_order_items add column shipping real not null default 0",
     );
   }
+
+  const profileCols = database
+    .prepare("pragma table_info(user_profiles)")
+    .all() as Array<{ name: string }>;
+  if (profileCols.length && !profileCols.some((c) => c.name === "active")) {
+    database.exec(
+      "alter table user_profiles add column active integer not null default 1",
+    );
+  }
+
+  const userSystemTables: Array<[string, string]> = [
+    [
+      "user_audit_events",
+      `CREATE TABLE IF NOT EXISTS user_audit_events (
+        id TEXT PRIMARY KEY,
+        actor_id TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+        target_user_id TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        details TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "user_invites",
+      `CREATE TABLE IF NOT EXISTS user_invites (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        full_name TEXT,
+        role TEXT NOT NULL DEFAULT 'project_manager',
+        token TEXT NOT NULL UNIQUE,
+        invited_by TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+        accepted_at TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "project_members",
+      `CREATE TABLE IF NOT EXISTS project_members (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+        access_role TEXT NOT NULL DEFAULT 'viewer',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, user_id)
+      )`,
+    ],
+  ];
+  const allTables = database
+    .prepare("select name from sqlite_master where type = 'table'")
+    .all() as Array<{ name: string }>;
+  const haveAll = new Set(allTables.map((t) => t.name));
+  for (const [name, ddl] of userSystemTables) {
+    if (!haveAll.has(name)) database.exec(ddl);
+  }
+
+  // Backfill project creators as managers when membership is missing
+  try {
+    const orphans = database
+      .prepare(
+        `select p.id, p.created_by from projects p
+         where p.created_by is not null
+           and not exists (
+             select 1 from project_members m where m.project_id = p.id
+           )`,
+      )
+      .all() as Array<{ id: string; created_by: string }>;
+    const insert = database.prepare(
+      `insert or ignore into project_members (id, project_id, user_id, access_role)
+       values (?, ?, ?, 'manager')`,
+    );
+    for (const row of orphans) {
+      insert.run(newId(), row.id, row.created_by);
+    }
+  } catch {
+    // Tables may not exist yet on brand-new DBs before schema apply
+  }
 }
 
 export function getLocalDb() {
@@ -509,10 +587,14 @@ export function verifyLocalPassword(email: string, password: string) {
         full_name: string | null;
         role: string;
         password_hash: string;
+        active?: number;
       }
     | undefined;
   if (!user) return null;
-  if (!bcrypt.compareSync(password, user.password_hash)) return null;
+  if (user.active === 0) return null;
+  if (!user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
+    return null;
+  }
   return {
     id: user.id,
     email: user.email,

@@ -20,10 +20,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
 CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  code TEXT,
   contact_name TEXT,
   email TEXT,
   phone TEXT,
+  website TEXT,
+  address_line1 TEXT,
+  address_line2 TEXT,
+  city TEXT,
+  state TEXT,
+  postal_code TEXT,
   notes TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

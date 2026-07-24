@@ -18,6 +18,8 @@ const BOOL_FIELDS: Record<string, string[]> = {
   catalog_parts: ["active"],
   catalog_part_proposals: ["accepted"],
   project_expenses: ["is_additional_charge"],
+  clients: ["active"],
+  user_profiles: ["active"],
 };
 
 function decodeRow(table: string, row: Row | undefined): Row | null {

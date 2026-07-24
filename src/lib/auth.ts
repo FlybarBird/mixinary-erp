@@ -154,6 +154,10 @@ export function canManageVendors(role: UserRole) {
   return role === "administrator" || role === "purchasing";
 }
 
+export function canManageClients(role: UserRole) {
+  return role === "administrator" || role === "project_manager";
+}
+
 export function canReceive(role: UserRole) {
   return (
     role === "administrator" ||

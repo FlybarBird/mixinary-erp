@@ -32,14 +32,14 @@ export default async function ProjectLayout({
   const access = await getProjectAccessRole(profile.id, profile.role, id);
   const supabase = await createClient();
 
-  const [{ data: project }, { data: clients }, { data: managers }, members, users] =
+  const [{ data: project }, { data: allClients }, { data: managers }, members, users] =
     await Promise.all([
       supabase
         .from("projects")
         .select("*, clients(name)")
         .eq("id", id)
         .maybeSingle(),
-      supabase.from("clients").select("id, name").order("name"),
+      supabase.from("clients").select("id, name, active").order("name"),
       supabase
         .from("user_profiles")
         .select("id, full_name, email")
@@ -49,6 +49,11 @@ export default async function ProjectLayout({
     ]);
 
   if (!project) notFound();
+
+  const clients = (allClients ?? []).filter((c) => {
+    const active = c.active !== false && c.active !== 0;
+    return active || c.id === project.client_id;
+  });
 
   const managerId =
     (project as { project_manager_id?: string | null }).project_manager_id ??

@@ -247,6 +247,42 @@ function migrate(database: Database.Database) {
     database.exec("alter table vendors add column account_number text");
   }
 
+  const clientCols = database
+    .prepare("pragma table_info(clients)")
+    .all() as Array<{ name: string }>;
+  if (clientCols.length) {
+    const ensureClientCol = (name: string, ddl: string) => {
+      if (!clientCols.some((c) => c.name === name)) {
+        database.exec(ddl);
+      }
+    };
+    ensureClientCol("code", "alter table clients add column code text");
+    ensureClientCol("website", "alter table clients add column website text");
+    ensureClientCol(
+      "address_line1",
+      "alter table clients add column address_line1 text",
+    );
+    ensureClientCol(
+      "address_line2",
+      "alter table clients add column address_line2 text",
+    );
+    ensureClientCol("city", "alter table clients add column city text");
+    ensureClientCol("state", "alter table clients add column state text");
+    ensureClientCol(
+      "postal_code",
+      "alter table clients add column postal_code text",
+    );
+    ensureClientCol(
+      "active",
+      "alter table clients add column active integer not null default 1",
+    );
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS clients_code_unique
+      ON clients(code)
+      WHERE code IS NOT NULL AND code <> ''
+    `);
+  }
+
   // Role migration
   database.exec(`
     update user_profiles set role = 'administrator' where role = 'admin';

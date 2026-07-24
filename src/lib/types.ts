@@ -172,10 +172,20 @@ export interface UserInvite {
 export interface Client {
   id: string;
   name: string;
+  code: string | null;
   contact_name: string | null;
   email: string | null;
   phone: string | null;
+  website: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
   notes: string | null;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Vendor {

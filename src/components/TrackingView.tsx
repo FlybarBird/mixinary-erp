@@ -174,6 +174,11 @@ export function TrackingView({ projectId, items, canEdit, canReceive }: Props) {
           <option value="delayed">Delayed / Backordered</option>
           <option value="overdue">Overdue</option>
         </select>
+        {(canEdit || canReceive) && (
+          <a className="btn btn-primary" href={`/projects/${projectId}/receive`}>
+            Scan to receive
+          </a>
+        )}
         <span style={{ marginLeft: "auto", fontSize: "0.8rem", color: "var(--muted)" }}>
           {filtered.length} item{filtered.length !== 1 ? "s" : ""}
         </span>

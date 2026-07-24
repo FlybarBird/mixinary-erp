@@ -1714,3 +1714,92 @@ button {
   overflow: auto;
   padding: 1rem 1.1rem 1.5rem;
 }
+
+/* ── QR receive labels ── */
+
+.qr-label-toolbar {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.qr-label-toolbar-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.qr-label-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.85rem;
+}
+
+.qr-label-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.qr-label-card img {
+  width: 160px;
+  height: 160px;
+}
+
+.qr-label-placeholder {
+  width: 160px;
+  height: 160px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.qr-label-po {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.qr-label-vendor {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.qr-label-desc {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.qr-label-sku {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+@media print {
+  .no-print,
+  .shell,
+  .project-workspace-nav,
+  .shell-tabs {
+    display: none !important;
+  }
+
+  .qr-label-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .qr-label-card {
+    border-color: #000;
+  }
+}

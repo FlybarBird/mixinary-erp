@@ -4,16 +4,16 @@ overview: Add printable PO-item QR labels plus a dedicated mobile receive page w
 todos:
   - id: receive-api
     content: Add POST /receive + auto item/PO status from qty_received on item PATCH
-    status: pending
+    status: completed
   - id: receive-page
     content: Build mobile QrReceiveView + /receive page with camera + confirm
-    status: pending
+    status: completed
   - id: qr-labels
     content: Printable PO item QR label page + Print labels from Procurement
-    status: pending
+    status: completed
   - id: entry-points
     content: Nav + Procurement/Tracking links to Receive
-    status: pending
+    status: completed
 isProject: false
 ---
 

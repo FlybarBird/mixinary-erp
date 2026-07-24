@@ -9,6 +9,7 @@ const TABS = [
   { href: "/labor", label: "Labor", match: "labor" },
   { href: "/procurement", label: "Procurement", match: "procurement" },
   { href: "/tracking", label: "Tracking", match: "tracking" },
+  { href: "/receive", label: "Receive", match: "receive" },
   { href: "/expenses", label: "Expenses", match: "expenses" },
   { href: "/change-orders", label: "Change Orders", match: "change-orders", financial: true },
   { href: "/billing", label: "Billing", match: "billing", financial: true },

@@ -354,6 +354,9 @@ function migrate(database: Database.Database) {
         tax REAL NOT NULL DEFAULT 0,
         shipping REAL NOT NULL DEFAULT 0,
         total REAL NOT NULL DEFAULT 0,
+        sale_total REAL NOT NULL DEFAULT 0,
+        profit REAL NOT NULL DEFAULT 0,
+        margin_pct REAL,
         vendor_contact TEXT,
         notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -374,6 +377,12 @@ function migrate(database: Database.Database) {
         unit_price REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL DEFAULT 0,
         shipping REAL NOT NULL DEFAULT 0,
+        sale_total REAL NOT NULL DEFAULT 0,
+        allocated_shipping REAL NOT NULL DEFAULT 0,
+        allocated_tax REAL NOT NULL DEFAULT 0,
+        cost_total REAL NOT NULL DEFAULT 0,
+        profit REAL NOT NULL DEFAULT 0,
+        margin_pct REAL,
         expected_ship_date TEXT,
         expected_delivery_date TEXT,
         qty_shipped REAL NOT NULL DEFAULT 0,
@@ -505,6 +514,43 @@ function migrate(database: Database.Database) {
     database.exec(
       "alter table purchase_order_items add column shipping real not null default 0",
     );
+  }
+
+  const poProfitItemCols = [
+    ["sale_total", "real not null default 0"],
+    ["allocated_shipping", "real not null default 0"],
+    ["allocated_tax", "real not null default 0"],
+    ["cost_total", "real not null default 0"],
+    ["profit", "real not null default 0"],
+    ["margin_pct", "real"],
+  ] as const;
+  const poItemColsFresh = database
+    .prepare("pragma table_info(purchase_order_items)")
+    .all() as Array<{ name: string }>;
+  if (poItemColsFresh.length) {
+    const have = new Set(poItemColsFresh.map((c) => c.name));
+    for (const [col, ddl] of poProfitItemCols) {
+      if (!have.has(col)) {
+        database.exec(`alter table purchase_order_items add column ${col} ${ddl}`);
+      }
+    }
+  }
+
+  const poProfitCols = [
+    ["sale_total", "real not null default 0"],
+    ["profit", "real not null default 0"],
+    ["margin_pct", "real"],
+  ] as const;
+  const poCols = database
+    .prepare("pragma table_info(purchase_orders)")
+    .all() as Array<{ name: string }>;
+  if (poCols.length) {
+    const have = new Set(poCols.map((c) => c.name));
+    for (const [col, ddl] of poProfitCols) {
+      if (!have.has(col)) {
+        database.exec(`alter table purchase_orders add column ${col} ${ddl}`);
+      }
+    }
   }
 
   const profileCols = database

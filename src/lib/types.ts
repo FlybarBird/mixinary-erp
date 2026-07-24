@@ -268,6 +268,9 @@ export interface PurchaseOrder {
   tax: number;
   shipping: number;
   total: number;
+  sale_total?: number;
+  profit?: number;
+  margin_pct?: number | null;
   vendor_contact: string | null;
   notes: string | null;
   vendors?: Vendor | null;
@@ -285,6 +288,12 @@ export interface PurchaseOrderItem {
   unit_price: number;
   line_total: number;
   shipping: number;
+  sale_total?: number;
+  allocated_shipping?: number;
+  allocated_tax?: number;
+  cost_total?: number;
+  profit?: number;
+  margin_pct?: number | null;
   expected_ship_date: string | null;
   expected_delivery_date: string | null;
   qty_shipped: number;

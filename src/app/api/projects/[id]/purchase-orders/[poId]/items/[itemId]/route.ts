@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { canManageProcurement, canReceive, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { createNotification, rollupBomLineQuantities } from "@/lib/projects/workspace";
+import {
+  recalcPurchaseOrderEconomics,
+  suggestPoStatus,
+} from "@/lib/projects/procurement";
 
 const ALERT_STATUSES = new Set(["delayed", "backordered"]);
 
@@ -17,40 +21,28 @@ const RECEIVE_FIELDS = new Set([
   "expected_ship_date",
 ]);
 
-async function recalcPoTotals(
+async function syncPoStatusFromItems(
   supabase: Awaited<ReturnType<typeof createClient>>,
   poId: string,
 ) {
-  const [{ data: po }, { data: items }] = await Promise.all([
-    supabase
-      .from("purchase_orders")
-      .select("tax, shipping")
-      .eq("id", poId)
-      .maybeSingle(),
-    supabase
-      .from("purchase_order_items")
-      .select("line_total")
-      .eq("po_id", poId),
-  ]);
-
-  const subtotal = (items ?? []).reduce(
-    (s, i) => s + Number(i.line_total || 0),
-    0,
+  const { data: items } = await supabase
+    .from("purchase_order_items")
+    .select("item_status, qty_ordered, qty_shipped, qty_received")
+    .eq("po_id", poId);
+  if (!items) return null;
+  const { status } = suggestPoStatus(
+    items as Array<{
+      item_status: string;
+      qty_ordered: number;
+      qty_shipped: number;
+      qty_received: number;
+    }>,
   );
-  const tax = Number(po?.tax || 0);
-  const shipping = Number(po?.shipping || 0);
-  const total = subtotal + tax + shipping;
-
   await supabase
     .from("purchase_orders")
-    .update({
-      subtotal,
-      total,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ status, updated_at: new Date().toISOString() })
     .eq("id", poId);
-
-  return { subtotal, total, tax, shipping };
+  return status;
 }
 
 export async function PATCH(
@@ -148,7 +140,7 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  const poTotals = await recalcPoTotals(supabase, poId);
+  const poTotals = await recalcPurchaseOrderEconomics(supabase, poId);
 
   const newStatus = (updated as { item_status?: string } | null)?.item_status;
   const newQtyReceived = Number(
@@ -158,6 +150,9 @@ export async function PATCH(
 
   const statusChanged = newStatus && newStatus !== prevStatus;
   const qtyChanged = newQtyReceived !== prevQtyReceived;
+  const qtyOrderedChanged =
+    body.qty_ordered != null &&
+    Number(body.qty_ordered) !== Number(existing.qty_ordered ?? 0);
 
   if (statusChanged || qtyChanged) {
     await supabase.from("tracking_events").insert({
@@ -170,12 +165,13 @@ export async function PATCH(
         : `Received qty updated to ${newQtyReceived}`,
       created_by: profile.id,
     });
+  }
 
-    if (lineItemId) {
-      await rollupBomLineQuantities(supabase, lineItemId);
-    }
+  if (lineItemId && (statusChanged || qtyChanged || qtyOrderedChanged)) {
+    await rollupBomLineQuantities(supabase, lineItemId);
+  }
 
-    if (statusChanged && newStatus && ALERT_STATUSES.has(newStatus)) {
+  if (statusChanged && newStatus && ALERT_STATUSES.has(newStatus)) {
       const { data: project } = await supabase
         .from("projects")
         .select("id, created_by, project_manager_id")
@@ -211,8 +207,23 @@ export async function PATCH(
           }),
         ),
       );
-    }
   }
 
-  return NextResponse.json({ data: updated, poTotals });
+  const poStatus = await syncPoStatusFromItems(supabase, poId);
+
+  const [{ data: po }, { data: items }] = await Promise.all([
+    supabase
+      .from("purchase_orders")
+      .select("*, vendors(id, code, name)")
+      .eq("id", poId)
+      .maybeSingle(),
+    supabase.from("purchase_order_items").select("*").eq("po_id", poId),
+  ]);
+
+  return NextResponse.json({
+    data: updated,
+    poTotals,
+    poStatus,
+    po: po ? { ...po, items: items ?? [] } : null,
+  });
 }

@@ -195,7 +195,11 @@ export function ProjectHeader({
                 name="project_number"
                 required
                 defaultValue={project.project_number}
+                title="Auto format: YYYYMM + sequence (e.g. 20260701)"
               />
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--muted)" }}>
+                Format YYYYMM + seq · POs use PO-YYMMPPnn
+              </p>
             </div>
             <div>
               <label className="label">Name</label>

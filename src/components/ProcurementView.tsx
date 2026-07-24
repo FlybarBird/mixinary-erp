@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   PO_STATUSES,
   PO_ITEM_STATUSES,
   formatStatusLabel,
+  computePoEconomics,
 } from "@/lib/projects/procurement";
 import {
-  calculateLinePricing,
+  formatPct,
   formatSignedMoney,
 } from "@/lib/pricing";
 import { CurrencyInput } from "@/components/CurrencyInput";
@@ -26,11 +27,16 @@ type BomLineSummary = {
   estimated_unit_cost: number | null;
 };
 
+type OrderRow = PurchaseOrder & {
+  items: PurchaseOrderItem[];
+  vendors?: { id: string; code: string; name: string } | null;
+};
+
 type Props = {
   projectId: string;
   defaultOverridePct: number;
   vendors: Vendor[];
-  initialOrders: (PurchaseOrder & { items: PurchaseOrderItem[]; vendors?: { id: string; code: string; name: string } | null })[];
+  initialOrders: OrderRow[];
   bomLines: BomLineSummary[];
   canEdit: boolean;
   canReceive: boolean;
@@ -42,8 +48,106 @@ function varianceStyle(delta: number): { color: string; fontWeight: number } {
   return { color: "#78909c", fontWeight: 650 };
 }
 
+/** Profit: positive = green (invert cost-variance coloring). */
+function profitStyle(profit: number) {
+  return varianceStyle(-profit);
+}
+
+function livePoEconomics(
+  po: OrderRow,
+  bomById: Map<string, BomLineSummary>,
+  defaultOverridePct: number,
+) {
+  return computePoEconomics({
+    shipping: Number(po.shipping || 0),
+    tax: Number(po.tax || 0),
+    items: po.items.map((item) => {
+      const bom = item.line_item_id
+        ? bomById.get(item.line_item_id)
+        : undefined;
+      return {
+        qty_ordered: Number(item.qty_ordered || 0),
+        line_total: Number(item.line_total || 0),
+        bom: bom
+          ? {
+              msrp: bom.msrp,
+              quote: bom.quote,
+              override_pct: bom.override_pct,
+            }
+          : null,
+      };
+    }),
+    projectDefaultOverridePct: defaultOverridePct,
+  });
+}
+
 function currencyFmt(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function buildPoOrderMailto(po: OrderRow): string {
+  const items = po.items.filter((i) => i.item_status !== "cancelled");
+  const pad = (s: string, n: number) => s.padEnd(n).slice(0, n);
+
+  const nameLens = items.map((i) => (i.description || "").length);
+  const qtyLens = items.map((i) => String(i.qty_ordered ?? 0).length);
+  const skuLens = items.map((i) => (i.vendor_sku || i.sku || "").length);
+
+  const nameW = Math.min(48, Math.max(20, 4, ...nameLens));
+  const qtyW = Math.max(8, ...qtyLens, 8);
+  const skuW = Math.min(24, Math.max(8, 3, ...skuLens));
+
+  const header = `${pad("Name", nameW)}  ${pad("Quantity", qtyW)}  ${pad("SKU", skuW)}`;
+  const rule = "-".repeat(header.length);
+  const rows =
+    items.length > 0
+      ? items.map((i) => {
+          const name = i.description || "";
+          const qty = String(i.qty_ordered ?? 0);
+          const sku = i.vendor_sku || i.sku || "";
+          return `${pad(name, nameW)}  ${pad(qty, qtyW)}  ${pad(sku, skuW)}`;
+        })
+      : ["(No line items)"];
+
+  const body = [
+    `Hello,`,
+    ``,
+    `Please process the following order for Mixinary PO ${po.po_number}:`,
+    ``,
+    header,
+    rule,
+    ...rows,
+    ``,
+    `Thank you,`,
+    `Mixinary`,
+  ].join("\n");
+
+  const subject = `Mixinary :${po.po_number}`;
+  const to =
+    po.vendor_contact && po.vendor_contact.includes("@")
+      ? po.vendor_contact.trim()
+      : "";
+
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function MailIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-10 7L2 7" />
+    </svg>
+  );
 }
 
 function isLate(po: PurchaseOrder) {
@@ -75,7 +179,21 @@ export function ProcurementView({
   canReceive,
 }: Props) {
   const router = useRouter();
-  const [orders, setOrders] = useState(initialOrders);
+  const [orders, setOrders] = useState<OrderRow[]>(initialOrders);
+
+  // Keep client state in sync when RSC refresh brings new props
+  useEffect(() => {
+    setOrders(initialOrders);
+  }, [initialOrders]);
+
+  const reloadOrders = useCallback(async () => {
+    const res = await fetch(`/api/projects/${projectId}/purchase-orders`);
+    if (!res.ok) return;
+    const json = await res.json();
+    if (Array.isArray(json.data)) {
+      setOrders(json.data as OrderRow[]);
+    }
+  }, [projectId]);
 
   const bomById = useMemo(() => {
     const map = new Map<string, BomLineSummary>();
@@ -88,7 +206,7 @@ export function ProcurementView({
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
 
   // PO edit side panel
-  const [editingPo, setEditingPo] = useState<(typeof orders)[0] | null>(null);
+  const [editingPo, setEditingPo] = useState<OrderRow | null>(null);
   const [editFields, setEditFields] = useState<Partial<PurchaseOrder>>({});
   const [cascadeItems, setCascadeItems] = useState(false);
   const [cascadeItemStatus, setCascadeItemStatus] = useState<PoItemStatus>("ordered");
@@ -108,6 +226,22 @@ export function ProcurementView({
   const committed = orders
     .filter((o) => o.status !== "cancelled")
     .reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const summaryEconomics = useMemo(() => {
+    let sale = 0;
+    let profit = 0;
+    for (const o of orders) {
+      if (o.status === "cancelled") continue;
+      const live = livePoEconomics(o, bomById, defaultOverridePct);
+      sale += live.po.sale_total;
+      profit += live.po.profit;
+    }
+    return {
+      sale,
+      profit,
+      margin: sale > 0 ? profit / sale : null,
+    };
+  }, [orders, bomById, defaultOverridePct]);
 
   const openOrders = orders.filter(
     (o) => !["received", "closed", "cancelled"].includes(o.status),
@@ -187,16 +321,24 @@ export function ProcurementView({
         alert(err.error ?? "Failed to save");
         return;
       }
+      const { data } = await res.json();
+      if (data) {
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === editingPo.id
+              ? { ...o, ...data, items: data.items ?? o.items }
+              : o,
+          ),
+        );
+      } else {
+        await reloadOrders();
+      }
       setEditingPo(null);
       router.refresh();
-      const { data } = await res.json();
-      setOrders((prev) =>
-        prev.map((o) => (o.id === editingPo.id ? { ...o, ...data } : o)),
-      );
     } finally {
       setSaving(false);
     }
-  }, [editingPo, editFields, cascadeItems, cascadeItemStatus, projectId, router]);
+  }, [editingPo, editFields, cascadeItems, cascadeItemStatus, projectId, router, reloadOrders]);
 
   const deletePo = useCallback(async (poId: string) => {
     if (!confirm("Delete this purchase order?")) return;
@@ -230,8 +372,7 @@ export function ProcurementView({
         alert(err.error ?? "Failed to create PO");
         return;
       }
-      const { data } = await res.json();
-      setOrders((prev) => [...prev, { ...data, items: data.items ?? [] }]);
+      await reloadOrders();
       setShowNewPo(false);
       setNewPoVendorId("");
       setNewPoDate("");
@@ -239,7 +380,7 @@ export function ProcurementView({
     } finally {
       setCreatingPo(false);
     }
-  }, [newPoVendorId, newPoDate, projectId, router]);
+  }, [newPoVendorId, newPoDate, projectId, router, reloadOrders]);
 
   const patchItem = useCallback(
     async (poId: string, itemId: string, patch: Partial<PurchaseOrderItem>) => {
@@ -258,18 +399,24 @@ export function ProcurementView({
           alert(err.error ?? "Failed to save item");
           return;
         }
-        const { data, poTotals } = await res.json();
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id !== poId
-              ? o
-              : {
-                  ...o,
-                  ...(poTotals ?? {}),
-                  items: o.items.map((i) => (i.id === itemId ? { ...i, ...data } : i)),
-                },
-          ),
-        );
+        const { data, poTotals, po } = await res.json();
+        if (po) {
+          setOrders((prev) =>
+            prev.map((o) => (o.id === poId ? { ...o, ...po, items: po.items ?? o.items } : o)),
+          );
+        } else {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id !== poId
+                ? o
+                : {
+                    ...o,
+                    ...(poTotals ?? {}),
+                    items: o.items.map((i) => (i.id === itemId ? { ...i, ...data } : i)),
+                  },
+            ),
+          );
+        }
         router.refresh();
       } finally {
         setSavingItemIds((prev) => {
@@ -299,7 +446,11 @@ export function ProcurementView({
       }
       const { data } = await res.json();
       setOrders((prev) =>
-        prev.map((o) => (o.id === poId ? { ...o, ...data } : o)),
+        prev.map((o) =>
+          o.id === poId
+            ? { ...o, ...data, items: data.items ?? o.items }
+            : o,
+        ),
       );
       router.refresh();
     },
@@ -313,6 +464,24 @@ export function ProcurementView({
         <div className="workspace-stat">
           <div className="label">Committed</div>
           <div className="value">{currencyFmt(committed)}</div>
+        </div>
+        <div className="workspace-stat">
+          <div className="label">Sale</div>
+          <div className="value">{currencyFmt(summaryEconomics.sale)}</div>
+        </div>
+        <div className="workspace-stat">
+          <div className="label">Profit</div>
+          <div className="value" style={profitStyle(summaryEconomics.profit)}>
+            {formatSignedMoney(summaryEconomics.profit)}
+          </div>
+        </div>
+        <div className="workspace-stat">
+          <div className="label">Margin</div>
+          <div className="value">
+            {summaryEconomics.margin != null
+              ? formatPct(summaryEconomics.margin)
+              : "—"}
+          </div>
         </div>
         <div className="workspace-stat">
           <div className="label">Open Orders</div>
@@ -397,7 +566,9 @@ export function ProcurementView({
 
             {!collapsed && (
               <div style={{ padding: "0.5rem 0.75rem" }}>
-                {vOrders.map((po) => (
+                {vOrders.map((po) => {
+                  const poEcon = livePoEconomics(po, bomById, defaultOverridePct);
+                  return (
                   <div
                     key={po.id}
                     style={{
@@ -461,7 +632,30 @@ export function ProcurementView({
                           />
                         </span>
                         <strong>{currencyFmt(Number(po.total || 0))}</strong>
+                        <span style={profitStyle(poEcon.po.profit)}>
+                          {formatSignedMoney(poEcon.po.profit)}
+                        </span>
+                        <span style={{ color: "var(--muted)" }}>
+                          {poEcon.po.margin_pct != null
+                            ? formatPct(poEcon.po.margin_pct)
+                            : "—"}
+                        </span>
                       </span>
+                      <a
+                        className="btn btn-ghost"
+                        href={buildPoOrderMailto(po)}
+                        title={`Email order ${po.po_number}`}
+                        aria-label={`Email order ${po.po_number}`}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                          textDecoration: "none",
+                        }}
+                      >
+                        <MailIcon />
+                        Email
+                      </a>
                       {canEdit && (
                         <>
                           <button className="btn btn-ghost" onClick={() => openPoEdit(po)}>
@@ -490,7 +684,8 @@ export function ProcurementView({
                               <th>Unit $</th>
                               <th>Total</th>
                               <th>Vs cost</th>
-                              <th>Vs OOP</th>
+                              <th>Profit</th>
+                              <th>Margin</th>
                               <th>Status</th>
                               <th>Tracking</th>
                               <th>Rcvd</th>
@@ -498,7 +693,7 @@ export function ProcurementView({
                             </tr>
                           </thead>
                           <tbody>
-                            {po.items.map((item) => {
+                            {po.items.map((item, itemIdx) => {
                               const lineTotal = Number(item.line_total || 0);
                               const bom = item.line_item_id
                                 ? bomById.get(item.line_item_id)
@@ -515,18 +710,9 @@ export function ProcurementView({
                               const vsCost = bom
                                 ? lineTotal - qtyOrdered * unitCost
                                 : null;
-                              const oopPricing = bom
-                                ? calculateLinePricing({
-                                    qty: qtyOrdered,
-                                    msrp: bom.msrp,
-                                    quote: bom.quote,
-                                    overridePct: bom.override_pct,
-                                    projectDefaultOverridePct: defaultOverridePct,
-                                  })
-                                : null;
-                              const vsOop = oopPricing
-                                ? lineTotal - oopPricing.outOfPocket
-                                : null;
+                              const liveLine = poEcon.lines[itemIdx]!;
+                              const displayProfit = liveLine.profit;
+                              const displayMargin = liveLine.margin_pct;
                               const saving = savingItemIds.has(item.id);
                               const canTouchLine = canEdit || canReceive;
 
@@ -563,8 +749,11 @@ export function ProcurementView({
                                   <td style={{ textAlign: "right", ...(vsCost != null ? varianceStyle(vsCost) : {}) }}>
                                     {vsCost != null ? formatSignedMoney(vsCost) : "—"}
                                   </td>
-                                  <td style={{ textAlign: "right", ...(vsOop != null ? varianceStyle(vsOop) : {}) }}>
-                                    {vsOop != null ? formatSignedMoney(vsOop) : "—"}
+                                  <td style={{ textAlign: "right", ...profitStyle(displayProfit) }}>
+                                    {formatSignedMoney(displayProfit)}
+                                  </td>
+                                  <td style={{ textAlign: "right" }}>
+                                    {displayMargin != null ? formatPct(displayMargin) : "—"}
                                   </td>
 
                                   <td style={{ textAlign: "center" }}>
@@ -664,7 +853,8 @@ export function ProcurementView({
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

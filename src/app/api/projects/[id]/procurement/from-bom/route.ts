@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { rollupBomLineQuantities } from "@/lib/projects/workspace";
+import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
+import { allocateNextPoNumbers } from "@/lib/projects/numbering";
 
 export async function POST(
   request: Request,
@@ -76,27 +78,21 @@ export async function POST(
     return NextResponse.json({ ok: true, created: [], warnings });
   }
 
-  // Get existing PO numbers to generate new ones
-  const { data: existingPos } = await supabase
-    .from("purchase_orders")
-    .select("po_number")
-    .eq("project_id", projectId);
-
-  const existingNums = (existingPos ?? [])
-    .map((r) => {
-      const m = String(r.po_number ?? "").match(/^PO-(\d+)$/);
-      return m ? parseInt(m[1], 10) : 0;
-    })
-    .filter(Boolean);
-
-  let nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+  // Get sequential PO numbers from project #: PO-26070101, …
+  const vendorIds = [...byVendor.keys()];
+  const poNumbers = await allocateNextPoNumbers(
+    supabase,
+    projectId,
+    vendorIds.length,
+  );
 
   const created: string[] = [];
   const allLineItemIds = new Set<string>();
 
+  let vendorIndex = 0;
   for (const [vendorId, vendorLines] of byVendor.entries()) {
-    const poNumber = `PO-${String(nextNum).padStart(3, "0")}`;
-    nextNum++;
+    const poNumber = poNumbers[vendorIndex] ?? `PO-${vendorIndex + 1}`;
+    vendorIndex++;
 
     const subtotal = vendorLines.reduce(
       (s, l) => s + l.qty_remaining * l.unit_price,
@@ -138,6 +134,7 @@ export async function POST(
       allLineItemIds.add(line.id);
     }
 
+    await recalcPurchaseOrderEconomics(supabase, poId);
     created.push(poId);
   }
 

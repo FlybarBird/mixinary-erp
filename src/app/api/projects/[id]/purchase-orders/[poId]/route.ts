@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
 import { rollupBomLineQuantities, writeAuditEvent } from "@/lib/projects/workspace";
-import { suggestPoStatus } from "@/lib/projects/procurement";
+import {
+  recalcPurchaseOrderEconomics,
+  suggestPoStatus,
+} from "@/lib/projects/procurement";
 
 export async function PATCH(
   request: Request,
@@ -107,6 +110,14 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  if (
+    fields.shipping != null ||
+    fields.tax != null ||
+    fields.subtotal != null
+  ) {
+    await recalcPurchaseOrderEconomics(supabase, poId);
+  }
+
   if (newStatus && newStatus !== prevStatus) {
     await writeAuditEvent(supabase, {
       projectId,
@@ -119,7 +130,36 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json({ data: updated });
+  // If cascade changed item statuses, roll up BOM lines
+  if (cascadeItemStatus && item_status) {
+    const { data: cascaded } = await supabase
+      .from("purchase_order_items")
+      .select("line_item_id")
+      .eq("po_id", poId);
+    const lineIds = [
+      ...new Set(
+        (cascaded ?? [])
+          .map((i) => i.line_item_id)
+          .filter(Boolean) as string[],
+      ),
+    ];
+    for (const lineItemId of lineIds) {
+      await rollupBomLineQuantities(supabase, lineItemId);
+    }
+  }
+
+  const [{ data: po }, { data: items }] = await Promise.all([
+    supabase
+      .from("purchase_orders")
+      .select("*, vendors(id, code, name)")
+      .eq("id", poId)
+      .maybeSingle(),
+    supabase.from("purchase_order_items").select("*").eq("po_id", poId),
+  ]);
+
+  return NextResponse.json({
+    data: po ? { ...po, items: items ?? [] } : updated,
+  });
 }
 
 export async function DELETE(

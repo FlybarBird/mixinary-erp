@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { calculateLinePricing, sumPricing } from "@/lib/pricing";
+import { ensureProjectCostLedger } from "@/lib/projects/cost-ledger";
+import { buildDuplicateCostAlerts } from "@/lib/projects/duplicate-alerts";
 import {
-  ensureProjectCostLedger,
-} from "@/lib/projects/cost-ledger";
-import {
+  arOutstanding,
   categoryRollup,
   costVariance,
   currentRevenue,
@@ -14,7 +14,13 @@ import {
   materialOnlyMargin,
   materialOnlyProfit,
   originalCostBudget,
+  revenueBreakdown,
+  revisedBudgetBuckets,
+  revisedCostBudget,
   sumLedgerRows,
+  totalBilled,
+  totalCollected,
+  unbilledContractValue,
 } from "@/lib/projects/financials";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
@@ -25,6 +31,7 @@ export interface DashboardAlert {
   count: number;
   severity: "info" | "watch" | "critical";
   href: string;
+  detail?: string;
 }
 
 export interface CategoryBreakdownRow {
@@ -51,7 +58,14 @@ export interface ProjectDashboard {
   dataNeedsAttentionReasons: string[];
 
   currentRevenue: number | null;
+  revenueBreakdown: {
+    original: number | null;
+    approvedChangeOrders: number;
+    manualAdjustments: number;
+    current: number | null;
+  };
   originalCostBudget: number | null;
+  revisedCostBudget: number | null;
   committedCost: number;
   actualCost: number;
   forecastUncommitted: number;
@@ -65,6 +79,16 @@ export interface ProjectDashboard {
   materialForecast: number;
   materialOnlyProfit: number;
   materialOnlyMargin: number | null;
+
+  billed: number;
+  collected: number;
+  arOutstanding: number;
+  unbilled: number | null;
+
+  apUnpaid: number;
+  receivedNotBilledEstimate: number;
+  pendingChangeOrderCount: number;
+  laborBillableValue: number;
 
   categories: CategoryBreakdownRow[];
 
@@ -86,6 +110,24 @@ export interface ProjectDashboard {
   };
 
   alerts: DashboardAlert[];
+  duplicateAlerts: Array<{
+    key: string;
+    label: string;
+    detail: string;
+    severity: "watch" | "critical";
+    href: string;
+  }>;
+  snapshots: Array<{
+    id: string;
+    captured_at: string;
+    trigger: string;
+    current_revenue: number | null;
+    forecast_final: number;
+    forecast_profit: number | null;
+    billed: number;
+    collected: number;
+    ar_outstanding: number;
+  }>;
   ledgerSample: Array<{
     id: string;
     category: string;
@@ -131,6 +173,11 @@ export async function buildProjectDashboard(
     { data: laborEntries },
     { data: expenses },
     { data: lineItems },
+    { data: changeOrders },
+    { data: invoices },
+    { data: payments },
+    { data: vendorBills },
+    { data: snapshots },
   ] = await Promise.all([
     supabase.from("project_cost_ledger").select("*").eq("project_id", projectId),
     supabase
@@ -140,12 +187,12 @@ export async function buildProjectDashboard(
     supabase
       .from("labor_entries")
       .select(
-        "id, estimated_hours, actual_hours, total_cost, approval_status, hourly_rate",
+        "id, estimated_hours, actual_hours, total_cost, approval_status, hourly_rate, billing_rate, worker_name, work_date",
       )
       .eq("project_id", projectId),
     supabase
       .from("project_expenses")
-      .select("id, amount, tax, approval_status")
+      .select("id, amount, tax, approval_status, payee, expense_date, description, po_id")
       .eq("project_id", projectId),
     supabase
       .from("line_items")
@@ -153,27 +200,59 @@ export async function buildProjectDashboard(
         "id, qty, qty_ordered, qty_received, msrp, quote, override_pct, estimated_unit_cost",
       )
       .eq("project_id", projectId),
+    supabase
+      .from("project_change_orders")
+      .select(
+        "id, status, revenue_delta, budget_material_delta, budget_labor_delta, budget_expense_delta, budget_subcontractor_delta, budget_overhead_delta",
+      )
+      .eq("project_id", projectId),
+    supabase
+      .from("project_invoices")
+      .select("id, status, total, amount_paid, due_date")
+      .eq("project_id", projectId),
+    supabase
+      .from("project_payments")
+      .select("id, amount")
+      .eq("project_id", projectId),
+    supabase
+      .from("vendor_bills")
+      .select("id, amount, amount_paid, status, purchase_order_id")
+      .eq("project_id", projectId),
+    supabase
+      .from("project_financial_snapshots")
+      .select(
+        "id, captured_at, trigger, current_revenue, forecast_final, forecast_profit, billed, collected, ar_outstanding",
+      )
+      .eq("project_id", projectId)
+      .order("captured_at", { ascending: false })
+      .limit(24),
   ]);
 
+  const cos = changeOrders ?? [];
   const ledger = ledgerRows ?? [];
   const totals = sumLedgerRows(ledger);
   const finalCost = forecastFinalCost(totals);
-  const revenue = currentRevenue({
+  const revenueFields = {
     original_revenue: project.original_revenue as number | null,
     revenue_additions: project.revenue_additions as number | null,
     revenue_credits: project.revenue_credits as number | null,
-  });
-  const budget = originalCostBudget({
+  };
+  const revenue = currentRevenue(revenueFields, cos);
+  const breakdown = revenueBreakdown(revenueFields, cos);
+  const buckets = {
     material_budget: project.material_budget as number | null,
     labor_budget: project.labor_budget as number | null,
     expense_budget: project.expense_budget as number | null,
     subcontractor_budget: project.subcontractor_budget as number | null,
     overhead_budget: project.overhead_budget as number | null,
-  });
+  };
+  const budget = originalCostBudget(buckets);
+  const revisedBudget = revisedCostBudget(buckets, cos);
+  const revisedBuckets = revisedBudgetBuckets(buckets, cos);
   const profit = forecastProfit(revenue, finalCost);
   const margin = forecastMargin(profit, revenue);
   const markup = forecastMarkup(profit, finalCost);
-  const variance = costVariance(budget, finalCost);
+  const variance = costVariance(revisedBudget ?? budget, finalCost);
 
   const defaultOverride = Number(project.default_override_pct || 0);
   const priced = (lineItems ?? []).map((line) =>
@@ -200,16 +279,53 @@ export async function buildProjectDashboard(
   const matMargin = materialOnlyMargin(matProfit, materialSale);
 
   const categories = categoryRollup(ledger, {
-    materials: project.material_budget as number | null,
-    labor: project.labor_budget as number | null,
+    materials: revisedBuckets.material_budget,
+    labor: revisedBuckets.labor_budget,
     freight: null,
-    subcontractors: project.subcontractor_budget as number | null,
+    subcontractors: revisedBuckets.subcontractor_budget,
     travel: null,
     equipment: null,
     permits: null,
-    other: project.expense_budget as number | null,
-    overhead: project.overhead_budget as number | null,
+    other: revisedBuckets.expense_budget,
+    overhead: revisedBuckets.overhead_budget,
   });
+
+  const billed = totalBilled(invoices ?? []);
+  const collected = totalCollected(payments ?? []);
+  const ar = arOutstanding(billed, collected);
+  const unbilled = unbilledContractValue(revenue, billed);
+
+  const apUnpaid = (vendorBills ?? [])
+    .filter((b) => b.status !== "void")
+    .reduce(
+      (s, b) => s + Math.max(0, Number(b.amount || 0) - Number(b.amount_paid || 0)),
+      0,
+    );
+  const billedPoIds = new Set(
+    (vendorBills ?? [])
+      .filter((b) => b.purchase_order_id && b.status !== "void" && b.status !== "accrued")
+      .map((b) => b.purchase_order_id as string),
+  );
+  // Rough "received not billed": open POs without a non-accrued vendor bill
+  const receivedNotBilledEstimate = (allPos ?? [])
+    .filter(
+      (po) =>
+        !CLOSED_PO_STATUSES.includes(po.status as "closed" | "cancelled") &&
+        !billedPoIds.has(po.id),
+    )
+    .reduce((s, po) => s + Number(po.total || 0), 0);
+
+  const pendingChangeOrderCount = cos.filter(
+    (c) => c.status === "submitted",
+  ).length;
+
+  const laborBillableValue = (laborEntries ?? [])
+    .filter((e) => e.approval_status === "approved")
+    .reduce(
+      (s, e) =>
+        s + Number(e.actual_hours || 0) * Number(e.billing_rate || 0),
+      0,
+    );
 
   const pos = allPos ?? [];
   const poIds = pos.map((p) => p.id);
@@ -258,10 +374,13 @@ export async function buildProjectDashboard(
     );
   }).length;
 
-  const laborBudget = project.labor_budget != null ? Number(project.labor_budget) : null;
-  const laborActualApproved = (laborEntries ?? [])
-    .filter((e) => e.approval_status === "approved")
-    .reduce((s, e) => s + Number(e.total_cost || 0), 0);
+  const laborBudget =
+    revisedBuckets.labor_budget != null
+      ? Number(revisedBuckets.labor_budget)
+      : null;
+  const laborActualApproved = ledger
+    .filter((r) => r.category === "labor")
+    .reduce((s, r) => s + Number(r.actual_amount || 0), 0);
   const laborOverBudget =
     laborBudget != null && laborActualApproved > laborBudget;
 
@@ -288,8 +407,11 @@ export async function buildProjectDashboard(
   );
 
   const percentComplete = Number(project.percent_complete || 0);
+  const budgetForProgress = revisedBudget ?? budget;
   const percentBudgetSpent =
-    budget != null && budget > 0 ? (finalCost / budget) * 100 : null;
+    budgetForProgress != null && budgetForProgress > 0
+      ? (finalCost / budgetForProgress) * 100
+      : null;
   const percentLaborHoursUsed =
     estHours > 0 ? Math.min(100, (actHours / estHours) * 100) : null;
   const percentMaterialsOrdered =
@@ -297,8 +419,7 @@ export async function buildProjectDashboard(
   const percentMaterialsReceived =
     totalQty > 0 ? Math.min(100, (receivedQty / totalQty) * 100) : null;
   const costAheadOfProgress =
-    percentBudgetSpent != null &&
-    percentBudgetSpent > percentComplete + 15;
+    percentBudgetSpent != null && percentBudgetSpent > percentComplete + 15;
 
   const reasons: string[] = [];
   if (revenue == null) reasons.push("Original contract revenue not set");
@@ -315,6 +436,15 @@ export async function buildProjectDashboard(
       count: reasons.length,
       severity: "watch",
       href: base,
+    });
+  }
+  if (pendingChangeOrderCount > 0) {
+    alerts.push({
+      key: "pending_cos",
+      label: "Pending change orders",
+      count: pendingChangeOrderCount,
+      severity: "watch",
+      href: `${base}/change-orders`,
     });
   }
   if (delayedCount > 0) {
@@ -362,6 +492,43 @@ export async function buildProjectDashboard(
       href: `${base}/expenses`,
     });
   }
+  if (unbilled != null && revenue != null && revenue > 0) {
+    const billedPct = (billed / revenue) * 100;
+    if (percentComplete > billedPct + 20 && unbilled > 0) {
+      alerts.push({
+        key: "unbilled",
+        label: "Unbilled vs % complete",
+        count: 1,
+        severity: "watch",
+        href: `${base}/billing`,
+        detail: `Unbilled ${unbilled.toFixed(0)} with progress ahead of billing`,
+      });
+    }
+  }
+  const pastDueAr = (invoices ?? []).filter((inv) => {
+    if (!["sent", "partially_paid"].includes(String(inv.status))) return false;
+    if (!inv.due_date) return false;
+    const open = Number(inv.total || 0) - Number(inv.amount_paid || 0);
+    return open > 0 && String(inv.due_date).slice(0, 10) < todayStr;
+  }).length;
+  if (pastDueAr > 0) {
+    alerts.push({
+      key: "ar_past_due",
+      label: "AR past due",
+      count: pastDueAr,
+      severity: "critical",
+      href: `${base}/billing`,
+    });
+  }
+  if (apUnpaid > 0) {
+    alerts.push({
+      key: "ap_unpaid",
+      label: "Vendor AP unpaid",
+      count: 1,
+      severity: "watch",
+      href: `${base}/billing#ap`,
+    });
+  }
   if (profit != null && profit < 0) {
     alerts.push({
       key: "neg_profit",
@@ -379,6 +546,31 @@ export async function buildProjectDashboard(
       severity: "info",
       href: `${base}/procurement`,
     });
+  }
+
+  // CO vs manual overlap heuristic
+  const manual = Number(project.revenue_additions || 0);
+  if (manual > 0) {
+    const approvedCo = cos
+      .filter((c) => c.status === "approved")
+      .find((c) => Math.abs(Number(c.revenue_delta || 0) - manual) < 1);
+    if (approvedCo) {
+      alerts.push({
+        key: "co-manual-overlap",
+        label: "CO vs manual addition overlap",
+        count: 1,
+        severity: "watch",
+        href: `${base}/change-orders`,
+        detail: "Manual revenue addition close to an approved CO amount",
+      });
+    }
+  }
+
+  let duplicateAlerts: ProjectDashboard["duplicateAlerts"] = [];
+  try {
+    duplicateAlerts = await buildDuplicateCostAlerts(supabase, projectId);
+  } catch {
+    duplicateAlerts = [];
   }
 
   const ledgerSample = ledger.slice(0, 40).map((r) => ({
@@ -408,7 +600,9 @@ export async function buildProjectDashboard(
     dataNeedsAttention,
     dataNeedsAttentionReasons: reasons,
     currentRevenue: revenue,
+    revenueBreakdown: breakdown,
     originalCostBudget: budget,
+    revisedCostBudget: revisedBudget,
     committedCost: totals.committed,
     actualCost: totals.actual,
     forecastUncommitted: totals.forecast,
@@ -421,6 +615,14 @@ export async function buildProjectDashboard(
     materialForecast,
     materialOnlyProfit: matProfit,
     materialOnlyMargin: matMargin,
+    billed,
+    collected,
+    arOutstanding: ar,
+    unbilled,
+    apUnpaid,
+    receivedNotBilledEstimate,
+    pendingChangeOrderCount,
+    laborBillableValue,
     categories,
     openPoCount,
     openPoValue,
@@ -438,6 +640,20 @@ export async function buildProjectDashboard(
       costAheadOfProgress,
     },
     alerts,
+    duplicateAlerts,
+    snapshots: (snapshots ?? []).map((s) => ({
+      id: String(s.id),
+      captured_at: String(s.captured_at),
+      trigger: String(s.trigger),
+      current_revenue:
+        s.current_revenue == null ? null : Number(s.current_revenue),
+      forecast_final: Number(s.forecast_final || 0),
+      forecast_profit:
+        s.forecast_profit == null ? null : Number(s.forecast_profit),
+      billed: Number(s.billed || 0),
+      collected: Number(s.collected || 0),
+      ar_outstanding: Number(s.ar_outstanding || 0),
+    })),
     ledgerSample,
   };
 }

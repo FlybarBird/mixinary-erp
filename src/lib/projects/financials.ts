@@ -1,6 +1,7 @@
 /**
- * Canonical project financial formulas (Phase 1–2).
+ * Canonical project financial formulas (Phase 1–6).
  * Margin = profit / revenue. Markup = profit / cost. They are not the same.
+ * Billing (billed/collected/AR) is separate from contract Current Revenue.
  */
 
 export type BudgetBuckets = {
@@ -17,6 +18,16 @@ export type RevenueFields = {
   revenue_credits?: number | null;
 };
 
+export type ApprovedChangeOrder = {
+  status?: string | null;
+  revenue_delta?: number | null;
+  budget_material_delta?: number | null;
+  budget_labor_delta?: number | null;
+  budget_expense_delta?: number | null;
+  budget_subcontractor_delta?: number | null;
+  budget_overhead_delta?: number | null;
+};
+
 export type LedgerTotals = {
   committed: number;
   actual: number;
@@ -28,16 +39,50 @@ function n(value: number | null | undefined): number {
   return Number(value);
 }
 
-/** Current Revenue = original + additions − credits. Null original → null (needs attention). */
-export function currentRevenue(fields: RevenueFields): number | null {
+export function manualRevenueAdjustment(fields: RevenueFields): number {
+  return n(fields.revenue_additions) - n(fields.revenue_credits);
+}
+
+export function approvedChangeOrderRevenue(
+  changeOrders: ApprovedChangeOrder[],
+): number {
+  return changeOrders
+    .filter((co) => co.status === "approved")
+    .reduce((sum, co) => sum + n(co.revenue_delta), 0);
+}
+
+/**
+ * Current Revenue = original + approved CO deltas + manual additions − credits.
+ * Null original → null (needs attention).
+ */
+export function currentRevenue(
+  fields: RevenueFields,
+  changeOrders: ApprovedChangeOrder[] = [],
+): number | null {
   if (fields.original_revenue == null || fields.original_revenue === undefined) {
     return null;
   }
   return (
     n(fields.original_revenue) +
-    n(fields.revenue_additions) -
-    n(fields.revenue_credits)
+    approvedChangeOrderRevenue(changeOrders) +
+    manualRevenueAdjustment(fields)
   );
+}
+
+export function revenueBreakdown(
+  fields: RevenueFields,
+  changeOrders: ApprovedChangeOrder[] = [],
+) {
+  const original =
+    fields.original_revenue == null ? null : n(fields.original_revenue);
+  const approvedCos = approvedChangeOrderRevenue(changeOrders);
+  const manual = manualRevenueAdjustment(fields);
+  return {
+    original,
+    approvedChangeOrders: approvedCos,
+    manualAdjustments: manual,
+    current: currentRevenue(fields, changeOrders),
+  };
 }
 
 /** Sum of budget buckets. Returns null when no bucket is set. */
@@ -56,9 +101,73 @@ export function originalCostBudget(buckets: BudgetBuckets): number | null {
   return keys.reduce((sum, k) => sum + n(buckets[k]), 0);
 }
 
+export function approvedChangeOrderBudgetDeltas(
+  changeOrders: ApprovedChangeOrder[],
+): BudgetBuckets {
+  const approved = changeOrders.filter((co) => co.status === "approved");
+  return {
+    material_budget: approved.reduce(
+      (s, co) => s + n(co.budget_material_delta),
+      0,
+    ),
+    labor_budget: approved.reduce((s, co) => s + n(co.budget_labor_delta), 0),
+    expense_budget: approved.reduce(
+      (s, co) => s + n(co.budget_expense_delta),
+      0,
+    ),
+    subcontractor_budget: approved.reduce(
+      (s, co) => s + n(co.budget_subcontractor_delta),
+      0,
+    ),
+    overhead_budget: approved.reduce(
+      (s, co) => s + n(co.budget_overhead_delta),
+      0,
+    ),
+  };
+}
+
+/** Revised budget = original buckets + approved CO budget deltas. */
+export function revisedCostBudget(
+  buckets: BudgetBuckets,
+  changeOrders: ApprovedChangeOrder[] = [],
+): number | null {
+  const base = originalCostBudget(buckets);
+  const deltas = approvedChangeOrderBudgetDeltas(changeOrders);
+  const deltaSum =
+    n(deltas.material_budget) +
+    n(deltas.labor_budget) +
+    n(deltas.expense_budget) +
+    n(deltas.subcontractor_budget) +
+    n(deltas.overhead_budget);
+  if (base == null && deltaSum === 0) return null;
+  return n(base) + deltaSum;
+}
+
+export function revisedBudgetBuckets(
+  buckets: BudgetBuckets,
+  changeOrders: ApprovedChangeOrder[] = [],
+): BudgetBuckets {
+  const deltas = approvedChangeOrderBudgetDeltas(changeOrders);
+  const add = (
+    base: number | null | undefined,
+    delta: number | null | undefined,
+  ) => {
+    if (base == null && !n(delta)) return base ?? null;
+    return n(base) + n(delta);
+  };
+  return {
+    material_budget: add(buckets.material_budget, deltas.material_budget),
+    labor_budget: add(buckets.labor_budget, deltas.labor_budget),
+    expense_budget: add(buckets.expense_budget, deltas.expense_budget),
+    subcontractor_budget: add(
+      buckets.subcontractor_budget,
+      deltas.subcontractor_budget,
+    ),
+    overhead_budget: add(buckets.overhead_budget, deltas.overhead_budget),
+  };
+}
+
 export function forecastFinalCost(totals: LedgerTotals): number {
-  // forecast_amount on ledger rows is the remaining uncommitted estimate;
-  // committed is remaining obligation; actual is incurred.
   return n(totals.actual) + n(totals.committed) + n(totals.forecast);
 }
 
@@ -88,7 +197,7 @@ export function forecastMarkup(
   return profit / finalCost;
 }
 
-/** Cost variance = original budget − forecast final (positive = under budget). */
+/** Cost variance = budget − forecast final (positive = under budget). */
 export function costVariance(
   budget: number | null,
   finalCost: number,
@@ -173,7 +282,6 @@ export function categoryRollup(
     bucket.committed += n(row.committed_amount);
     bucket.actual += n(row.actual_amount);
     bucket.forecast += n(row.forecast_amount);
-    // Prefer explicit budget posts on ledger when present
     if (n(row.budget_amount) > 0) {
       bucket.budget += n(row.budget_amount);
     }
@@ -195,4 +303,45 @@ export function categoryRollup(
       variance: budget == null ? null : budget - final,
     };
   });
+}
+
+/** Phase 4 billing helpers — not contract revenue. */
+export function totalBilled(
+  invoices: Array<{ status?: string | null; total?: number | null }>,
+): number {
+  return invoices
+    .filter((inv) =>
+      ["sent", "partially_paid", "paid"].includes(String(inv.status || "")),
+    )
+    .reduce((s, inv) => s + n(inv.total), 0);
+}
+
+export function totalCollected(
+  payments: Array<{ amount?: number | null }>,
+): number {
+  return payments.reduce((s, p) => s + n(p.amount), 0);
+}
+
+export function arOutstanding(billed: number, collected: number): number {
+  return Math.max(0, billed - collected);
+}
+
+export function unbilledContractValue(
+  revenue: number | null,
+  billed: number,
+): number | null {
+  if (revenue == null) return null;
+  return Math.max(0, revenue - billed);
+}
+
+export function burdenedLaborCost(
+  hours: number,
+  hourlyRate: number,
+  burdenPct: number,
+): number {
+  return n(hours) * n(hourlyRate) * (1 + n(burdenPct));
+}
+
+export function billableLaborValue(hours: number, billingRate: number): number {
+  return n(hours) * n(billingRate);
 }

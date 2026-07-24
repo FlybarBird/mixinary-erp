@@ -204,3 +204,23 @@ export function canViewFinancials(role: UserRole) {
     role === "accounting"
   );
 }
+
+export function canApproveChangeOrders(role: UserRole) {
+  return role === "administrator" || role === "project_manager";
+}
+
+export function canEditBilling(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "accounting"
+  );
+}
+
+export function canManageApAndSubs(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "purchasing"
+  );
+}

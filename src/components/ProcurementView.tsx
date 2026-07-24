@@ -21,6 +21,8 @@ type BomLineSummary = {
   vendor_id: string | null;
   procurement_status: string;
   qty: number;
+  qty_ordered: number;
+  qty_received: number;
   msrp: number;
   quote: number | null;
   override_pct: number | null;
@@ -180,11 +182,47 @@ export function ProcurementView({
 }: Props) {
   const router = useRouter();
   const [orders, setOrders] = useState<OrderRow[]>(initialOrders);
+  const [bomLineState, setBomLineState] = useState<BomLineSummary[]>(bomLines);
 
   // Keep client state in sync when RSC refresh brings new props
   useEffect(() => {
     setOrders(initialOrders);
   }, [initialOrders]);
+
+  useEffect(() => {
+    setBomLineState(bomLines);
+  }, [bomLines]);
+
+  const applyBomPricing = useCallback(
+    (
+      updates:
+        | Array<{
+            id: string;
+            quote?: number | null;
+            estimated_unit_cost?: number | null;
+          }>
+        | null
+        | undefined,
+    ) => {
+      if (!updates?.length) return;
+      const byId = new Map(updates.map((r) => [r.id, r]));
+      setBomLineState((prev) =>
+        prev.map((line) => {
+          const next = byId.get(line.id);
+          if (!next) return line;
+          return {
+            ...line,
+            quote: next.quote !== undefined ? next.quote : line.quote,
+            estimated_unit_cost:
+              next.estimated_unit_cost !== undefined
+                ? next.estimated_unit_cost
+                : line.estimated_unit_cost,
+          };
+        }),
+      );
+    },
+    [],
+  );
 
   const reloadOrders = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}/purchase-orders`);
@@ -197,9 +235,9 @@ export function ProcurementView({
 
   const bomById = useMemo(() => {
     const map = new Map<string, BomLineSummary>();
-    for (const line of bomLines) map.set(line.id, line);
+    for (const line of bomLineState) map.set(line.id, line);
     return map;
-  }, [bomLines]);
+  }, [bomLineState]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PoStatus | "">("");
   const [vendorFilter, setVendorFilter] = useState("");
@@ -219,7 +257,7 @@ export function ProcurementView({
   const [creatingPo, setCreatingPo] = useState(false);
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set());
 
-  const notOrderedCount = bomLines.filter(
+  const notOrderedCount = bomLineState.filter(
     (l) => l.procurement_status === "not_ordered" || l.procurement_status === "partially_ordered",
   ).length;
 
@@ -338,7 +376,15 @@ export function ProcurementView({
     } finally {
       setSaving(false);
     }
-  }, [editingPo, editFields, cascadeItems, cascadeItemStatus, projectId, router, reloadOrders]);
+  }, [
+    editingPo,
+    editFields,
+    cascadeItems,
+    cascadeItemStatus,
+    projectId,
+    router,
+    reloadOrders,
+  ]);
 
   const deletePo = useCallback(async (poId: string) => {
     if (!confirm("Delete this purchase order?")) return;
@@ -399,7 +445,7 @@ export function ProcurementView({
           alert(err.error ?? "Failed to save item");
           return;
         }
-        const { data, poTotals, po } = await res.json();
+        const { data, poTotals, po, bomPricing } = await res.json();
         if (po) {
           setOrders((prev) =>
             prev.map((o) => (o.id === poId ? { ...o, ...po, items: po.items ?? o.items } : o)),
@@ -417,6 +463,7 @@ export function ProcurementView({
             ),
           );
         }
+        if (bomPricing) applyBomPricing([bomPricing]);
         router.refresh();
       } finally {
         setSavingItemIds((prev) => {
@@ -426,7 +473,7 @@ export function ProcurementView({
         });
       }
     },
-    [projectId, router],
+    [projectId, router, applyBomPricing],
   );
 
   const patchPo = useCallback(
@@ -723,7 +770,7 @@ export function ProcurementView({
                                 >
                                   <td style={{ padding: "0.3rem 0.5rem" }}>{item.description}</td>
                                   <td style={{ textAlign: "center" }}>{item.sku || "—"}</td>
-                                  <td style={{ textAlign: "center" }}>{item.qty_ordered}</td>
+                                  <td style={{ textAlign: "center" }}>{qtyOrdered}</td>
                                   <td style={{ textAlign: "right" }}>
                                     <CurrencyInput
                                       value={Number(item.unit_price || 0)}

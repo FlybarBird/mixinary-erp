@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canManageProcurement, canReceive, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
-import { createNotification, rollupBomLineQuantities } from "@/lib/projects/workspace";
+import {
+  createNotification,
+  rollupBomLineQuantities,
+  syncBomLinePricingFromPoItem,
+} from "@/lib/projects/workspace";
 import {
   recalcPurchaseOrderEconomics,
   suggestPoStatus,
@@ -148,11 +152,15 @@ export async function PATCH(
   );
   const lineItemId = (existing as { line_item_id?: string | null }).line_item_id;
 
-  const statusChanged = newStatus && newStatus !== prevStatus;
+  const statusChanged = Boolean(newStatus && newStatus !== prevStatus);
   const qtyChanged = newQtyReceived !== prevQtyReceived;
   const qtyOrderedChanged =
     body.qty_ordered != null &&
     Number(body.qty_ordered) !== Number(existing.qty_ordered ?? 0);
+  const priceChanged =
+    body.unit_price != null ||
+    body.line_total != null ||
+    qtyOrderedChanged;
 
   if (statusChanged || qtyChanged) {
     await supabase.from("tracking_events").insert({
@@ -167,8 +175,23 @@ export async function PATCH(
     });
   }
 
+  // Qty/status → BOM procurement fields; price → BOM quote / estimated cost (project OOP/margin).
+  let bomLine = null;
+  let bomPricing = null;
   if (lineItemId && (statusChanged || qtyChanged || qtyOrderedChanged)) {
-    await rollupBomLineQuantities(supabase, lineItemId);
+    bomLine = await rollupBomLineQuantities(supabase, lineItemId);
+  }
+  if (lineItemId && priceChanged) {
+    const unitPrice = Number(
+      (updated as { unit_price?: number } | null)?.unit_price ??
+        existing.unit_price ??
+        0,
+    );
+    bomPricing = await syncBomLinePricingFromPoItem(
+      supabase,
+      lineItemId,
+      unitPrice,
+    );
   }
 
   if (statusChanged && newStatus && ALERT_STATUSES.has(newStatus)) {
@@ -224,6 +247,8 @@ export async function PATCH(
     data: updated,
     poTotals,
     poStatus,
+    bomLine,
+    bomPricing,
     po: po ? { ...po, items: items ?? [] } : null,
   });
 }

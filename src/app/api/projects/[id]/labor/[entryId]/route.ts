@@ -63,6 +63,14 @@ export async function PATCH(
     regular_hours,
     overtime_hours,
     hourly_rate,
+    burden_pct:
+      body.burden_pct !== undefined
+        ? Number(body.burden_pct) || 0
+        : Number(existing.burden_pct ?? 0) || 0,
+    billing_rate:
+      body.billing_rate !== undefined
+        ? Number(body.billing_rate) || 0
+        : Number(existing.billing_rate ?? 0) || 0,
     total_cost,
     notes: body.notes !== undefined ? (body.notes as string | null) : existing.notes,
   };

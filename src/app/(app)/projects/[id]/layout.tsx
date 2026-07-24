@@ -100,6 +100,14 @@ export default async function ProjectLayout({
             (project as { revenue_credits?: number | null }).revenue_credits ??
               0,
           ),
+          labor_burden_enabled: Boolean(
+            (project as { labor_burden_enabled?: boolean | number | null })
+              .labor_burden_enabled,
+          ),
+          default_burden_pct: Number(
+            (project as { default_burden_pct?: number | null })
+              .default_burden_pct ?? 0,
+          ),
           start_date:
             (project as { start_date?: string | null }).start_date ?? null,
           target_completion_date:

@@ -11,6 +11,7 @@ import {
   recalcPurchaseOrderEconomics,
   suggestPoStatus,
 } from "@/lib/projects/procurement";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 const ALERT_STATUSES = new Set(["delayed", "backordered"]);
 
@@ -233,6 +234,12 @@ export async function PATCH(
   }
 
   const poStatus = await syncPoStatusFromItems(supabase, poId);
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // Don't fail the item save if ledger rebuild errors
+  }
 
   const [{ data: po }, { data: items }] = await Promise.all([
     supabase

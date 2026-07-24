@@ -323,7 +323,7 @@ export async function buildBomPdf(params: {
     doc
       .font("Helvetica-Bold")
       .text(
-        `Out of pocket ${formatSignedMoney(totals.outOfPocket)}`,
+        `Quoted Material Profit ${formatSignedMoney(totals.outOfPocket)}`,
         left,
         doc.y,
         { width: pageWidth, align: "left" },

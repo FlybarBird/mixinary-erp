@@ -10,6 +10,7 @@ import {
   recalcPurchaseOrderEconomics,
   suggestPoStatus,
 } from "@/lib/projects/procurement";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 export async function PATCH(
   request: Request,
@@ -140,6 +141,12 @@ export async function PATCH(
     bomLines = await rollupBomLinesForPo(supabase, poId);
   }
 
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
+
   const [{ data: po }, { data: items }] = await Promise.all([
     supabase
       .from("purchase_orders")
@@ -192,6 +199,12 @@ export async function DELETE(
 
   for (const lineItemId of lineItemIds) {
     await rollupBomLineQuantities(supabase, lineItemId);
+  }
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
   }
 
   return NextResponse.json({ ok: true });

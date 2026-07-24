@@ -305,6 +305,25 @@ function migrate(database: Database.Database) {
     if (!projectCols.some((c) => c.name === "labor_budget")) {
       database.exec("alter table projects add column labor_budget real");
     }
+    const projectFinancialCols = [
+      ["expense_budget", "real"],
+      ["subcontractor_budget", "real"],
+      ["overhead_budget", "real"],
+      ["original_revenue", "real"],
+      ["revenue_additions", "real not null default 0"],
+      ["revenue_credits", "real not null default 0"],
+      ["start_date", "text"],
+      ["target_completion_date", "text"],
+      ["percent_complete", "real not null default 0"],
+      ["financials_updated_at", "text"],
+    ] as const;
+    const haveProject = new Set(projectCols.map((c) => c.name));
+    for (const [col, ddl] of projectFinancialCols) {
+      if (!haveProject.has(col)) {
+        database.exec(`alter table projects add column ${col} ${ddl}`);
+        haveProject.add(col);
+      }
+    }
   }
 
   const lineCols = database
@@ -607,6 +626,46 @@ function migrate(database: Database.Database) {
   const haveAll = new Set(allTables.map((t) => t.name));
   for (const [name, ddl] of userSystemTables) {
     if (!haveAll.has(name)) database.exec(ddl);
+  }
+
+  const expenseCols = database
+    .prepare("pragma table_info(project_expenses)")
+    .all() as Array<{ name: string }>;
+  if (expenseCols.length && !expenseCols.some((c) => c.name === "po_id")) {
+    database.exec(
+      "alter table project_expenses add column po_id text references purchase_orders(id)",
+    );
+  }
+
+  if (!haveAll.has("project_cost_ledger")) {
+    database.exec(`CREATE TABLE IF NOT EXISTS project_cost_ledger (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      vendor_or_person TEXT,
+      description TEXT,
+      budget_amount REAL NOT NULL DEFAULT 0,
+      committed_amount REAL NOT NULL DEFAULT 0,
+      actual_amount REAL NOT NULL DEFAULT 0,
+      forecast_amount REAL NOT NULL DEFAULT 0,
+      transaction_date TEXT,
+      approval_status TEXT,
+      payment_status TEXT,
+      billable INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      updated_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (source_type, source_id, category)
+    )`);
+    database.exec(
+      "CREATE INDEX IF NOT EXISTS project_cost_ledger_project_idx ON project_cost_ledger(project_id)",
+    );
+    database.exec(
+      "CREATE INDEX IF NOT EXISTS project_cost_ledger_category_idx ON project_cost_ledger(project_id, category)",
+    );
   }
 
   // Backfill project creators as managers when membership is missing

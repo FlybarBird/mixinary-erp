@@ -18,6 +18,7 @@ const BOOL_FIELDS: Record<string, string[]> = {
   catalog_parts: ["active"],
   catalog_part_proposals: ["accepted"],
   project_expenses: ["is_additional_charge"],
+  project_cost_ledger: ["billable"],
   clients: ["active"],
   user_profiles: ["active"],
 };

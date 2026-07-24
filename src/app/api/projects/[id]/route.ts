@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, canEditBom } from "@/lib/auth";
+import { getCurrentProfile, canEditBom, canViewFinancials } from "@/lib/auth";
 import {
   canAccessProject,
   canEditProjectContent,
   getProjectAccessRole,
 } from "@/lib/project-access";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import type { ProjectStatus } from "@/lib/types";
 
 const STATUSES: ProjectStatus[] = [
@@ -106,6 +107,59 @@ export async function PATCH(
     patch.labor_budget = value == null || value === "" ? null : Number(value);
   }
 
+  const financialKeys = [
+    "expense_budget",
+    "subcontractor_budget",
+    "overhead_budget",
+    "original_revenue",
+    "revenue_additions",
+    "revenue_credits",
+    "material_budget",
+    "labor_budget",
+  ] as const;
+
+  const touchesFinancials = financialKeys.some((k) => k in body);
+
+  if (touchesFinancials) {
+    const profile = gate.profile!;
+    if (!canViewFinancials(profile.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
+  for (const key of [
+    "expense_budget",
+    "subcontractor_budget",
+    "overhead_budget",
+    "original_revenue",
+  ] as const) {
+    if (key in body) {
+      const value = body[key];
+      patch[key] = value == null || value === "" ? null : Number(value);
+    }
+  }
+
+  if ("revenue_additions" in body) {
+    patch.revenue_additions = Number(body.revenue_additions ?? 0) || 0;
+  }
+  if ("revenue_credits" in body) {
+    patch.revenue_credits = Number(body.revenue_credits ?? 0) || 0;
+  }
+  if ("start_date" in body) {
+    patch.start_date = body.start_date ? String(body.start_date) : null;
+  }
+  if ("target_completion_date" in body) {
+    patch.target_completion_date = body.target_completion_date
+      ? String(body.target_completion_date)
+      : null;
+  }
+  if ("percent_complete" in body) {
+    const pct = Number(body.percent_complete ?? 0);
+    patch.percent_complete = Number.isFinite(pct)
+      ? Math.min(100, Math.max(0, pct))
+      : 0;
+  }
+
   if (Object.keys(patch).length === 1) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
@@ -116,7 +170,7 @@ export async function PATCH(
     .update(patch)
     .eq("id", id)
     .select(
-      "id, project_number, name, status, client_id, project_manager_id, default_override_pct, material_budget, labor_budget, notes",
+      "id, project_number, name, status, client_id, project_manager_id, default_override_pct, material_budget, labor_budget, expense_budget, subcontractor_budget, overhead_budget, original_revenue, revenue_additions, revenue_credits, start_date, target_completion_date, percent_complete, financials_updated_at, notes",
     )
     .single();
 
@@ -127,6 +181,14 @@ export async function PATCH(
         ? "A project with that number already exists"
         : error.message;
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  if (touchesFinancials) {
+    try {
+      await rebuildProjectCostLedger(supabase, id);
+    } catch {
+      // non-fatal
+    }
   }
 
   return NextResponse.json({ data });

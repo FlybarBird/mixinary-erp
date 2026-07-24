@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { canEditExpenses, canApproveExpenses, getCurrentProfile } from "@/lib/auth";
 import { writeAuditEvent } from "@/lib/projects/workspace";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import type { ExpenseCategory, ApprovalStatus, PaymentStatus } from "@/lib/types";
 
 const VALID_CATEGORIES: ExpenseCategory[] = [
@@ -97,6 +98,12 @@ export async function PATCH(
     actorId: profile.id,
   });
 
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
+
   return NextResponse.json({ expense: data });
 }
 
@@ -143,6 +150,12 @@ export async function DELETE(
     before: existing,
     actorId: profile.id,
   });
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
 
   return NextResponse.json({ ok: true });
 }

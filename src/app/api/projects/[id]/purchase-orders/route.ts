@@ -5,6 +5,7 @@ import { newId } from "@/lib/local/db";
 import { rollupBomLineQuantities } from "@/lib/projects/workspace";
 import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
 import { allocateNextPoNumber } from "@/lib/projects/numbering";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 export async function GET(
   _request: Request,
@@ -131,6 +132,12 @@ export async function POST(
   }
 
   await recalcPurchaseOrderEconomics(supabase, poId);
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
 
   const { data: po } = await supabase
     .from("purchase_orders")

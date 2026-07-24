@@ -314,7 +314,7 @@ export function TemplateEditor({
         <span>Quote {formatMoney(totals.totalQuote)}</span>
         <span>Sale {formatMoney(totals.totalSale)}</span>
         <span style={outOfPocketStyle(totals.outOfPocket, totals.totalQuote)}>
-          Out of pocket {formatSignedMoney(totals.outOfPocket)}
+          Quoted Material Profit {formatSignedMoney(totals.outOfPocket)}
         </span>
       </div>
 

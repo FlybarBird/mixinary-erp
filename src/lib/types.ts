@@ -212,10 +212,60 @@ export interface Project {
   default_override_pct: number;
   material_budget?: number | null;
   labor_budget?: number | null;
+  expense_budget?: number | null;
+  subcontractor_budget?: number | null;
+  overhead_budget?: number | null;
+  original_revenue?: number | null;
+  revenue_additions?: number | null;
+  revenue_credits?: number | null;
+  start_date?: string | null;
+  target_completion_date?: string | null;
+  percent_complete?: number | null;
+  financials_updated_at?: string | null;
   notes: string | null;
   created_at?: string;
   clients?: Client | null;
   project_manager?: UserProfile | null;
+}
+
+export type CostLedgerCategory =
+  | "materials"
+  | "labor"
+  | "freight"
+  | "subcontractors"
+  | "travel"
+  | "equipment"
+  | "permits"
+  | "other"
+  | "overhead";
+
+export type CostLedgerSourceType =
+  | "bom_item"
+  | "po_item"
+  | "po_shipping"
+  | "po_tax"
+  | "labor_entry"
+  | "expense"
+  | "adjustment";
+
+export interface ProjectCostLedgerEntry {
+  id: string;
+  project_id: string;
+  category: CostLedgerCategory | string;
+  source_type: CostLedgerSourceType | string;
+  source_id: string;
+  vendor_or_person: string | null;
+  description: string | null;
+  budget_amount: number;
+  committed_amount: number;
+  actual_amount: number;
+  forecast_amount: number;
+  transaction_date: string | null;
+  approval_status: string | null;
+  payment_status: string | null;
+  billable: boolean;
+  created_by?: string | null;
+  updated_by?: string | null;
 }
 
 export interface ProjectSection {

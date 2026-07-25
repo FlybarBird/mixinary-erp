@@ -553,19 +553,10 @@ export interface ProjectExpense {
   approval_status: ApprovalStatus;
   payment_status: PaymentStatus;
   is_additional_charge: boolean;
+  is_billable?: boolean;
+  change_order_id?: string | null;
   receipt_path: string | null;
   notes: string | null;
-}
-
-export interface Attachment {
-  id: string;
-  project_id: string;
-  entity_type: string;
-  entity_id: string;
-  file_path: string;
-  file_name: string;
-  uploaded_by: string | null;
-  created_at?: string;
 }
 
 export interface AuditEvent {
@@ -577,6 +568,18 @@ export interface AuditEvent {
   before_json: unknown;
   after_json: unknown;
   actor_id: string | null;
+  reason?: string | null;
+  created_at?: string;
+}
+
+export interface Attachment {
+  id: string;
+  project_id: string;
+  entity_type: string;
+  entity_id: string;
+  file_path: string;
+  file_name: string;
+  uploaded_by: string | null;
   created_at?: string;
 }
 

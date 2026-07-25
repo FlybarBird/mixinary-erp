@@ -77,6 +77,8 @@ export async function POST(
     approval_status: "pending" as const,
     payment_status: "unpaid" as const,
     is_additional_charge: Boolean(body.is_additional_charge ?? false),
+    is_billable: Boolean(body.is_billable ?? false),
+    change_order_id: (body.change_order_id as string | null) || null,
     receipt_path: (body.receipt_path as string | null) ?? null,
     notes: (body.notes as string | null) ?? null,
   };

@@ -107,6 +107,7 @@ export function ProjectHeader({
       body.labor_burden_enabled = form.get("labor_burden_enabled") === "on";
       body.default_burden_pct =
         Number(form.get("default_burden_pct") || 0) / 100 || 0;
+      body.financial_reason = String(form.get("financial_reason") || "").trim();
     }
     const ok = await patch(body);
     if (ok) setEditing(false);
@@ -431,6 +432,15 @@ export function ProjectHeader({
                       Enable labor burden on cost ledger
                     </span>
                   </label>
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className="label">Reason for financial edit</label>
+                  <input
+                    className="field"
+                    name="financial_reason"
+                    required
+                    placeholder="Required when changing revenue or budgets"
+                  />
                 </div>
               </>
             ) : null}

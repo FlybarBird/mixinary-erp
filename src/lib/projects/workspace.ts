@@ -13,6 +13,7 @@ export async function writeAuditEvent(
     before?: unknown;
     after?: unknown;
     actorId?: string | null;
+    reason?: string | null;
   },
 ) {
   await supabase.from("audit_events").insert({
@@ -24,6 +25,7 @@ export async function writeAuditEvent(
     before_json: params.before ?? null,
     after_json: params.after ?? null,
     actor_id: params.actorId ?? null,
+    reason: params.reason?.trim() || null,
   });
 }
 

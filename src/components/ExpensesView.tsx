@@ -9,6 +9,7 @@ interface Props {
   initialExpenses: ProjectExpense[];
   canEdit: boolean;
   canApprove: boolean;
+  changeOrders?: Array<{ id: string; co_number: string; title: string }>;
 }
 
 const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
@@ -49,11 +50,20 @@ function emptyForm() {
     tax: "",
     cost_code: "",
     is_additional_charge: false,
+    is_billable: false,
+    change_order_id: "",
+    receipt_path: "",
     notes: "",
   };
 }
 
-export function ExpensesView({ projectId, initialExpenses, canEdit, canApprove }: Props) {
+export function ExpensesView({
+  projectId,
+  initialExpenses,
+  canEdit,
+  canApprove,
+  changeOrders = [],
+}: Props) {
   const [expenses, setExpenses] = useState<ProjectExpense[]>(initialExpenses);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
@@ -93,6 +103,9 @@ export function ExpensesView({ projectId, initialExpenses, canEdit, canApprove }
       tax: String(expense.tax ?? ""),
       cost_code: expense.cost_code ?? "",
       is_additional_charge: expense.is_additional_charge,
+      is_billable: Boolean(expense.is_billable),
+      change_order_id: expense.change_order_id ?? "",
+      receipt_path: expense.receipt_path ?? "",
       notes: expense.notes ?? "",
     });
     setShowForm(true);
@@ -118,6 +131,9 @@ export function ExpensesView({ projectId, initialExpenses, canEdit, canApprove }
         tax: form.tax ? Number(form.tax) : 0,
         cost_code: form.cost_code || null,
         is_additional_charge: form.is_additional_charge,
+        is_billable: form.is_billable,
+        change_order_id: form.change_order_id || null,
+        receipt_path: form.receipt_path || null,
         notes: form.notes || null,
       };
 
@@ -282,6 +298,62 @@ export function ExpensesView({ projectId, initialExpenses, canEdit, canApprove }
                 style={{ width: "auto" }}
               />
               <span>Additional charge to client</span>
+            </label>
+            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem", gridColumn: "1 / -1" }}>
+              <input
+                type="checkbox"
+                checked={form.is_billable}
+                onChange={(e) => fieldVal("is_billable", e.target.checked)}
+                style={{ width: "auto" }}
+              />
+              <span>Billable to client</span>
+            </label>
+            <label className="field">
+              <span>Linked change order</span>
+              <select
+                value={form.change_order_id}
+                onChange={(e) => fieldVal("change_order_id", e.target.value)}
+              >
+                <option value="">—</option>
+                {changeOrders.map((co) => (
+                  <option key={co.id} value={co.id}>
+                    {co.co_number} · {co.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Receipt path / URL</span>
+              <input
+                value={form.receipt_path}
+                onChange={(e) => fieldVal("receipt_path", e.target.value)}
+                placeholder="Optional receipt reference"
+              />
+            </label>
+            <label className="field">
+              <span>Upload receipt</span>
+              <input
+                type="file"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const fd = new FormData();
+                  fd.set("file", file);
+                  fd.set("entity_type", "expense");
+                  fd.set("entity_id", editingId || projectId);
+                  const res = await fetch(`/api/projects/${projectId}/attachments`, {
+                    method: "POST",
+                    body: fd,
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (res.ok && data.attachment?.file_path) {
+                    fieldVal("receipt_path", data.attachment.file_path);
+                  } else {
+                    setMessage(data.error || "Receipt upload failed");
+                  }
+                  e.target.value = "";
+                }}
+              />
             </label>
           </div>
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>

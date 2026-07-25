@@ -49,6 +49,42 @@ export function PortfolioReportView({ rows }: { rows: PortfolioRow[] }) {
     );
   }, [filtered]);
 
+  const byClient = useMemo(() => {
+    const map = new Map<
+      string,
+      { revenue: number; profit: number; ar: number; count: number }
+    >();
+    for (const r of filtered) {
+      const key = r.clientName || "No client";
+      const cur = map.get(key) ?? { revenue: 0, profit: 0, ar: 0, count: 0 };
+      map.set(key, {
+        revenue: cur.revenue + (r.currentRevenue || 0),
+        profit: cur.profit + (r.forecastProfit || 0),
+        ar: cur.ar + r.arOutstanding,
+        count: cur.count + 1,
+      });
+    }
+    return [...map.entries()].sort((a, b) => b[1].profit - a[1].profit);
+  }, [filtered]);
+
+  const byPm = useMemo(() => {
+    const map = new Map<
+      string,
+      { revenue: number; profit: number; ar: number; count: number }
+    >();
+    for (const r of filtered) {
+      const key = r.projectManagerName || "No PM";
+      const cur = map.get(key) ?? { revenue: 0, profit: 0, ar: 0, count: 0 };
+      map.set(key, {
+        revenue: cur.revenue + (r.currentRevenue || 0),
+        profit: cur.profit + (r.forecastProfit || 0),
+        ar: cur.ar + r.arOutstanding,
+        count: cur.count + 1,
+      });
+    }
+    return [...map.entries()].sort((a, b) => b[1].profit - a[1].profit);
+  }, [filtered]);
+
   function exportCsv() {
     const header = [
       "Project #",
@@ -184,6 +220,69 @@ export function PortfolioReportView({ rows }: { rows: PortfolioRow[] }) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0.75rem",
+        }}
+      >
+        <div className="panel" style={{ padding: "0.75rem", overflowX: "auto" }}>
+          <strong style={{ fontSize: "0.85rem" }}>Profitability by client</strong>
+          <table className="data-table" style={{ width: "100%", marginTop: "0.5rem", fontSize: "0.8rem" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>Client</th>
+                <th style={{ textAlign: "right" }}>Projects</th>
+                <th style={{ textAlign: "right" }}>Revenue</th>
+                <th style={{ textAlign: "right" }}>Profit</th>
+                <th style={{ textAlign: "right" }}>AR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byClient.map(([name, v]) => (
+                <tr key={name}>
+                  <td style={{ textAlign: "left" }}>{name}</td>
+                  <td style={{ textAlign: "right" }}>{v.count}</td>
+                  <td style={{ textAlign: "right" }}>{formatMoney(v.revenue)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {formatSignedMoney(v.profit)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{formatMoney(v.ar)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="panel" style={{ padding: "0.75rem", overflowX: "auto" }}>
+          <strong style={{ fontSize: "0.85rem" }}>Profitability by PM</strong>
+          <table className="data-table" style={{ width: "100%", marginTop: "0.5rem", fontSize: "0.8rem" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>PM</th>
+                <th style={{ textAlign: "right" }}>Projects</th>
+                <th style={{ textAlign: "right" }}>Revenue</th>
+                <th style={{ textAlign: "right" }}>Profit</th>
+                <th style={{ textAlign: "right" }}>AR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byPm.map(([name, v]) => (
+                <tr key={name}>
+                  <td style={{ textAlign: "left" }}>{name}</td>
+                  <td style={{ textAlign: "right" }}>{v.count}</td>
+                  <td style={{ textAlign: "right" }}>{formatMoney(v.revenue)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {formatSignedMoney(v.profit)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{formatMoney(v.ar)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="panel" style={{ padding: "0.75rem", overflowX: "auto" }}>

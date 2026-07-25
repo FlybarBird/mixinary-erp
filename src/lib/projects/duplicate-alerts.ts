@@ -8,6 +8,7 @@ export type DuplicateAlert = {
   detail: string;
   severity: "watch" | "critical";
   href: string;
+  dollarImpact?: number | null;
 };
 
 function moneyClose(a: number, b: number) {
@@ -28,6 +29,7 @@ export async function buildDuplicateCostAlerts(
     { data: labor },
     { data: changeOrders },
     { data: subBills },
+    { data: lineItems },
   ] = await Promise.all([
     supabase
       .from("project_expenses")
@@ -48,6 +50,10 @@ export async function buildDuplicateCostAlerts(
     supabase
       .from("project_subcontract_bills")
       .select("id, amount, bill_date, description")
+      .eq("project_id", projectId),
+    supabase
+      .from("line_items")
+      .select("id, description, category, quote, qty, estimated_unit_cost")
       .eq("project_id", projectId),
   ]);
 
@@ -147,6 +153,46 @@ export async function buildDuplicateCostAlerts(
     }
   }
 
+  // 6) BOM freight/shipping line vs PO shipping amount
+  const freightLines = (lineItems ?? []).filter((li) => {
+    const cat = String(li.category || "").toLowerCase();
+    const desc = String(li.description || "").toLowerCase();
+    return (
+      cat.includes("freight") ||
+      cat.includes("ship") ||
+      desc.includes("freight") ||
+      desc.includes("shipping") ||
+      desc.includes("delivery")
+    );
+  });
+  for (const line of freightLines) {
+    const lineAmt =
+      Number(liQuote(line)) * Math.max(1, Number(line.qty || 1));
+    if (lineAmt <= 0) continue;
+    for (const po of activePos) {
+      const ship = Number(po.shipping || 0);
+      if (ship > 0 && moneyClose(lineAmt, ship)) {
+        alerts.push({
+          key: `bom-ship-${line.id}-${po.id}`,
+          label: "BOM freight vs PO shipping",
+          detail: `${line.description || "Freight line"} (~$${lineAmt.toFixed(2)}) matches PO shipping $${ship.toFixed(2)} — confirm not double counted.`,
+          severity: "critical",
+          href: `${base}/procurement`,
+          dollarImpact: ship,
+        });
+        break;
+      }
+    }
+  }
+
   // Cap noise
   return alerts.slice(0, 25);
+}
+
+function liQuote(line: {
+  quote?: number | null;
+  estimated_unit_cost?: number | null;
+}) {
+  if (line.quote != null && Number(line.quote) > 0) return Number(line.quote);
+  return Number(line.estimated_unit_cost || 0);
 }

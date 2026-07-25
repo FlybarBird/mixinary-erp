@@ -21,11 +21,18 @@ export default async function ExpensesPage({
 
   if (!project) notFound();
 
-  const { data: expenses } = await supabase
-    .from("project_expenses")
-    .select("*")
-    .eq("project_id", id)
-    .order("expense_date", { ascending: false });
+  const [{ data: expenses }, { data: changeOrders }] = await Promise.all([
+    supabase
+      .from("project_expenses")
+      .select("*")
+      .eq("project_id", id)
+      .order("expense_date", { ascending: false }),
+    supabase
+      .from("project_change_orders")
+      .select("id, co_number, title")
+      .eq("project_id", id)
+      .order("co_number"),
+  ]);
 
   return (
     <ExpensesView
@@ -33,6 +40,7 @@ export default async function ExpensesPage({
       initialExpenses={(expenses ?? []) as ProjectExpense[]}
       canEdit={canEditExpenses(profile.role)}
       canApprove={canApproveExpenses(profile.role)}
+      changeOrders={changeOrders ?? []}
     />
   );
 }

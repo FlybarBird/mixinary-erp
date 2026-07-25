@@ -6,6 +6,7 @@ import {
   canEditBom,
   canEditExpenses,
   canManageProcurement,
+  canViewFinancials,
   getCurrentProfile,
 } from "@/lib/auth";
 import { getLocalDb, isLocalMode, newId } from "@/lib/local/db";
@@ -16,7 +17,8 @@ function canWrite(role: string) {
   return (
     canEditBom(role as never) ||
     canManageProcurement(role as never) ||
-    canEditExpenses(role as never)
+    canEditExpenses(role as never) ||
+    canViewFinancials(role as never)
   );
 }
 

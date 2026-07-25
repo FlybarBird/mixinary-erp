@@ -70,27 +70,76 @@ export function LaborView({
     const estHours = entries.reduce((s, e) => s + Number(e.estimated_hours ?? 0), 0);
     const actHours = entries.reduce((s, e) => s + Number(e.actual_hours ?? 0), 0);
     const totalCost = entries.reduce((s, e) => s + Number(e.total_cost ?? 0), 0);
-    const approvedCost = entries
-      .filter((e) => e.approval_status === "approved")
-      .reduce((s, e) => s + Number(e.total_cost ?? 0), 0);
+    const approved = entries.filter((e) => e.approval_status === "approved");
+    const approvedCost = approved.reduce((s, e) => s + Number(e.total_cost ?? 0), 0);
+    const billableValue = approved.reduce(
+      (s, e) =>
+        s + Number(e.actual_hours || 0) * Number(e.billing_rate || 0),
+      0,
+    );
+    const laborProfit = billableValue - approvedCost;
+    const laborMargin = billableValue > 0 ? laborProfit / billableValue : null;
+    const forecastHours = Math.max(0, estHours - actHours);
+    const avgRate =
+      actHours > 0
+        ? approvedCost / Math.max(actHours, 0.0001)
+        : entries.reduce((s, e) => s + Number(e.hourly_rate || 0), 0) /
+          Math.max(entries.length, 1);
+    const forecastCost = forecastHours * avgRate;
 
-    const byWorker = new Map<string, { hours: number; cost: number }>();
-    const byCategory = new Map<string, { hours: number; cost: number }>();
+    const byWorker = new Map<
+      string,
+      { hours: number; cost: number; billable: number }
+    >();
+    const byCategory = new Map<
+      string,
+      { hours: number; cost: number; billable: number; estHours: number }
+    >();
 
     for (const e of entries) {
       const hours = Number(e.actual_hours ?? 0);
       const cost = Number(e.total_cost ?? 0);
+      const billable = hours * Number(e.billing_rate || 0);
 
-      const w = byWorker.get(e.worker_name) ?? { hours: 0, cost: 0 };
-      byWorker.set(e.worker_name, { hours: w.hours + hours, cost: w.cost + cost });
+      const w = byWorker.get(e.worker_name) ?? {
+        hours: 0,
+        cost: 0,
+        billable: 0,
+      };
+      byWorker.set(e.worker_name, {
+        hours: w.hours + hours,
+        cost: w.cost + cost,
+        billable: w.billable + billable,
+      });
 
       if (e.work_category) {
-        const c = byCategory.get(e.work_category) ?? { hours: 0, cost: 0 };
-        byCategory.set(e.work_category, { hours: c.hours + hours, cost: c.cost + cost });
+        const c = byCategory.get(e.work_category) ?? {
+          hours: 0,
+          cost: 0,
+          billable: 0,
+          estHours: 0,
+        };
+        byCategory.set(e.work_category, {
+          hours: c.hours + hours,
+          cost: c.cost + cost,
+          billable: c.billable + billable,
+          estHours: c.estHours + Number(e.estimated_hours || 0),
+        });
       }
     }
 
-    return { estHours, actHours, totalCost, approvedCost, byWorker, byCategory };
+    return {
+      estHours,
+      actHours,
+      totalCost,
+      approvedCost,
+      billableValue,
+      laborProfit,
+      laborMargin,
+      forecastCost,
+      byWorker,
+      byCategory,
+    };
   }, [entries]);
 
   function fieldVal(name: string, value: string) {
@@ -219,6 +268,34 @@ export function LaborView({
             <div className="value">{formatMoney(summary.approvedCost)}</div>
           </div>
         ) : null}
+        {canViewRates ? (
+          <div className="workspace-stat">
+            <div className="label">Billable value</div>
+            <div className="value">{formatMoney(summary.billableValue)}</div>
+          </div>
+        ) : null}
+        {canViewRates ? (
+          <div className="workspace-stat">
+            <div className="label">Labor profit</div>
+            <div className="value">{formatMoney(summary.laborProfit)}</div>
+          </div>
+        ) : null}
+        {canViewRates ? (
+          <div className="workspace-stat">
+            <div className="label">Labor margin</div>
+            <div className="value">
+              {summary.laborMargin == null
+                ? "—"
+                : `${(summary.laborMargin * 100).toFixed(1)}%`}
+            </div>
+          </div>
+        ) : null}
+        {canViewRates ? (
+          <div className="workspace-stat">
+            <div className="label">Forecast remaining cost</div>
+            <div className="value">{formatMoney(summary.forecastCost)}</div>
+          </div>
+        ) : null}
         <div className="workspace-stat">
           <div className="label">Entries</div>
           <div className="value">{entries.length}</div>
@@ -241,12 +318,18 @@ export function LaborView({
                   </tr>
                 </thead>
                 <tbody>
-                  {[...summary.byWorker.entries()].map(([worker, { hours, cost }]) => (
+                  {[...summary.byWorker.entries()].map(
+                    ([worker, { hours, cost, billable }]) => (
                     <tr key={worker}>
                       <td style={{ padding: "0.15rem 0" }}>{worker}</td>
                       <td style={{ textAlign: "right" }}>{hours.toFixed(1)}</td>
                       {canViewRates ? (
-                        <td style={{ textAlign: "right" }}>{formatMoney(cost)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {formatMoney(cost)}
+                          <div className="muted" style={{ fontSize: "0.72rem" }}>
+                            bill {formatMoney(billable)}
+                          </div>
+                        </td>
                       ) : null}
                     </tr>
                   ))}
@@ -268,12 +351,23 @@ export function LaborView({
                   </tr>
                 </thead>
                 <tbody>
-                  {[...summary.byCategory.entries()].map(([cat, { hours, cost }]) => (
+                  {[...summary.byCategory.entries()].map(
+                    ([cat, { hours, cost, billable, estHours }]) => (
                     <tr key={cat}>
                       <td style={{ padding: "0.15rem 0" }}>{cat}</td>
-                      <td style={{ textAlign: "right" }}>{hours.toFixed(1)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {hours.toFixed(1)}
+                        <div className="muted" style={{ fontSize: "0.72rem" }}>
+                          est {estHours.toFixed(1)}
+                        </div>
+                      </td>
                       {canViewRates ? (
-                        <td style={{ textAlign: "right" }}>{formatMoney(cost)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {formatMoney(cost)}
+                          <div className="muted" style={{ fontSize: "0.72rem" }}>
+                            bill {formatMoney(billable)}
+                          </div>
+                        </td>
                       ) : null}
                     </tr>
                   ))}

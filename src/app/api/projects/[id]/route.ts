@@ -7,6 +7,7 @@ import {
   getProjectAccessRole,
 } from "@/lib/project-access";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
+import { writeAuditEvent } from "@/lib/projects/workspace";
 import type { ProjectStatus } from "@/lib/types";
 
 const STATUSES: ProjectStatus[] = [
@@ -127,6 +128,13 @@ export async function PATCH(
     if (!canViewFinancials(profile.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    const reason = String(body.financial_reason ?? "").trim();
+    if (!reason) {
+      return NextResponse.json(
+        { error: "Financial edits require a reason" },
+        { status: 400 },
+      );
+    }
   }
 
   for (const key of [
@@ -173,6 +181,14 @@ export async function PATCH(
   }
 
   const supabase = await createClient();
+  const { data: beforeRow } = await supabase
+    .from("projects")
+    .select(
+      "id, material_budget, labor_budget, expense_budget, subcontractor_budget, overhead_budget, original_revenue, revenue_additions, revenue_credits, labor_burden_enabled, default_burden_pct",
+    )
+    .eq("id", id)
+    .maybeSingle();
+
   const { data, error } = await supabase
     .from("projects")
     .update(patch)
@@ -193,6 +209,25 @@ export async function PATCH(
 
   if (touchesFinancials) {
     try {
+      await writeAuditEvent(supabase, {
+        projectId: id,
+        entityType: "project_financials",
+        entityId: id,
+        action: "update_financials",
+        before: beforeRow,
+        after: {
+          material_budget: data.material_budget,
+          labor_budget: data.labor_budget,
+          expense_budget: data.expense_budget,
+          subcontractor_budget: data.subcontractor_budget,
+          overhead_budget: data.overhead_budget,
+          original_revenue: data.original_revenue,
+          revenue_additions: data.revenue_additions,
+          revenue_credits: data.revenue_credits,
+        },
+        actorId: gate.profile!.id,
+        reason: String(body.financial_reason ?? "").trim(),
+      });
       await rebuildProjectCostLedger(supabase, id);
     } catch {
       // non-fatal

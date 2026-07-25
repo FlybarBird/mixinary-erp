@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChangeOrderStatus, ProjectChangeOrder } from "@/lib/types";
-import { formatMoney, formatSignedMoney } from "@/lib/pricing";
+import { formatMoney, formatPct, formatSignedMoney } from "@/lib/pricing";
+import {
+  changeOrderEstimatedCost,
+  changeOrderEstimatedMargin,
+  changeOrderEstimatedProfit,
+} from "@/lib/projects/financials";
 
 interface Props {
   projectId: string;
@@ -106,6 +111,33 @@ export function ChangeOrdersView({
       prev.map((o) => (o.id === id ? data.changeOrder : o)),
     );
     router.refresh();
+  }
+
+  async function uploadAttachment(coId: string, file: File) {
+    setSaving(true);
+    setMessage(null);
+    const form = new FormData();
+    form.set("file", file);
+    form.set("entity_type", "change_order");
+    form.set("entity_id", coId);
+    const res = await fetch(`/api/projects/${projectId}/attachments`, {
+      method: "POST",
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) {
+      setMessage(data.error || "Failed to upload attachment");
+      return;
+    }
+    setMessage("Customer attachment uploaded");
+  }
+
+  function coEconomics(co: ProjectChangeOrder) {
+    const estCost = changeOrderEstimatedCost(co);
+    const estProfit = changeOrderEstimatedProfit(co);
+    const estMargin = changeOrderEstimatedMargin(co);
+    return { estCost, estProfit, estMargin };
   }
 
   return (
@@ -285,6 +317,10 @@ export function ChangeOrdersView({
               />
             </label>
           </div>
+          <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
+            Estimated cost = sum of budget deltas. Estimated profit = revenue Δ −
+            estimated cost. Attach customer docs after creating the draft.
+          </p>
           <button className="btn btn-primary" type="submit" disabled={saving}>
             {saving ? "Saving…" : "Create draft"}
           </button>
@@ -300,6 +336,9 @@ export function ChangeOrdersView({
               <th>CO #</th>
               <th>Title</th>
               <th style={{ textAlign: "right" }}>Revenue Δ</th>
+              <th style={{ textAlign: "right" }}>Est. cost</th>
+              <th style={{ textAlign: "right" }}>Est. profit</th>
+              <th style={{ textAlign: "right" }}>Est. margin</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -307,12 +346,14 @@ export function ChangeOrdersView({
           <tbody>
             {orders.length === 0 ? (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={8} className="muted">
                   No change orders yet.
                 </td>
               </tr>
             ) : (
-              orders.map((co) => (
+              orders.map((co) => {
+                const econ = coEconomics(co);
+                return (
                 <tr key={co.id}>
                   <td>{co.co_number}</td>
                   <td>
@@ -325,6 +366,15 @@ export function ChangeOrdersView({
                   </td>
                   <td style={{ textAlign: "right" }}>
                     {formatSignedMoney(co.revenue_delta)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {formatMoney(econ.estCost)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {formatSignedMoney(econ.estProfit)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {econ.estMargin == null ? "—" : formatPct(econ.estMargin)}
                   </td>
                   <td>
                     <span className={`badge ${STATUS_BADGE[co.status]}`}>
@@ -373,16 +423,31 @@ export function ChangeOrdersView({
                           Void
                         </button>
                       ) : null}
+                      {canEdit ? (
+                        <label className="btn" style={{ cursor: "pointer" }}>
+                          Attach
+                          <input
+                            type="file"
+                            hidden
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) void uploadAttachment(co.id, file);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
         <p className="muted" style={{ fontSize: "0.8rem", marginTop: "0.75rem" }}>
-          Budget deltas on approved COs revise category budgets used for variance
-          ({formatMoney(0)} baseline shown on dashboard).
+          Budget deltas on approved COs revise category budgets used for variance.
+          Estimated profit uses those budget deltas as estimated cost.
         </p>
       </div>
     </div>

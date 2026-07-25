@@ -23,6 +23,7 @@ type LedgerInsert = {
   approval_status: string | null;
   payment_status: string | null;
   billable: boolean;
+  change_order_id?: string | null;
   updated_at: string;
 };
 
@@ -83,7 +84,7 @@ export async function rebuildProjectCostLedger(
     supabase
       .from("project_expenses")
       .select(
-        "id, category, payee, description, amount, tax, approval_status, payment_status, expense_date, po_id",
+        "id, category, payee, description, amount, tax, approval_status, payment_status, expense_date, po_id, is_billable, change_order_id",
       )
       .eq("project_id", projectId),
     supabase
@@ -300,7 +301,13 @@ export async function rebuildProjectCostLedger(
       transaction_date: (exp.expense_date as string) ?? null,
       approval_status: status,
       payment_status: (exp.payment_status as string) ?? null,
-      billable: false,
+      billable: Boolean(
+        (exp as { is_billable?: boolean }).is_billable,
+      ),
+      change_order_id:
+        ((exp as { change_order_id?: string | null }).change_order_id as
+          | string
+          | null) ?? null,
     });
   }
 

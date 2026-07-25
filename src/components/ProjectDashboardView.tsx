@@ -91,8 +91,78 @@ function OpsCard({
   );
 }
 
+function toneToKpi(
+  tone: "good" | "watch" | "bad" | "neutral",
+): "good" | "bad" | "neutral" {
+  if (tone === "good") return "good";
+  if (tone === "bad") return "bad";
+  return "neutral";
+}
+
+function WaterfallChart({
+  steps,
+}: {
+  steps: ProjectDashboard["profitWaterfall"];
+}) {
+  const maxAbs = Math.max(
+    1,
+    ...steps.map((s) => Math.abs(s.key === "forecast" ? s.amount : s.running)),
+  );
+  return (
+    <div style={{ display: "grid", gap: "0.55rem", marginTop: "0.75rem" }}>
+      {steps.map((step) => {
+        const isEnd = step.key === "forecast" || step.key === "original";
+        const value = isEnd ? step.amount : step.amount;
+        const widthPct = Math.min(100, (Math.abs(value) / maxAbs) * 100);
+        const positive = value >= 0;
+        return (
+          <div key={step.key}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "0.8rem",
+                marginBottom: "0.2rem",
+              }}
+            >
+              <span>{step.label}</span>
+              <span style={{ fontWeight: 600 }}>
+                {formatSignedMoney(value)}
+                {!isEnd ? (
+                  <span className="muted" style={{ fontWeight: 400 }}>
+                    {" "}
+                    → {formatSignedMoney(step.running)}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            <div
+              style={{
+                height: 10,
+                background: "rgba(128,128,128,0.15)",
+                borderRadius: 4,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${widthPct}%`,
+                  height: "100%",
+                  background: positive ? "#00c853" : "#e53935",
+                  borderRadius: 4,
+                }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
   const [drill, setDrill] = useState<"ledger" | "profit" | null>(null);
+  const [ledgerCategory, setLedgerCategory] = useState<string | null>(null);
   const d = dashboard;
   const base = `/projects/${d.projectId}`;
 
@@ -106,66 +176,10 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
           : "neutral";
 
   const categoryRows = useMemo(() => d.categories, [d.categories]);
-
-  function exportSummaryCsv() {
-    const asOf = new Date().toISOString();
-    const kpiRows: Array<[string, string | number]> = [
-      ["As of", asOf],
-      ["Project #", d.projectNumber],
-      ["Project name", d.projectName],
-      ["Client", d.clientName || ""],
-      ["Status", d.status],
-      ["Percent complete", d.percentComplete],
-      ["Current revenue", d.currentRevenue ?? ""],
-      ["Original cost budget", d.originalCostBudget ?? ""],
-      ["Committed cost", d.committedCost],
-      ["Actual cost", d.actualCost],
-      ["Forecast final cost", d.forecastFinalCost],
-      ["Forecast profit", d.forecastProfit ?? ""],
-      ["Forecast margin %", d.forecastMargin == null ? "" : (d.forecastMargin * 100).toFixed(2)],
-      ["Billed", d.billed],
-      ["Collected", d.collected],
-      ["AR outstanding", d.arOutstanding],
-      ["Unbilled", d.unbilled ?? ""],
-      ["AP unpaid", d.apUnpaid],
-    ];
-    const categoryHeader = [
-      "Category",
-      "Budget",
-      "Committed",
-      "Actual",
-      "Forecast Final",
-      "Variance",
-    ];
-    const categoryLines = categoryRows.map((row) =>
-      [
-        row.category,
-        row.budget ?? "",
-        row.committed,
-        row.actual,
-        row.forecastFinal,
-        row.variance ?? "",
-      ]
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-        .join(","),
-    );
-    const kpiCsv = [
-      "Metric,Value",
-      ...kpiRows.map(
-        ([k, v]) => `"${k.replace(/"/g, '""')}","${String(v).replace(/"/g, '""')}"`,
-      ),
-      "",
-      categoryHeader.join(","),
-      ...categoryLines,
-    ].join("\n");
-    const blob = new Blob([kpiCsv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${d.projectNumber || "project"}-financials.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const filteredLedger = useMemo(() => {
+    if (!ledgerCategory) return d.ledgerSample;
+    return d.ledgerSample.filter((r) => r.category === ledgerCategory);
+  }, [d.ledgerSample, ledgerCategory]);
 
   return (
     <div className="stack" style={{ gap: "1rem" }}>
@@ -201,9 +215,6 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
               ? new Date(d.financialsUpdatedAt).toLocaleString()
               : "not built yet"}
           </span>
-          <button type="button" className="btn" onClick={exportSummaryCsv}>
-            Export CSV
-          </button>
         </div>
         {d.dataNeedsAttention ? (
           <div
@@ -299,6 +310,7 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
               ? undefined
               : `Markup ${formatPct(d.forecastMarkup)}`
           }
+          tone={toneToKpi(d.statusTone.margin)}
         />
         <KpiCard
           label="Cost Variance"
@@ -306,17 +318,63 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
             d.costVariance == null ? "—" : formatSignedMoney(d.costVariance)
           }
           hint="Revised budget − forecast"
-          tone={
-            d.costVariance == null
-              ? "neutral"
-              : d.costVariance >= 0
-                ? "good"
-                : "bad"
-          }
+          tone={toneToKpi(d.statusTone.costVariance)}
         />
       </div>
 
-      {/* Cash / AR KPIs */}
+      {/* Profit summary */}
+      <div className="panel" style={{ padding: "0.85rem 1rem" }}>
+        <strong style={{ fontSize: "0.9rem" }}>Profit summary</strong>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "1.25rem",
+            marginTop: "0.5rem",
+            fontSize: "0.88rem",
+          }}
+        >
+          <span>
+            Original profit{" "}
+            <strong>
+              {d.originalProfit == null
+                ? "—"
+                : formatSignedMoney(d.originalProfit)}
+            </strong>
+            {d.originalMargin != null ? (
+              <span className="muted"> ({formatPct(d.originalMargin)})</span>
+            ) : null}
+          </span>
+          <span>
+            Forecast profit{" "}
+            <strong>
+              {d.forecastProfit == null
+                ? "—"
+                : formatSignedMoney(d.forecastProfit)}
+            </strong>
+            {d.forecastMargin != null ? (
+              <span className="muted"> ({formatPct(d.forecastMargin)})</span>
+            ) : null}
+          </span>
+          <span>
+            Δ profit{" "}
+            <strong
+              style={{
+                color:
+                  d.profitDelta == null
+                    ? undefined
+                    : d.profitDelta >= 0
+                      ? "#00c853"
+                      : "#e53935",
+              }}
+            >
+              {d.profitDelta == null ? "—" : formatSignedMoney(d.profitDelta)}
+            </strong>
+          </span>
+        </div>
+      </div>
+
+      {/* Cash / AR KPIs — billing ≠ revenue recognition */}
       <div
         style={{
           display: "grid",
@@ -328,6 +386,7 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
           label="Billed to Date"
           value={formatMoney(d.billed)}
           href={`${base}/billing`}
+          hint="Not revenue recognition"
         />
         <KpiCard
           label="Unbilled"
@@ -341,10 +400,23 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
           href={`${base}/billing`}
         />
         <KpiCard
+          label="Cash Paid Out"
+          value={formatMoney(d.cashPaidOut)}
+          href={`${base}/billing`}
+          hint="AP paid + expenses + sub bills"
+        />
+        <KpiCard
+          label="Cash Position"
+          value={formatSignedMoney(d.cashPosition)}
+          href={`${base}/billing`}
+          hint="Collected − cash paid out"
+          tone={d.cashPosition >= 0 ? "good" : "bad"}
+        />
+        <KpiCard
           label="AR Outstanding"
           value={formatMoney(d.arOutstanding)}
           href={`${base}/billing`}
-          tone={d.arOutstanding > 0 ? "bad" : "neutral"}
+          tone={toneToKpi(d.statusTone.ar)}
         />
         <KpiCard
           label="Vendor AP Unpaid"
@@ -355,7 +427,13 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
           label="Labor Billable Value"
           value={formatMoney(d.laborBillableValue)}
           href={`${base}/labor`}
-          hint="Approved hours × billing rate"
+          hint={
+            d.laborProfit == null
+              ? "Approved hours × billing rate"
+              : `Labor profit ${formatSignedMoney(d.laborProfit)}${
+                  d.laborMargin == null ? "" : ` · ${formatPct(d.laborMargin)}`
+                }`
+          }
         />
       </div>
 
@@ -481,6 +559,22 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
                 : `${d.progress.percentMaterialsReceived.toFixed(0)}%`}
             </strong>
           </div>
+          <div>
+            Invoiced{" "}
+            <strong>
+              {d.progress.percentInvoiced == null
+                ? "—"
+                : `${d.progress.percentInvoiced.toFixed(0)}%`}
+            </strong>
+          </div>
+          <div>
+            Collected{" "}
+            <strong>
+              {d.progress.percentCollected == null
+                ? "—"
+                : `${d.progress.percentCollected.toFixed(0)}%`}
+            </strong>
+          </div>
         </div>
         {d.progress.costAheadOfProgress ? (
           <div style={{ marginTop: "0.65rem", color: "var(--danger)", fontSize: "0.85rem" }}>
@@ -508,7 +602,10 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
               <tr
                 key={row.category}
                 style={{ cursor: "pointer" }}
-                onClick={() => setDrill("ledger")}
+                onClick={() => {
+                  setLedgerCategory(row.category);
+                  setDrill("ledger");
+                }}
               >
                 <td style={{ textAlign: "left", textTransform: "capitalize" }}>
                   {row.category}
@@ -540,11 +637,25 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
         </table>
       </div>
 
-      {/* Profit waterfall / history */}
+      {/* Profit waterfall */}
       <div className="panel" style={{ padding: "1rem", overflowX: "auto" }}>
-        <strong style={{ fontSize: "0.9rem" }}>Profit waterfall history</strong>
+        <strong style={{ fontSize: "0.9rem" }}>Profit waterfall</strong>
+        <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0" }}>
+          Original contract profit → CO impact → cost variance → forecast profit.
+        </p>
+        <WaterfallChart steps={d.profitWaterfall} />
+
+        <strong
+          style={{
+            fontSize: "0.85rem",
+            display: "block",
+            marginTop: "1.1rem",
+          }}
+        >
+          Snapshot history
+        </strong>
         <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0.65rem" }}>
-          Snapshots captured on CO approve, invoice send, and payment.
+          Captured on CO approve, invoice send, and payment.
         </p>
         {d.snapshots.length === 0 ? (
           <div className="muted" style={{ fontSize: "0.85rem" }}>
@@ -607,7 +718,24 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
 
       {/* Action center */}
       <div className="panel" style={{ padding: "1rem" }}>
-        <strong style={{ fontSize: "0.9rem" }}>Action & risk center</strong>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "0.75rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <strong style={{ fontSize: "0.9rem" }}>Action & risk center</strong>
+          <Link
+            className="btn btn-ghost"
+            href={`/api/projects/${d.projectId}/export/financials`}
+            style={{ fontSize: "0.8rem" }}
+          >
+            Export financials CSV
+          </Link>
+        </div>
         <ul style={{ margin: "0.65rem 0 0", paddingLeft: "1.1rem" }}>
           {d.alerts.length === 0 ? (
             <li style={{ color: "var(--muted)" }}>No open alerts</li>
@@ -615,7 +743,7 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
             d.alerts.map((a) => {
               const sev = severityStyle(a.severity);
               return (
-                <li key={a.key} style={{ marginBottom: "0.35rem" }}>
+                <li key={a.key} style={{ marginBottom: "0.45rem" }}>
                   <span style={{ color: sev.color, fontWeight: 700 }}>
                     [{sev.label}]
                   </span>{" "}
@@ -623,11 +751,28 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
                     {a.label}
                     {a.count > 1 ? ` (${a.count})` : ""}
                   </Link>
-                  {a.detail ? (
+                  {a.dollarImpact != null ? (
+                    <span style={{ fontWeight: 600 }}>
+                      {" "}
+                      · {formatSignedMoney(a.dollarImpact)}
+                    </span>
+                  ) : null}
+                  {a.responsiblePerson ? (
                     <span className="muted" style={{ fontSize: "0.8rem" }}>
                       {" "}
-                      — {a.detail}
+                      · Owner {a.responsiblePerson}
                     </span>
+                  ) : null}
+                  {a.dueDate ? (
+                    <span className="muted" style={{ fontSize: "0.8rem" }}>
+                      {" "}
+                      · Due {a.dueDate}
+                    </span>
+                  ) : null}
+                  {a.detail ? (
+                    <div className="muted" style={{ fontSize: "0.8rem" }}>
+                      {a.detail}
+                    </div>
                   ) : null}
                 </li>
               );
@@ -667,11 +812,25 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
 
       {/* Ledger drill */}
       <div id="ledger" className="panel" style={{ padding: "1rem", overflowX: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <strong style={{ fontSize: "0.9rem" }}>Cost ledger (sample)</strong>
-          <button className="btn btn-ghost" type="button" onClick={() => setDrill(drill === "ledger" ? null : "ledger")}>
-            {drill === "ledger" ? "Collapse" : "Expand"}
-          </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+          <strong style={{ fontSize: "0.9rem" }}>
+            Cost ledger
+            {ledgerCategory ? ` · ${ledgerCategory}` : " (sample)"}
+          </strong>
+          <div style={{ display: "flex", gap: "0.4rem" }}>
+            {ledgerCategory ? (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setLedgerCategory(null)}
+              >
+                Clear filter
+              </button>
+            ) : null}
+            <button className="btn btn-ghost" type="button" onClick={() => setDrill(drill === "ledger" ? null : "ledger")}>
+              {drill === "ledger" ? "Collapse" : "Expand"}
+            </button>
+          </div>
         </div>
         {(drill === "ledger" || drill === "profit") && (
           <table className="data-table" style={{ width: "100%", marginTop: "0.65rem", fontSize: "0.78rem" }}>
@@ -680,17 +839,23 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
                 <th style={{ textAlign: "left" }}>Category</th>
                 <th style={{ textAlign: "left" }}>Source</th>
                 <th style={{ textAlign: "left" }}>Description</th>
+                <th style={{ textAlign: "left" }}>CO</th>
                 <th>Committed</th>
                 <th>Actual</th>
                 <th>Forecast</th>
               </tr>
             </thead>
             <tbody>
-              {d.ledgerSample.map((row) => (
+              {filteredLedger.map((row) => (
                 <tr key={row.id}>
                   <td style={{ textAlign: "left" }}>{row.category}</td>
                   <td style={{ textAlign: "left" }}>{row.source_type}</td>
                   <td style={{ textAlign: "left" }}>{row.description || "—"}</td>
+                  <td style={{ textAlign: "left", fontSize: "0.72rem" }}>
+                    {row.change_order_id
+                      ? row.change_order_id.slice(0, 8)
+                      : "—"}
+                  </td>
                   <td style={{ textAlign: "right" }}>
                     {formatMoney(row.committed_amount)}
                   </td>
@@ -702,9 +867,9 @@ export function ProjectDashboardView({ dashboard, canViewRates }: Props) {
                   </td>
                 </tr>
               ))}
-              {!d.ledgerSample.length ? (
+              {!filteredLedger.length ? (
                 <tr>
-                  <td colSpan={6} style={{ color: "var(--muted)" }}>
+                  <td colSpan={7} style={{ color: "var(--muted)" }}>
                     No ledger rows yet
                   </td>
                 </tr>

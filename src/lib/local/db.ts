@@ -878,6 +878,50 @@ function migrate(database: Database.Database) {
   } catch {
     // Tables may not exist yet on brand-new DBs before schema apply
   }
+
+  // Wave C/D integrity columns
+  try {
+    const auditCols = database
+      .prepare("pragma table_info(audit_events)")
+      .all() as Array<{ name: string }>;
+    if (auditCols.length && !auditCols.some((c) => c.name === "reason")) {
+      database.exec("alter table audit_events add column reason text");
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const expCols = database
+      .prepare("pragma table_info(project_expenses)")
+      .all() as Array<{ name: string }>;
+    if (expCols.length && !expCols.some((c) => c.name === "is_billable")) {
+      database.exec(
+        "alter table project_expenses add column is_billable integer not null default 0",
+      );
+    }
+    if (expCols.length && !expCols.some((c) => c.name === "change_order_id")) {
+      database.exec(
+        "alter table project_expenses add column change_order_id text references project_change_orders(id)",
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const ledgerCols = database
+      .prepare("pragma table_info(project_cost_ledger)")
+      .all() as Array<{ name: string }>;
+    if (
+      ledgerCols.length &&
+      !ledgerCols.some((c) => c.name === "change_order_id")
+    ) {
+      database.exec(
+        "alter table project_cost_ledger add column change_order_id text references project_change_orders(id)",
+      );
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function getLocalDb() {

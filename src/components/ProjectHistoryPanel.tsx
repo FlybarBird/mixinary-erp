@@ -95,6 +95,11 @@ export function ProjectHistoryPanel({ projectId }: Props) {
                   by {e.actor_id.slice(0, 8)}
                 </div>
               )}
+              {e.reason ? (
+                <div style={{ color: "var(--muted)", fontSize: "0.78rem", gridColumn: "1 / -1" }}>
+                  Reason: {e.reason}
+                </div>
+              ) : null}
             </li>
           ))}
         </ol>

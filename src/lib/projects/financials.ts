@@ -345,3 +345,118 @@ export function burdenedLaborCost(
 export function billableLaborValue(hours: number, billingRate: number): number {
   return n(hours) * n(billingRate);
 }
+
+/** Cash paid out = vendor AP paid + paid expenses + paid sub bills. */
+export function cashPaidOut(parts: {
+  vendorPaid?: number | null;
+  expensesPaid?: number | null;
+  subcontractPaid?: number | null;
+}): number {
+  return n(parts.vendorPaid) + n(parts.expensesPaid) + n(parts.subcontractPaid);
+}
+
+/** Cash Position = Collected − Cash Paid Out (not accounting profit). */
+export function cashPosition(collected: number, paidOut: number): number {
+  return n(collected) - n(paidOut);
+}
+
+export function percentOf(part: number, whole: number | null): number | null {
+  if (whole == null || whole <= 0) return null;
+  return (n(part) / whole) * 100;
+}
+
+/** Estimated CO cost = sum of budget deltas (material/labor/expense/sub/overhead). */
+export function changeOrderEstimatedCost(co: ApprovedChangeOrder): number {
+  return (
+    n(co.budget_material_delta) +
+    n(co.budget_labor_delta) +
+    n(co.budget_expense_delta) +
+    n(co.budget_subcontractor_delta) +
+    n(co.budget_overhead_delta)
+  );
+}
+
+export function changeOrderEstimatedProfit(co: ApprovedChangeOrder): number {
+  return n(co.revenue_delta) - changeOrderEstimatedCost(co);
+}
+
+export function changeOrderEstimatedMargin(co: ApprovedChangeOrder): number | null {
+  const rev = n(co.revenue_delta);
+  if (rev <= 0) return null;
+  return changeOrderEstimatedProfit(co) / rev;
+}
+
+export type ProfitWaterfallStep = {
+  key: string;
+  label: string;
+  amount: number;
+  running: number;
+};
+
+/**
+ * Original contract profit → CO profit impact → cost variance vs original budget
+ * → Forecast Profit. Amounts are signed contributions to the running total.
+ */
+export function profitWaterfall(params: {
+  originalRevenue: number | null;
+  originalBudget: number | null;
+  approvedCoRevenue: number;
+  approvedCoBudgetDelta: number;
+  forecastFinalCost: number;
+  forecastProfit: number | null;
+}): ProfitWaterfallStep[] {
+  const originalRev = params.originalRevenue;
+  const originalBudget = params.originalBudget;
+  const originalProfit =
+    originalRev == null || originalBudget == null
+      ? null
+      : originalRev - originalBudget;
+
+  const steps: ProfitWaterfallStep[] = [];
+  let running = n(originalProfit);
+
+  steps.push({
+    key: "original",
+    label: "Original contract profit",
+    amount: n(originalProfit),
+    running,
+  });
+
+  const coProfitImpact =
+    n(params.approvedCoRevenue) - n(params.approvedCoBudgetDelta);
+  running += coProfitImpact;
+  steps.push({
+    key: "co_impact",
+    label: "Approved CO profit impact",
+    amount: coProfitImpact,
+    running,
+  });
+
+  // Cost variance vs revised budget: budget − forecast (positive = under)
+  const revisedBudget =
+    originalBudget == null && !params.approvedCoBudgetDelta
+      ? null
+      : n(originalBudget) + n(params.approvedCoBudgetDelta);
+  const costVar =
+    revisedBudget == null
+      ? 0
+      : revisedBudget - n(params.forecastFinalCost);
+  running += costVar;
+  steps.push({
+    key: "cost_variance",
+    label: "Cost variance vs revised budget",
+    amount: costVar,
+    running,
+  });
+
+  const forecast =
+    params.forecastProfit == null ? running : n(params.forecastProfit);
+  steps.push({
+    key: "forecast",
+    label: "Forecast profit",
+    amount: forecast,
+    running: forecast,
+  });
+
+  return steps;
+}

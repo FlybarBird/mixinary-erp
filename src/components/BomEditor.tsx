@@ -627,7 +627,7 @@ export function BomEditor({
               <th title="Override %">%</th>
               <th title="Unit sale">Sale</th>
               <th title="Total sale">Total&nbsp;sale</th>
-              <th title="Quoted Material Profit (Sale − live material cost on header; line cells use Sale − Quote)">QMP</th>
+              <th title="Quoted Material Profit">QMP</th>
               <th title="Vendor">Vendor</th>
               <th title="Required by date">Required&nbsp;by</th>
               <th title="Procurement status">Procurement</th>

@@ -59,6 +59,10 @@ export async function PATCH(
   if (body.tax !== undefined) updates.tax = Number(body.tax);
   if (body.cost_code !== undefined) updates.cost_code = body.cost_code as string | null;
   if (body.is_additional_charge !== undefined) updates.is_additional_charge = Boolean(body.is_additional_charge);
+  if (body.is_billable !== undefined) updates.is_billable = Boolean(body.is_billable);
+  if (body.change_order_id !== undefined) {
+    updates.change_order_id = body.change_order_id || null;
+  }
   if (body.receipt_path !== undefined) updates.receipt_path = body.receipt_path as string | null;
   if (body.notes !== undefined) updates.notes = body.notes as string | null;
 

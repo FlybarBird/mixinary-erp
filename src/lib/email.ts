@@ -10,6 +10,8 @@ export const EMAIL_SETTINGS_KEY = "email_settings";
 export type StoredEmailSettings = {
   provider?: MailProviderPreference;
   brandName?: string;
+  /** Global CC for procurement / PO order emails (mailto + future sends). */
+  poOrderCc?: string;
   resendApiKey?: string;
   resendFrom?: string;
   smtpHost?: string;
@@ -189,6 +191,9 @@ export function mergeEmailSettingsPatch(
   }
   if (patch.brandName !== undefined) {
     next.brandName = trimOrEmpty(patch.brandName) || undefined;
+  }
+  if (patch.poOrderCc !== undefined) {
+    next.poOrderCc = trimOrEmpty(patch.poOrderCc) || undefined;
   }
   if (patch.resendFrom !== undefined) {
     next.resendFrom = trimOrEmpty(patch.resendFrom) || undefined;
@@ -440,6 +445,15 @@ export function buildResetRedirectUrl() {
   return `${appUrl()}/auth/reset`;
 }
 
+/** Global CC used on PO order emails (settings, then env). */
+export function getPoOrderEmailCc() {
+  return firstNonEmpty(
+    stored().poOrderCc,
+    process.env.PO_ORDER_EMAIL_CC,
+    process.env.PROCUREMENT_EMAIL_CC,
+  );
+}
+
 export function getMailStatus() {
   const s = stored();
   const hasStored = Boolean(getStoredEmailSettings());
@@ -460,6 +474,7 @@ export function getMailStatus() {
     settings: {
       provider: providerPreference(),
       brandName: firstNonEmpty(s.brandName, process.env.APP_BRAND_NAME) || "",
+      poOrderCc: getPoOrderEmailCc(),
       resendFrom: firstNonEmpty(s.resendFrom, process.env.RESEND_FROM),
       resendApiKeyMasked: maskSecret(
         firstNonEmpty(s.resendApiKey, process.env.RESEND_API_KEY),

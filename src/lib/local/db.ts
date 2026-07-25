@@ -246,6 +246,12 @@ function migrate(database: Database.Database) {
   if (vendorCols.length && !vendorCols.some((c) => c.name === "account_number")) {
     database.exec("alter table vendors add column account_number text");
   }
+  if (vendorCols.length && !vendorCols.some((c) => c.name === "contact_name")) {
+    database.exec("alter table vendors add column contact_name text");
+  }
+  if (vendorCols.length && !vendorCols.some((c) => c.name === "contact_email")) {
+    database.exec("alter table vendors add column contact_email text");
+  }
 
   const clientCols = database
     .prepare("pragma table_info(clients)")

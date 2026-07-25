@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS vendors (
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   account_number TEXT,
+  contact_name TEXT,
+  contact_email TEXT,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -8,6 +8,8 @@ type Draft = {
   code: string;
   name: string;
   account_number: string;
+  contact_name: string;
+  contact_email: string;
   notes: string;
 };
 
@@ -15,6 +17,8 @@ const emptyDraft = (): Draft => ({
   code: "",
   name: "",
   account_number: "",
+  contact_name: "",
+  contact_email: "",
   notes: "",
 });
 
@@ -49,6 +53,8 @@ export function VendorManager({
         code: draft.code.trim(),
         name: draft.name.trim(),
         account_number: draft.account_number.trim() || null,
+        contact_name: draft.contact_name.trim() || null,
+        contact_email: draft.contact_email.trim() || null,
         notes: draft.notes.trim() || null,
       }),
     });
@@ -75,6 +81,8 @@ export function VendorManager({
       code: vendor.code,
       name: vendor.name,
       account_number: vendor.account_number || "",
+      contact_name: vendor.contact_name || "",
+      contact_email: vendor.contact_email || "",
       notes: vendor.notes || "",
     });
     setError(null);
@@ -97,6 +105,8 @@ export function VendorManager({
         code: editDraft.code.trim(),
         name: editDraft.name.trim(),
         account_number: editDraft.account_number.trim() || null,
+        contact_name: editDraft.contact_name.trim() || null,
+        contact_email: editDraft.contact_email.trim() || null,
         notes: editDraft.notes.trim() || null,
       }),
     });
@@ -138,51 +148,107 @@ export function VendorManager({
     router.refresh();
   }
 
+  const colCount = canEdit ? 7 : 6;
+
   return (
     <div className="stack">
       {canEdit ? (
-        <form className="panel" style={{ padding: "1rem" }} onSubmit={onCreate}>
+        <form className="panel stack" style={{ padding: "1rem" }} onSubmit={onCreate}>
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1.4fr 1.2fr 1.4fr auto",
+              gridTemplateColumns: "1fr 1.4fr 1.1fr 1.2fr 1.4fr 1.4fr auto",
               gap: "0.65rem",
+              alignItems: "end",
             }}
           >
-            <input
-              className="field"
-              placeholder="Code (SP)"
-              required
-              value={draft.code}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, code: e.target.value }))
-              }
-            />
-            <input
-              className="field"
-              placeholder="Name"
-              required
-              value={draft.name}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, name: e.target.value }))
-              }
-            />
-            <input
-              className="field"
-              placeholder="Account #"
-              value={draft.account_number}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, account_number: e.target.value }))
-              }
-            />
-            <input
-              className="field"
-              placeholder="Notes"
-              value={draft.notes}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, notes: e.target.value }))
-              }
-            />
+            <div>
+              <label className="label" htmlFor="vendor-code">
+                Code
+              </label>
+              <input
+                id="vendor-code"
+                className="field"
+                placeholder="SP"
+                required
+                value={draft.code}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, code: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="vendor-name">
+                Name
+              </label>
+              <input
+                id="vendor-name"
+                className="field"
+                placeholder="Name"
+                required
+                value={draft.name}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, name: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="vendor-account">
+                Account #
+              </label>
+              <input
+                id="vendor-account"
+                className="field"
+                placeholder="Account #"
+                value={draft.account_number}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, account_number: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="vendor-contact-name">
+                Contact
+              </label>
+              <input
+                id="vendor-contact-name"
+                className="field"
+                placeholder="Contact name"
+                value={draft.contact_name}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, contact_name: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="vendor-contact-email">
+                Contact email
+              </label>
+              <input
+                id="vendor-contact-email"
+                className="field"
+                type="email"
+                placeholder="orders@vendor.com"
+                value={draft.contact_email}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, contact_email: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="vendor-notes">
+                Notes
+              </label>
+              <input
+                id="vendor-notes"
+                className="field"
+                placeholder="Notes"
+                value={draft.notes}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, notes: e.target.value }))
+                }
+              />
+            </div>
             <button className="btn btn-primary" type="submit" disabled={busy}>
               Add
             </button>
@@ -200,6 +266,8 @@ export function VendorManager({
               <th>Code</th>
               <th>Name</th>
               <th>Account #</th>
+              <th>Contact</th>
+              <th>Contact email</th>
               <th>Notes</th>
               {canEdit ? <th style={{ width: 160 }}></th> : null}
             </tr>
@@ -255,6 +323,39 @@ export function VendorManager({
                       />
                     ) : (
                       v.account_number || "—"
+                    )}
+                  </td>
+                  <td>
+                    {editing ? (
+                      <input
+                        className="field"
+                        value={editDraft.contact_name}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({
+                            ...d,
+                            contact_name: e.target.value,
+                          }))
+                        }
+                      />
+                    ) : (
+                      v.contact_name || "—"
+                    )}
+                  </td>
+                  <td>
+                    {editing ? (
+                      <input
+                        className="field"
+                        type="email"
+                        value={editDraft.contact_email}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({
+                            ...d,
+                            contact_email: e.target.value,
+                          }))
+                        }
+                      />
+                    ) : (
+                      v.contact_email || "—"
                     )}
                   </td>
                   <td>
@@ -323,7 +424,7 @@ export function VendorManager({
             })}
             {!vendors.length ? (
               <tr>
-                <td colSpan={canEdit ? 5 : 4}>No vendors yet.</td>
+                <td colSpan={colCount}>No vendors yet.</td>
               </tr>
             ) : null}
           </tbody>

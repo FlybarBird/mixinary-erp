@@ -45,6 +45,8 @@ export async function POST(request: Request) {
       code,
       name,
       account_number: cleanText(body.account_number),
+      contact_name: cleanText(body.contact_name),
+      contact_email: cleanText(body.contact_email),
       notes: cleanText(body.notes),
     })
     .select("*")
@@ -83,6 +85,8 @@ export async function PATCH(request: Request) {
       code,
       name,
       account_number: cleanText(body.account_number),
+      contact_name: cleanText(body.contact_name),
+      contact_email: cleanText(body.contact_email),
       notes: cleanText(body.notes),
     })
     .eq("id", id)

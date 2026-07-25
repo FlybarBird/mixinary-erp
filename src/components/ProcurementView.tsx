@@ -33,7 +33,13 @@ type BomLineSummary = {
 
 type OrderRow = PurchaseOrder & {
   items: PurchaseOrderItem[];
-  vendors?: { id: string; code: string; name: string } | null;
+  vendors?: {
+    id: string;
+    code: string;
+    name: string;
+    contact_name?: string | null;
+    contact_email?: string | null;
+  } | null;
 };
 
 type Props = {
@@ -44,6 +50,10 @@ type Props = {
   bomLines: BomLineSummary[];
   canEdit: boolean;
   canReceive: boolean;
+  /** Display name for PO email signature */
+  signerName?: string | null;
+  /** Global CC for PO order mailto links (Admin → Email) */
+  poOrderCc?: string | null;
 };
 
 function varianceStyle(delta: number): { color: string; fontWeight: number } {
@@ -89,50 +99,91 @@ function currencyFmt(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 }
 
-function buildPoOrderMailto(po: OrderRow): string {
+function extractEmail(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const match = String(value).match(/[^\s<>"]+@[^\s<>"]+\.[^\s<>"]+/);
+  return match ? match[0] : null;
+}
+
+function resolvePoVendorContact(
+  po: OrderRow,
+  vendors: Vendor[],
+): { name: string | null; email: string | null } {
+  const fromJoin = po.vendors;
+  const fromList = po.vendor_id
+    ? vendors.find((v) => v.id === po.vendor_id)
+    : undefined;
+  const contactName =
+    String(fromJoin?.contact_name || fromList?.contact_name || "").trim() ||
+    null;
+  const contactEmail =
+    extractEmail(fromJoin?.contact_email) ||
+    extractEmail(fromList?.contact_email) ||
+    extractEmail(po.vendor_contact);
+  return { name: contactName, email: contactEmail };
+}
+
+function buildPoOrderEmail(
+  po: OrderRow,
+  vendors: Vendor[],
+  signerName?: string | null,
+  poOrderCc?: string | null,
+) {
   const items = po.items.filter((i) => i.item_status !== "cancelled");
-  const pad = (s: string, n: number) => s.padEnd(n).slice(0, n);
+  const signature =
+    String(signerName || "").trim() || "Mixinary";
+  const contact = resolvePoVendorContact(po, vendors);
+  const greeting = contact.name ? `Hello ${contact.name},` : "Hello,";
 
-  const nameLens = items.map((i) => (i.description || "").length);
-  const qtyLens = items.map((i) => String(i.qty_ordered ?? 0).length);
-  const skuLens = items.map((i) => (i.vendor_sku || i.sku || "").length);
-
-  const nameW = Math.min(48, Math.max(20, 4, ...nameLens));
-  const qtyW = Math.max(8, ...qtyLens, 8);
-  const skuW = Math.min(24, Math.max(8, 3, ...skuLens));
-
-  const header = `${pad("Name", nameW)}  ${pad("Quantity", qtyW)}  ${pad("SKU", skuW)}`;
-  const rule = "-".repeat(header.length);
-  const rows =
+  const itemBlocks =
     items.length > 0
-      ? items.map((i) => {
-          const name = i.description || "";
+      ? items.flatMap((i, idx) => {
+          const name = (i.description || "Item").trim();
           const qty = String(i.qty_ordered ?? 0);
-          const sku = i.vendor_sku || i.sku || "";
-          return `${pad(name, nameW)}  ${pad(qty, qtyW)}  ${pad(sku, skuW)}`;
+          const sku = (i.vendor_sku || i.sku || "").trim();
+          const block = [
+            `${idx + 1}. Quantity: ${qty}`,
+            sku ? `   SKU: ${sku}` : null,
+            `   Name: ${name}`,
+          ].filter(Boolean) as string[];
+          return idx < items.length - 1 ? [...block, ""] : block;
         })
       : ["(No line items)"];
 
   const body = [
-    `Hello,`,
-    ``,
-    `Please process the following order for Mixinary PO ${po.po_number}:`,
-    ``,
-    header,
-    rule,
-    ...rows,
-    ``,
-    `Thank you,`,
-    `Mixinary`,
+    greeting,
+    "",
+    "",
+    `Please process the following order for Mixinary PO ${po.po_number}.`,
+    "",
+    "",
+    "Order details:",
+    "",
+    ...itemBlocks,
+    "",
+    "",
+    "Thank you,",
+    "",
+    signature,
   ].join("\n");
 
-  const subject = `Mixinary :${po.po_number}`;
-  const to =
-    po.vendor_contact && po.vendor_contact.includes("@")
-      ? po.vendor_contact.trim()
-      : "";
+  const subject = `Mixinary PO ${po.po_number}`;
+  const to = contact.email;
+  const cc = extractEmail(poOrderCc);
 
-  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // mailto URLs break when too long; keep a short body for the link.
+  const mailtoBody =
+    body.length > 1600
+      ? `${body.slice(0, 1600)}\n\n…(truncated)`
+      : body;
+  const parts = [
+    `subject=${encodeURIComponent(subject)}`,
+    `body=${encodeURIComponent(mailtoBody)}`,
+  ];
+  if (cc) parts.push(`cc=${encodeURIComponent(cc)}`);
+  const href = `mailto:${to ?? ""}?${parts.join("&")}`;
+
+  return { to, cc, subject, body, href };
 }
 
 function MailIcon() {
@@ -181,6 +232,8 @@ export function ProcurementView({
   bomLines,
   canEdit,
   canReceive,
+  signerName = null,
+  poOrderCc = null,
 }: Props) {
   const router = useRouter();
   const [orders, setOrders] = useState<OrderRow[]>(initialOrders);
@@ -718,8 +771,17 @@ export function ProcurementView({
                       </span>
                       <a
                         className="btn btn-ghost"
-                        href={buildPoOrderMailto(po)}
-                        title={`Email order ${po.po_number}`}
+                        href={buildPoOrderEmail(
+                          po,
+                          vendors,
+                          signerName,
+                          poOrderCc,
+                        ).href}
+                        title={
+                          resolvePoVendorContact(po, vendors).email
+                            ? `Email order ${po.po_number}`
+                            : `Email order ${po.po_number} (set Contact email on the vendor to prefill To:)`
+                        }
                         aria-label={`Email order ${po.po_number}`}
                         style={{
                           display: "inline-flex",
@@ -1035,9 +1097,10 @@ export function ProcurementView({
               </label>
 
               <label>
-                <div className="label">Vendor Contact</div>
+                <div className="label">Vendor contact override</div>
                 <input
                   className="field"
+                  placeholder="Uses vendor Contact email if blank"
                   value={editFields.vendor_contact ?? ""}
                   onChange={(e) =>
                     setEditFields((p) => ({ ...p, vendor_contact: e.target.value }))

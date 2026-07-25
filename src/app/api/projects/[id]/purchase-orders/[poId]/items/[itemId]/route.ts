@@ -244,7 +244,7 @@ export async function PATCH(
   const [{ data: po }, { data: items }] = await Promise.all([
     supabase
       .from("purchase_orders")
-      .select("*, vendors(id, code, name)")
+      .select("*, vendors(id, code, name, contact_name, contact_email)")
       .eq("id", poId)
       .maybeSingle(),
     supabase.from("purchase_order_items").select("*").eq("po_id", poId),

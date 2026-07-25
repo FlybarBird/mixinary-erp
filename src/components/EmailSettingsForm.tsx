@@ -7,6 +7,7 @@ type MailProviderPreference = "auto" | "resend" | "smtp";
 type SettingsFields = {
   provider: MailProviderPreference;
   brandName: string;
+  poOrderCc: string;
   resendFrom: string;
   resendApiKeyMasked: string | null;
   resendApiKeySource: "settings" | "env" | null;
@@ -35,6 +36,7 @@ type Status = {
 const emptyForm = {
   provider: "auto" as MailProviderPreference,
   brandName: "",
+  poOrderCc: "",
   resendApiKey: "",
   resendFrom: "",
   smtpHost: "",
@@ -60,6 +62,7 @@ export function EmailSettingsForm() {
     setForm({
       provider: s.provider || "auto",
       brandName: s.brandName || "",
+      poOrderCc: s.poOrderCc || "",
       resendApiKey: "",
       resendFrom: s.resendFrom || "",
       smtpHost: s.smtpHost || "",
@@ -104,6 +107,7 @@ export function EmailSettingsForm() {
         action: "save",
         provider: form.provider,
         brandName: form.brandName,
+        poOrderCc: form.poOrderCc,
         resendApiKey: form.resendApiKey,
         resendFrom: form.resendFrom,
         smtpHost: form.smtpHost,
@@ -236,6 +240,24 @@ export function EmailSettingsForm() {
               onChange={(e) => setField("brandName", e.target.value)}
               placeholder="Mixinary ERP"
             />
+          </div>
+
+          <div>
+            <label className="label" htmlFor="poOrderCc">
+              PO order email CC (global)
+            </label>
+            <input
+              id="poOrderCc"
+              className="field"
+              type="email"
+              value={form.poOrderCc}
+              onChange={(e) => setField("poOrderCc", e.target.value)}
+              placeholder="purchasing@yourcompany.com"
+            />
+            <p className="muted" style={{ marginBottom: 0, marginTop: "0.35rem" }}>
+              Added as CC on every procurement Email link. Cloud: set{" "}
+              <code>PO_ORDER_EMAIL_CC</code> instead.
+            </p>
           </div>
 
           <h3 className="section-title" style={{ fontSize: "0.95rem" }}>

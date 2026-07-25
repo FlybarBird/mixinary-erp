@@ -19,7 +19,7 @@ export async function GET(
 
   const { data: orders, error } = await supabase
     .from("purchase_orders")
-    .select("*, vendors(id, code, name)")
+    .select("*, vendors(id, code, name, contact_name, contact_email)")
     .eq("project_id", projectId)
     .order("po_number");
 
@@ -91,6 +91,16 @@ export async function POST(
     0,
   );
 
+  const { data: vendorRow } = await supabase
+    .from("vendors")
+    .select("contact_email, contact_name")
+    .eq("id", vendor_id)
+    .maybeSingle();
+  const vendorContact =
+    String(vendorRow?.contact_email || "").trim() ||
+    String(vendorRow?.contact_name || "").trim() ||
+    null;
+
   const poId = newId();
   const { error: poError } = await supabase.from("purchase_orders").insert({
     id: poId,
@@ -100,6 +110,7 @@ export async function POST(
     order_date: order_date ?? null,
     ordered_by: profile.id,
     status: "draft",
+    vendor_contact: vendorContact,
     subtotal,
     total: subtotal,
   });
@@ -141,7 +152,7 @@ export async function POST(
 
   const { data: po } = await supabase
     .from("purchase_orders")
-    .select("*, vendors(id, code, name)")
+    .select("*, vendors(id, code, name, contact_name, contact_email)")
     .eq("id", poId)
     .maybeSingle();
 

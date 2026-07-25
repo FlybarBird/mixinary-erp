@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     const patch: StoredEmailSettings = {
       provider,
       brandName: body.brandName != null ? String(body.brandName) : undefined,
+      poOrderCc: body.poOrderCc != null ? String(body.poOrderCc) : undefined,
       resendApiKey:
         body.resendApiKey != null ? String(body.resendApiKey) : undefined,
       resendFrom: body.resendFrom != null ? String(body.resendFrom) : undefined,

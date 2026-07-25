@@ -193,6 +193,8 @@ export interface Vendor {
   code: string;
   name: string;
   account_number: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
   notes: string | null;
 }
 

@@ -1,5 +1,6 @@
 import { ProcurementView } from "@/components/ProcurementView";
 import { canManageProcurement, canReceive, requireProfile } from "@/lib/auth";
+import { getPoOrderEmailCc } from "@/lib/email";
 import { createClient } from "@/lib/supabase/server";
 import type { PurchaseOrder, PurchaseOrderItem, Vendor } from "@/lib/types";
 
@@ -21,7 +22,7 @@ export default async function ProcurementPage({
         .maybeSingle(),
       supabase
         .from("purchase_orders")
-        .select("*, vendors(id, code, name)")
+        .select("*, vendors(id, code, name, contact_name, contact_email)")
         .eq("project_id", id)
         .order("po_number"),
       supabase.from("vendors").select("*").order("code"),
@@ -51,7 +52,13 @@ export default async function ProcurementPage({
 
   const ordersWithItems = (orders ?? []).map((o) => ({
     ...(o as PurchaseOrder & {
-      vendors?: { id: string; code: string; name: string } | null;
+      vendors?: {
+        id: string;
+        code: string;
+        name: string;
+        contact_name?: string | null;
+        contact_email?: string | null;
+      } | null;
     }),
     items: itemsByPo.get(o.id) ?? [],
   }));
@@ -78,6 +85,8 @@ export default async function ProcurementPage({
       }))}
       canEdit={canManageProcurement(profile.role)}
       canReceive={canReceive(profile.role)}
+      signerName={profile.full_name || profile.email}
+      poOrderCc={getPoOrderEmailCc() || null}
     />
   );
 }

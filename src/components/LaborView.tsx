@@ -9,6 +9,7 @@ interface Props {
   initialEntries: LaborEntry[];
   canEdit: boolean;
   canApprove: boolean;
+  canViewRates?: boolean;
 }
 
 const CATEGORIES = [
@@ -45,11 +46,19 @@ function emptyForm() {
     regular_hours: "",
     overtime_hours: "",
     hourly_rate: "",
+    burden_pct: "",
+    billing_rate: "",
     notes: "",
   };
 }
 
-export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Props) {
+export function LaborView({
+  projectId,
+  initialEntries,
+  canEdit,
+  canApprove,
+  canViewRates = false,
+}: Props) {
   const [entries, setEntries] = useState<LaborEntry[]>(initialEntries);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
@@ -100,6 +109,10 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
       regular_hours: String(entry.regular_hours ?? ""),
       overtime_hours: String(entry.overtime_hours ?? ""),
       hourly_rate: String(entry.hourly_rate ?? ""),
+      burden_pct: String(
+        entry.burden_pct != null ? Number(entry.burden_pct) * 100 : "",
+      ),
+      billing_rate: String(entry.billing_rate ?? ""),
       notes: entry.notes ?? "",
     });
     setShowForm(true);
@@ -126,6 +139,8 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
         regular_hours: form.regular_hours ? Number(form.regular_hours) : 0,
         overtime_hours: form.overtime_hours ? Number(form.overtime_hours) : 0,
         hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : 0,
+        burden_pct: form.burden_pct ? Number(form.burden_pct) / 100 : 0,
+        billing_rate: form.billing_rate ? Number(form.billing_rate) : 0,
         notes: form.notes || null,
       };
 
@@ -192,14 +207,18 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
           <div className="label">Actual Hours</div>
           <div className="value">{summary.actHours.toFixed(1)}</div>
         </div>
-        <div className="workspace-stat">
-          <div className="label">Total Cost</div>
-          <div className="value">{formatMoney(summary.totalCost)}</div>
-        </div>
-        <div className="workspace-stat">
-          <div className="label">Approved Cost</div>
-          <div className="value">{formatMoney(summary.approvedCost)}</div>
-        </div>
+        {canViewRates ? (
+          <div className="workspace-stat">
+            <div className="label">Total Cost</div>
+            <div className="value">{formatMoney(summary.totalCost)}</div>
+          </div>
+        ) : null}
+        {canViewRates ? (
+          <div className="workspace-stat">
+            <div className="label">Approved Cost</div>
+            <div className="value">{formatMoney(summary.approvedCost)}</div>
+          </div>
+        ) : null}
         <div className="workspace-stat">
           <div className="label">Entries</div>
           <div className="value">{entries.length}</div>
@@ -216,7 +235,9 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
                   <tr>
                     <th style={{ textAlign: "left", paddingBottom: "0.25rem" }}>Worker</th>
                     <th style={{ textAlign: "right", paddingBottom: "0.25rem" }}>Hours</th>
-                    <th style={{ textAlign: "right", paddingBottom: "0.25rem" }}>Cost</th>
+                    {canViewRates ? (
+                      <th style={{ textAlign: "right", paddingBottom: "0.25rem" }}>Cost</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -224,7 +245,9 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
                     <tr key={worker}>
                       <td style={{ padding: "0.15rem 0" }}>{worker}</td>
                       <td style={{ textAlign: "right" }}>{hours.toFixed(1)}</td>
-                      <td style={{ textAlign: "right" }}>{formatMoney(cost)}</td>
+                      {canViewRates ? (
+                        <td style={{ textAlign: "right" }}>{formatMoney(cost)}</td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -239,7 +262,9 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
                   <tr>
                     <th style={{ textAlign: "left", paddingBottom: "0.25rem" }}>Category</th>
                     <th style={{ textAlign: "right", paddingBottom: "0.25rem" }}>Hours</th>
-                    <th style={{ textAlign: "right", paddingBottom: "0.25rem" }}>Cost</th>
+                    {canViewRates ? (
+                      <th style={{ textAlign: "right", paddingBottom: "0.25rem" }}>Cost</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -247,7 +272,9 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
                     <tr key={cat}>
                       <td style={{ padding: "0.15rem 0" }}>{cat}</td>
                       <td style={{ textAlign: "right" }}>{hours.toFixed(1)}</td>
-                      <td style={{ textAlign: "right" }}>{formatMoney(cost)}</td>
+                      {canViewRates ? (
+                        <td style={{ textAlign: "right" }}>{formatMoney(cost)}</td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -292,10 +319,22 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
               <span>Date</span>
               <input type="date" value={form.work_date} onChange={(e) => fieldVal("work_date", e.target.value)} />
             </label>
-            <label className="field">
-              <span>Hourly Rate ($)</span>
-              <input type="number" min="0" step="0.01" value={form.hourly_rate} onChange={(e) => fieldVal("hourly_rate", e.target.value)} />
-            </label>
+            {canViewRates ? (
+              <>
+                <label className="field">
+                  <span>Hourly Rate ($)</span>
+                  <input type="number" min="0" step="0.01" value={form.hourly_rate} onChange={(e) => fieldVal("hourly_rate", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Burden %</span>
+                  <input type="number" min="0" step="0.01" value={form.burden_pct} onChange={(e) => fieldVal("burden_pct", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Billing Rate ($)</span>
+                  <input type="number" min="0" step="0.01" value={form.billing_rate} onChange={(e) => fieldVal("billing_rate", e.target.value)} />
+                </label>
+              </>
+            ) : null}
             <label className="field">
               <span>Est. Hours</span>
               <input type="number" min="0" step="0.25" value={form.estimated_hours} onChange={(e) => fieldVal("estimated_hours", e.target.value)} />
@@ -347,8 +386,12 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
                 <th style={{ textAlign: "right" }}>Actual Hrs</th>
                 <th style={{ textAlign: "right" }}>Reg</th>
                 <th style={{ textAlign: "right" }}>OT</th>
-                <th style={{ textAlign: "right" }}>Rate</th>
-                <th style={{ textAlign: "right" }}>Total Cost</th>
+                {canViewRates ? (
+                  <th style={{ textAlign: "right" }}>Rate</th>
+                ) : null}
+                {canViewRates ? (
+                  <th style={{ textAlign: "right" }}>Total Cost</th>
+                ) : null}
                 <th style={{ textAlign: "center" }}>Status</th>
                 {(canEdit || canApprove) && <th />}
               </tr>
@@ -364,8 +407,12 @@ export function LaborView({ projectId, initialEntries, canEdit, canApprove }: Pr
                   <td style={{ textAlign: "right" }}>{Number(entry.actual_hours ?? 0).toFixed(1)}</td>
                   <td style={{ textAlign: "right" }}>{Number(entry.regular_hours ?? 0).toFixed(1)}</td>
                   <td style={{ textAlign: "right" }}>{Number(entry.overtime_hours ?? 0).toFixed(1)}</td>
-                  <td style={{ textAlign: "right" }}>{formatMoney(entry.hourly_rate)}</td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }}>{formatMoney(entry.total_cost)}</td>
+                  {canViewRates ? (
+                    <td style={{ textAlign: "right" }}>{formatMoney(entry.hourly_rate)}</td>
+                  ) : null}
+                  {canViewRates ? (
+                    <td style={{ textAlign: "right", fontWeight: 600 }}>{formatMoney(entry.total_cost)}</td>
+                  ) : null}
                   <td style={{ textAlign: "center" }}>
                     <span className={`badge ${APPROVAL_BADGE[entry.approval_status]}`}>
                       {APPROVAL_LABELS[entry.approval_status]}

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { canEditLabor, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { writeAuditEvent } from "@/lib/projects/workspace";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 function computeTotalCost(body: {
   regular_hours?: number | null;
@@ -79,6 +80,8 @@ export async function POST(
     regular_hours,
     overtime_hours,
     hourly_rate,
+    burden_pct: Number(body.burden_pct ?? 0) || 0,
+    billing_rate: Number(body.billing_rate ?? 0) || 0,
     total_cost,
     approval_status: "pending" as const,
     notes: (body.notes as string | null) ?? null,
@@ -103,6 +106,12 @@ export async function POST(
     after: data,
     actorId: profile.id,
   });
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
 
   return NextResponse.json({ entry: data }, { status: 201 });
 }

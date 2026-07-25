@@ -28,7 +28,7 @@ export default async function ProcurementPage({
       supabase
         .from("line_items")
         .select(
-          "id, description, vendor_id, procurement_status, qty, msrp, quote, override_pct, estimated_unit_cost",
+          "id, description, vendor_id, procurement_status, qty, qty_ordered, qty_received, msrp, quote, override_pct, estimated_unit_cost",
         )
         .eq("project_id", id),
     ]);
@@ -68,6 +68,8 @@ export default async function ProcurementPage({
         vendor_id: l.vendor_id,
         procurement_status: String(l.procurement_status || "not_ordered"),
         qty: Number(l.qty || 0),
+        qty_ordered: Number(l.qty_ordered || 0),
+        qty_received: Number(l.qty_received || 0),
         msrp: Number(l.msrp || 0),
         quote: l.quote == null ? null : Number(l.quote),
         override_pct: l.override_pct == null ? null : Number(l.override_pct),

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { canEditExpenses, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { writeAuditEvent } from "@/lib/projects/workspace";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import type { ExpenseCategory } from "@/lib/types";
 
 const VALID_CATEGORIES: ExpenseCategory[] = [
@@ -98,6 +99,12 @@ export async function POST(
     after: data,
     actorId: profile.id,
   });
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
+  }
 
   return NextResponse.json({ expense: data }, { status: 201 });
 }

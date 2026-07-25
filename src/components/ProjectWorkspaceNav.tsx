@@ -10,10 +10,19 @@ const TABS = [
   { href: "/procurement", label: "Procurement", match: "procurement" },
   { href: "/tracking", label: "Tracking", match: "tracking" },
   { href: "/expenses", label: "Expenses", match: "expenses" },
-  { href: "/dashboard", label: "Dashboard", match: "dashboard" },
+  { href: "/change-orders", label: "Change Orders", match: "change-orders", financial: true },
+  { href: "/billing", label: "Billing", match: "billing", financial: true },
+  { href: "/subcontracts", label: "Subs", match: "subcontracts", financial: true },
+  { href: "/dashboard", label: "Dashboard", match: "dashboard", financial: true },
 ] as const;
 
-export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
+export function ProjectWorkspaceNav({
+  projectId,
+  canViewFinancials = false,
+}: {
+  projectId: string;
+  canViewFinancials?: boolean;
+}) {
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
 
@@ -24,9 +33,13 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
     return pathname.startsWith(`${base}${tab.href}`);
   }
 
+  const tabs = TABS.filter(
+    (tab) => !("financial" in tab && tab.financial) || canViewFinancials,
+  );
+
   return (
     <nav className="project-workspace-nav" aria-label="Project views">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = isActive(tab);
         return (
           <Link

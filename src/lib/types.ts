@@ -172,10 +172,20 @@ export interface UserInvite {
 export interface Client {
   id: string;
   name: string;
+  code: string | null;
   contact_name: string | null;
   email: string | null;
   phone: string | null;
+  website: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
   notes: string | null;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Vendor {
@@ -202,10 +212,212 @@ export interface Project {
   default_override_pct: number;
   material_budget?: number | null;
   labor_budget?: number | null;
+  expense_budget?: number | null;
+  subcontractor_budget?: number | null;
+  overhead_budget?: number | null;
+  original_revenue?: number | null;
+  revenue_additions?: number | null;
+  revenue_credits?: number | null;
+  start_date?: string | null;
+  target_completion_date?: string | null;
+  percent_complete?: number | null;
+  financials_updated_at?: string | null;
+  labor_burden_enabled?: boolean | null;
+  default_burden_pct?: number | null;
   notes: string | null;
   created_at?: string;
   clients?: Client | null;
   project_manager?: UserProfile | null;
+}
+
+export type CostLedgerCategory =
+  | "materials"
+  | "labor"
+  | "freight"
+  | "subcontractors"
+  | "travel"
+  | "equipment"
+  | "permits"
+  | "other"
+  | "overhead";
+
+export type CostLedgerSourceType =
+  | "bom_item"
+  | "po_item"
+  | "po_shipping"
+  | "po_tax"
+  | "labor_entry"
+  | "expense"
+  | "adjustment"
+  | "subcontract"
+  | "subcontract_bill";
+
+export type ChangeOrderStatus =
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "void";
+
+export interface ProjectChangeOrder {
+  id: string;
+  project_id: string;
+  co_number: string;
+  title: string;
+  description: string | null;
+  status: ChangeOrderStatus;
+  revenue_delta: number;
+  budget_material_delta: number;
+  budget_labor_delta: number;
+  budget_expense_delta: number;
+  budget_subcontractor_delta: number;
+  budget_overhead_delta: number;
+  requested_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  effective_date: string | null;
+  customer_reference: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type InvoiceStatus =
+  | "draft"
+  | "sent"
+  | "partially_paid"
+  | "paid"
+  | "void";
+
+export interface ProjectInvoice {
+  id: string;
+  project_id: string;
+  invoice_number: string;
+  status: InvoiceStatus;
+  invoice_date: string;
+  due_date: string | null;
+  subtotal: number;
+  tax: number;
+  total: number;
+  amount_paid: number;
+  notes: string | null;
+  sent_at: string | null;
+  created_by: string | null;
+  lines?: ProjectInvoiceLine[];
+}
+
+export interface ProjectInvoiceLine {
+  id: string;
+  invoice_id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+  change_order_id: string | null;
+  category: string | null;
+  sort_order: number;
+}
+
+export interface ProjectPayment {
+  id: string;
+  project_id: string;
+  payment_date: string;
+  amount: number;
+  method: string | null;
+  reference: string | null;
+  notes: string | null;
+  created_by: string | null;
+  applications?: ProjectPaymentApplication[];
+}
+
+export interface ProjectPaymentApplication {
+  id: string;
+  payment_id: string;
+  invoice_id: string;
+  amount: number;
+}
+
+export type VendorBillStatus = "accrued" | "billed" | "paid" | "void";
+
+export interface VendorBill {
+  id: string;
+  project_id: string;
+  purchase_order_id: string | null;
+  vendor_id: string | null;
+  vendor_invoice_number: string | null;
+  bill_date: string | null;
+  due_date: string | null;
+  amount: number;
+  amount_paid: number;
+  status: VendorBillStatus;
+  notes: string | null;
+}
+
+export type SubcontractStatus = "draft" | "active" | "complete" | "cancelled";
+
+export interface ProjectSubcontract {
+  id: string;
+  project_id: string;
+  vendor_id: string | null;
+  sub_name: string | null;
+  description: string;
+  contract_amount: number;
+  status: SubcontractStatus;
+  billed_to_date: number;
+  paid_to_date: number;
+  notes: string | null;
+  bills?: ProjectSubcontractBill[];
+}
+
+export interface ProjectSubcontractBill {
+  id: string;
+  subcontract_id: string;
+  project_id: string;
+  bill_date: string;
+  description: string | null;
+  amount: number;
+  amount_paid: number;
+  status: string;
+}
+
+export interface ProjectFinancialSnapshot {
+  id: string;
+  project_id: string;
+  captured_at: string;
+  trigger: string;
+  current_revenue: number | null;
+  original_cost_budget: number | null;
+  revised_cost_budget: number | null;
+  committed: number;
+  actual: number;
+  forecast_final: number;
+  forecast_profit: number | null;
+  forecast_margin: number | null;
+  billed: number;
+  collected: number;
+  ar_outstanding: number;
+  material_sale: number;
+  material_only_profit: number;
+  percent_complete: number;
+}
+
+export interface ProjectCostLedgerEntry {
+  id: string;
+  project_id: string;
+  category: CostLedgerCategory | string;
+  source_type: CostLedgerSourceType | string;
+  source_id: string;
+  vendor_or_person: string | null;
+  description: string | null;
+  budget_amount: number;
+  committed_amount: number;
+  actual_amount: number;
+  forecast_amount: number;
+  transaction_date: string | null;
+  approval_status: string | null;
+  payment_status: string | null;
+  billable: boolean;
+  created_by?: string | null;
+  updated_by?: string | null;
 }
 
 export interface ProjectSection {
@@ -258,6 +470,9 @@ export interface PurchaseOrder {
   tax: number;
   shipping: number;
   total: number;
+  sale_total?: number;
+  profit?: number;
+  margin_pct?: number | null;
   vendor_contact: string | null;
   notes: string | null;
   vendors?: Vendor | null;
@@ -275,6 +490,12 @@ export interface PurchaseOrderItem {
   unit_price: number;
   line_total: number;
   shipping: number;
+  sale_total?: number;
+  allocated_shipping?: number;
+  allocated_tax?: number;
+  cost_total?: number;
+  profit?: number;
+  margin_pct?: number | null;
   expected_ship_date: string | null;
   expected_delivery_date: string | null;
   qty_shipped: number;
@@ -309,6 +530,8 @@ export interface LaborEntry {
   regular_hours: number;
   overtime_hours: number;
   hourly_rate: number;
+  burden_pct?: number | null;
+  billing_rate?: number | null;
   total_cost: number;
   approval_status: ApprovalStatus;
   notes: string | null;
@@ -325,6 +548,7 @@ export interface ProjectExpense {
   amount: number;
   tax: number;
   cost_code: string | null;
+  po_id?: string | null;
   submitted_by: string | null;
   approval_status: ApprovalStatus;
   payment_status: PaymentStatus;

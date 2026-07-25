@@ -202,7 +202,7 @@ export default async function DashboardPage() {
           <article className="insight-card">
             <div className="insight-card-head">
               <div>
-                <h3 className="insight-card-title">Out of pocket</h3>
+                <h3 className="insight-card-title">Quoted Material Profit</h3>
                 <p className="insight-card-sub">Approx. across loaded lines</p>
               </div>
             </div>

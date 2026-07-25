@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   calculateLinePricing,
   formatMoney,
+  formatPct,
   formatSignedMoney,
   outOfPocketStyle,
-  sumPricing,
 } from "@/lib/pricing";
+import { computeBomHeaderEconomics } from "@/lib/projects/bom-header-economics";
 import type {
   CatalogPart,
   LineItem,
@@ -22,12 +23,24 @@ import { AttachmentsPanel } from "@/components/AttachmentsPanel";
 
 type EditableLine = LineItem & { _key: string };
 
+type HeaderPo = { id: string; status: string; shipping?: number | null };
+type HeaderPoItem = {
+  po_id: string;
+  line_item_id?: string | null;
+  qty_ordered?: number | null;
+  unit_price?: number | null;
+  line_total?: number | null;
+  item_status?: string | null;
+};
+
 export function BomEditor({
   projectId,
   defaultOverridePct,
   initialSections,
   initialLines,
   vendors,
+  purchaseOrders = [],
+  poItems = [],
   canEditPricing,
 }: {
   projectId: string;
@@ -35,6 +48,8 @@ export function BomEditor({
   initialSections: ProjectSection[];
   initialLines: LineItem[];
   vendors: Vendor[];
+  purchaseOrders?: HeaderPo[];
+  poItems?: HeaderPoItem[];
   canEditPricing: boolean;
 }) {
   const router = useRouter();
@@ -67,7 +82,16 @@ export function BomEditor({
       ),
     [lines, defaultOverridePct],
   );
-  const totals = useMemo(() => sumPricing(priced), [priced]);
+  const headerEconomics = useMemo(
+    () =>
+      computeBomHeaderEconomics({
+        lines,
+        purchaseOrders,
+        poItems,
+        projectDefaultOverridePct: defaultOverridePct,
+      }),
+    [lines, purchaseOrders, poItems, defaultOverridePct],
+  );
 
   const sectionMap = useMemo(
     () => new Map(sections.map((s) => [s.id, s])),
@@ -521,13 +545,30 @@ export function BomEditor({
         {message ? <span className="muted">{message}</span> : null}
       </div>
 
-      <div className="row" style={{ gap: "1.25rem" }}>
-        <span>MSRP {formatMoney(totals.totalMsrp)}</span>
-        <span>Quote {formatMoney(totals.totalQuote)}</span>
-        <span>Sale {formatMoney(totals.totalSale)}</span>
-        <span>Savings {formatMoney(totals.clientSavings)}</span>
-        <span style={outOfPocketStyle(totals.outOfPocket, totals.totalQuote)}>
-          Out of pocket {formatSignedMoney(totals.outOfPocket)}
+      <div className="row" style={{ gap: "1.25rem", flexWrap: "wrap" }}>
+        <span>MSRP {formatMoney(headerEconomics.totalMsrp)}</span>
+        <span>Quote {formatMoney(headerEconomics.totalQuote)}</span>
+        <span>Sale {formatMoney(headerEconomics.totalSale)}</span>
+        <span>Savings {formatMoney(headerEconomics.clientSavings)}</span>
+        <span
+          title={`Cost = PO items ${formatMoney(headerEconomics.poItemCost)} + shipping ${formatMoney(headerEconomics.poShipping)} + unordered quote ${formatMoney(headerEconomics.unorderedQuoteCost)}`}
+          style={outOfPocketStyle(
+            headerEconomics.outOfPocket,
+            headerEconomics.totalSale,
+          )}
+        >
+          Quoted Material Profit {formatSignedMoney(headerEconomics.outOfPocket)}
+        </span>
+        <span
+          style={outOfPocketStyle(
+            headerEconomics.outOfPocket,
+            headerEconomics.totalSale,
+          )}
+        >
+          Margin{" "}
+          {headerEconomics.margin == null
+            ? "—"
+            : formatPct(headerEconomics.margin)}
         </span>
         {selected.size ? (
           <span className="muted">{selected.size} selected</span>
@@ -586,7 +627,7 @@ export function BomEditor({
               <th title="Override %">%</th>
               <th title="Unit sale">Sale</th>
               <th title="Total sale">Total&nbsp;sale</th>
-              <th title="Out of pocket">OOP</th>
+              <th title="Quoted Material Profit (Sale − live material cost on header; line cells use Sale − Quote)">QMP</th>
               <th title="Vendor">Vendor</th>
               <th title="Required by date">Required&nbsp;by</th>
               <th title="Procurement status">Procurement</th>

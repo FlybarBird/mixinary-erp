@@ -23,7 +23,6 @@ export function CreateProjectForm({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        project_number: form.get("project_number"),
         name: form.get("name"),
         client_id: form.get("client_id") || null,
         template_id: form.get("template_id") || null,
@@ -45,14 +44,10 @@ export function CreateProjectForm({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
           gap: "0.65rem",
         }}
       >
-        <div>
-          <label className="label">Project #</label>
-          <input className="field" name="project_number" required placeholder="Project #" />
-        </div>
         <div>
           <label className="label">Name</label>
           <input className="field" name="name" required placeholder="Client / room" />
@@ -90,6 +85,9 @@ export function CreateProjectForm({
           />
         </div>
       </div>
+      <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem", color: "var(--muted)" }}>
+        Project # is assigned automatically (YYYYMM + sequence, e.g. 20260701).
+      </p>
       <div className="row" style={{ marginTop: "0.75rem" }}>
         <button className="btn btn-primary" type="submit" disabled={loading}>
           {loading ? "Creating…" : "Create project"}

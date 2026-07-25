@@ -17,27 +17,55 @@ export default async function ProjectBomPage({
   const access = await getProjectAccessRole(profile.id, profile.role, id);
   const supabase = await createClient();
 
-  const [{ data: project }, { data: sections }, { data: lines }, { data: vendors }] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select("id, default_override_pct")
-        .eq("id", id)
-        .maybeSingle(),
-      supabase
-        .from("project_sections")
-        .select("*")
-        .eq("project_id", id)
-        .order("sort_order"),
-      supabase
-        .from("line_items")
-        .select("*, vendors(code, name)")
-        .eq("project_id", id)
-        .order("sort_order"),
-      supabase.from("vendors").select("*").order("code"),
-    ]);
+  const [
+    { data: project },
+    { data: sections },
+    { data: lines },
+    { data: vendors },
+    { data: purchaseOrders },
+  ] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, default_override_pct")
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("project_sections")
+      .select("*")
+      .eq("project_id", id)
+      .order("sort_order"),
+    supabase
+      .from("line_items")
+      .select("*, vendors(code, name)")
+      .eq("project_id", id)
+      .order("sort_order"),
+    supabase.from("vendors").select("*").order("code"),
+    supabase
+      .from("purchase_orders")
+      .select("id, status, shipping")
+      .eq("project_id", id),
+  ]);
 
   if (!project) return null;
+
+  const poIds = (purchaseOrders ?? []).map((po) => po.id);
+  let poItems: Array<{
+    po_id: string;
+    line_item_id: string | null;
+    qty_ordered: number;
+    unit_price: number;
+    line_total: number;
+    item_status: string;
+  }> = [];
+  if (poIds.length) {
+    const { data } = await supabase
+      .from("purchase_order_items")
+      .select(
+        "po_id, line_item_id, qty_ordered, unit_price, line_total, item_status",
+      )
+      .in("po_id", poIds);
+    poItems = (data ?? []) as typeof poItems;
+  }
 
   return (
     <BomEditor
@@ -46,6 +74,8 @@ export default async function ProjectBomPage({
       initialSections={(sections ?? []) as ProjectSection[]}
       initialLines={(lines ?? []) as LineItem[]}
       vendors={(vendors ?? []) as Vendor[]}
+      purchaseOrders={purchaseOrders ?? []}
+      poItems={poItems}
       canEditPricing={canEditProjectContent(
         profile.role,
         access,

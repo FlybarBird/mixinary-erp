@@ -154,6 +154,10 @@ export function canManageVendors(role: UserRole) {
   return role === "administrator" || role === "purchasing";
 }
 
+export function canManageClients(role: UserRole) {
+  return role === "administrator" || role === "project_manager";
+}
+
 export function canReceive(role: UserRole) {
   return (
     role === "administrator" ||
@@ -198,5 +202,25 @@ export function canViewFinancials(role: UserRole) {
     role === "project_manager" ||
     role === "purchasing" ||
     role === "accounting"
+  );
+}
+
+export function canApproveChangeOrders(role: UserRole) {
+  return role === "administrator" || role === "project_manager";
+}
+
+export function canEditBilling(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "accounting"
+  );
+}
+
+export function canManageApAndSubs(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "purchasing"
   );
 }

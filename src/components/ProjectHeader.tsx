@@ -20,6 +20,7 @@ export function ProjectHeader({
   clients,
   managers,
   canEdit,
+  canEditFinancials = false,
 }: {
   project: {
     id: string;
@@ -29,6 +30,17 @@ export function ProjectHeader({
     project_manager_id: string | null;
     material_budget: number | null;
     labor_budget: number | null;
+    expense_budget: number | null;
+    subcontractor_budget: number | null;
+    overhead_budget: number | null;
+    original_revenue: number | null;
+    revenue_additions: number;
+    revenue_credits: number;
+    labor_burden_enabled?: boolean;
+    default_burden_pct?: number;
+    start_date: string | null;
+    target_completion_date: string | null;
+    percent_complete: number;
     status: ProjectStatus;
     default_override_pct: number;
     notes: string | null;
@@ -38,6 +50,7 @@ export function ProjectHeader({
   clients: { id: string; name: string }[];
   managers: { id: string; name: string }[];
   canEdit: boolean;
+  canEditFinancials?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -66,19 +79,36 @@ export function ProjectHeader({
     e.preventDefault();
     if (!canEdit) return;
     const form = new FormData(e.currentTarget);
-    const material = String(form.get("material_budget") || "").trim();
-    const labor = String(form.get("labor_budget") || "").trim();
-    const ok = await patch({
+    const numOrNull = (key: string) => {
+      const raw = String(form.get(key) || "").trim();
+      return raw === "" ? null : Number(raw);
+    };
+    const body: Record<string, unknown> = {
       project_number: form.get("project_number"),
       name: form.get("name"),
       client_id: form.get("client_id") || null,
       project_manager_id: form.get("project_manager_id") || null,
       status: form.get("status"),
       default_override_pct: Number(form.get("default_override_pct") || 0) / 100,
-      material_budget: material === "" ? null : Number(material),
-      labor_budget: labor === "" ? null : Number(labor),
+      start_date: form.get("start_date") || null,
+      target_completion_date: form.get("target_completion_date") || null,
+      percent_complete: Number(form.get("percent_complete") || 0),
       notes: form.get("notes") || null,
-    });
+    };
+    if (canEditFinancials) {
+      body.material_budget = numOrNull("material_budget");
+      body.labor_budget = numOrNull("labor_budget");
+      body.expense_budget = numOrNull("expense_budget");
+      body.subcontractor_budget = numOrNull("subcontractor_budget");
+      body.overhead_budget = numOrNull("overhead_budget");
+      body.original_revenue = numOrNull("original_revenue");
+      body.revenue_additions = Number(form.get("revenue_additions") || 0) || 0;
+      body.revenue_credits = Number(form.get("revenue_credits") || 0) || 0;
+      body.labor_burden_enabled = form.get("labor_burden_enabled") === "on";
+      body.default_burden_pct =
+        Number(form.get("default_burden_pct") || 0) / 100 || 0;
+    }
+    const ok = await patch(body);
     if (ok) setEditing(false);
   }
 
@@ -195,7 +225,11 @@ export function ProjectHeader({
                 name="project_number"
                 required
                 defaultValue={project.project_number}
+                title="Auto format: YYYYMM + sequence (e.g. 20260701)"
               />
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--muted)" }}>
+                Format YYYYMM + seq · POs use PO-YYMMPPnn
+              </p>
             </div>
             <div>
               <label className="label">Name</label>
@@ -263,25 +297,143 @@ export function ProjectHeader({
               />
             </div>
             <div>
-              <label className="label">Material budget</label>
+              <label className="label">Start date</label>
               <input
                 className="field"
-                name="material_budget"
-                type="number"
-                step="0.01"
-                defaultValue={project.material_budget ?? ""}
+                name="start_date"
+                type="date"
+                defaultValue={project.start_date ?? ""}
               />
             </div>
             <div>
-              <label className="label">Labor budget</label>
+              <label className="label">Target completion</label>
               <input
                 className="field"
-                name="labor_budget"
-                type="number"
-                step="0.01"
-                defaultValue={project.labor_budget ?? ""}
+                name="target_completion_date"
+                type="date"
+                defaultValue={project.target_completion_date ?? ""}
               />
             </div>
+            <div>
+              <label className="label">% complete</label>
+              <input
+                className="field"
+                name="percent_complete"
+                type="number"
+                min={0}
+                max={100}
+                step="1"
+                defaultValue={project.percent_complete ?? 0}
+              />
+            </div>
+            {canEditFinancials ? (
+              <>
+                <div>
+                  <label className="label">Original revenue</label>
+                  <input
+                    className="field"
+                    name="original_revenue"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.original_revenue ?? ""}
+                  />
+                </div>
+                <div>
+                  <label className="label">Revenue additions</label>
+                  <input
+                    className="field"
+                    name="revenue_additions"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.revenue_additions ?? 0}
+                  />
+                </div>
+                <div>
+                  <label className="label">Revenue credits</label>
+                  <input
+                    className="field"
+                    name="revenue_credits"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.revenue_credits ?? 0}
+                  />
+                </div>
+                <div>
+                  <label className="label">Material budget</label>
+                  <input
+                    className="field"
+                    name="material_budget"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.material_budget ?? ""}
+                  />
+                </div>
+                <div>
+                  <label className="label">Labor budget</label>
+                  <input
+                    className="field"
+                    name="labor_budget"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.labor_budget ?? ""}
+                  />
+                </div>
+                <div>
+                  <label className="label">Expense budget</label>
+                  <input
+                    className="field"
+                    name="expense_budget"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.expense_budget ?? ""}
+                  />
+                </div>
+                <div>
+                  <label className="label">Subcontractor budget</label>
+                  <input
+                    className="field"
+                    name="subcontractor_budget"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.subcontractor_budget ?? ""}
+                  />
+                </div>
+                <div>
+                  <label className="label">Overhead budget</label>
+                  <input
+                    className="field"
+                    name="overhead_budget"
+                    type="number"
+                    step="0.01"
+                    defaultValue={project.overhead_budget ?? ""}
+                  />
+                </div>
+                <div>
+                  <label className="label">Default burden %</label>
+                  <input
+                    className="field"
+                    name="default_burden_pct"
+                    type="number"
+                    step="0.01"
+                    defaultValue={(
+                      Number(project.default_burden_pct || 0) * 100
+                    ).toFixed(2)}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "end" }}>
+                  <label className="row" style={{ gap: "0.4rem" }}>
+                    <input
+                      type="checkbox"
+                      name="labor_burden_enabled"
+                      defaultChecked={Boolean(project.labor_burden_enabled)}
+                    />
+                    <span className="label" style={{ margin: 0 }}>
+                      Enable labor burden on cost ledger
+                    </span>
+                  </label>
+                </div>
+              </>
+            ) : null}
             <div>
               <label className="label">Notes</label>
               <input

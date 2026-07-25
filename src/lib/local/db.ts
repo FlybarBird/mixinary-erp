@@ -247,6 +247,42 @@ function migrate(database: Database.Database) {
     database.exec("alter table vendors add column account_number text");
   }
 
+  const clientCols = database
+    .prepare("pragma table_info(clients)")
+    .all() as Array<{ name: string }>;
+  if (clientCols.length) {
+    const ensureClientCol = (name: string, ddl: string) => {
+      if (!clientCols.some((c) => c.name === name)) {
+        database.exec(ddl);
+      }
+    };
+    ensureClientCol("code", "alter table clients add column code text");
+    ensureClientCol("website", "alter table clients add column website text");
+    ensureClientCol(
+      "address_line1",
+      "alter table clients add column address_line1 text",
+    );
+    ensureClientCol(
+      "address_line2",
+      "alter table clients add column address_line2 text",
+    );
+    ensureClientCol("city", "alter table clients add column city text");
+    ensureClientCol("state", "alter table clients add column state text");
+    ensureClientCol(
+      "postal_code",
+      "alter table clients add column postal_code text",
+    );
+    ensureClientCol(
+      "active",
+      "alter table clients add column active integer not null default 1",
+    );
+    database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS clients_code_unique
+      ON clients(code)
+      WHERE code IS NOT NULL AND code <> ''
+    `);
+  }
+
   // Role migration
   database.exec(`
     update user_profiles set role = 'administrator' where role = 'admin';
@@ -268,6 +304,27 @@ function migrate(database: Database.Database) {
     }
     if (!projectCols.some((c) => c.name === "labor_budget")) {
       database.exec("alter table projects add column labor_budget real");
+    }
+    const projectFinancialCols = [
+      ["expense_budget", "real"],
+      ["subcontractor_budget", "real"],
+      ["overhead_budget", "real"],
+      ["original_revenue", "real"],
+      ["revenue_additions", "real not null default 0"],
+      ["revenue_credits", "real not null default 0"],
+      ["start_date", "text"],
+      ["target_completion_date", "text"],
+      ["percent_complete", "real not null default 0"],
+      ["financials_updated_at", "text"],
+      ["labor_burden_enabled", "integer not null default 0"],
+      ["default_burden_pct", "real not null default 0"],
+    ] as const;
+    const haveProject = new Set(projectCols.map((c) => c.name));
+    for (const [col, ddl] of projectFinancialCols) {
+      if (!haveProject.has(col)) {
+        database.exec(`alter table projects add column ${col} ${ddl}`);
+        haveProject.add(col);
+      }
     }
   }
 
@@ -318,6 +375,9 @@ function migrate(database: Database.Database) {
         tax REAL NOT NULL DEFAULT 0,
         shipping REAL NOT NULL DEFAULT 0,
         total REAL NOT NULL DEFAULT 0,
+        sale_total REAL NOT NULL DEFAULT 0,
+        profit REAL NOT NULL DEFAULT 0,
+        margin_pct REAL,
         vendor_contact TEXT,
         notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -338,6 +398,12 @@ function migrate(database: Database.Database) {
         unit_price REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL DEFAULT 0,
         shipping REAL NOT NULL DEFAULT 0,
+        sale_total REAL NOT NULL DEFAULT 0,
+        allocated_shipping REAL NOT NULL DEFAULT 0,
+        allocated_tax REAL NOT NULL DEFAULT 0,
+        cost_total REAL NOT NULL DEFAULT 0,
+        profit REAL NOT NULL DEFAULT 0,
+        margin_pct REAL,
         expected_ship_date TEXT,
         expected_delivery_date TEXT,
         qty_shipped REAL NOT NULL DEFAULT 0,
@@ -471,6 +537,43 @@ function migrate(database: Database.Database) {
     );
   }
 
+  const poProfitItemCols = [
+    ["sale_total", "real not null default 0"],
+    ["allocated_shipping", "real not null default 0"],
+    ["allocated_tax", "real not null default 0"],
+    ["cost_total", "real not null default 0"],
+    ["profit", "real not null default 0"],
+    ["margin_pct", "real"],
+  ] as const;
+  const poItemColsFresh = database
+    .prepare("pragma table_info(purchase_order_items)")
+    .all() as Array<{ name: string }>;
+  if (poItemColsFresh.length) {
+    const have = new Set(poItemColsFresh.map((c) => c.name));
+    for (const [col, ddl] of poProfitItemCols) {
+      if (!have.has(col)) {
+        database.exec(`alter table purchase_order_items add column ${col} ${ddl}`);
+      }
+    }
+  }
+
+  const poProfitCols = [
+    ["sale_total", "real not null default 0"],
+    ["profit", "real not null default 0"],
+    ["margin_pct", "real"],
+  ] as const;
+  const poCols = database
+    .prepare("pragma table_info(purchase_orders)")
+    .all() as Array<{ name: string }>;
+  if (poCols.length) {
+    const have = new Set(poCols.map((c) => c.name));
+    for (const [col, ddl] of poProfitCols) {
+      if (!have.has(col)) {
+        database.exec(`alter table purchase_orders add column ${col} ${ddl}`);
+      }
+    }
+  }
+
   const profileCols = database
     .prepare("pragma table_info(user_profiles)")
     .all() as Array<{ name: string }>;
@@ -525,6 +628,233 @@ function migrate(database: Database.Database) {
   const haveAll = new Set(allTables.map((t) => t.name));
   for (const [name, ddl] of userSystemTables) {
     if (!haveAll.has(name)) database.exec(ddl);
+  }
+
+  const expenseCols = database
+    .prepare("pragma table_info(project_expenses)")
+    .all() as Array<{ name: string }>;
+  if (expenseCols.length && !expenseCols.some((c) => c.name === "po_id")) {
+    database.exec(
+      "alter table project_expenses add column po_id text references purchase_orders(id)",
+    );
+  }
+
+  if (!haveAll.has("project_cost_ledger")) {
+    database.exec(`CREATE TABLE IF NOT EXISTS project_cost_ledger (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      vendor_or_person TEXT,
+      description TEXT,
+      budget_amount REAL NOT NULL DEFAULT 0,
+      committed_amount REAL NOT NULL DEFAULT 0,
+      actual_amount REAL NOT NULL DEFAULT 0,
+      forecast_amount REAL NOT NULL DEFAULT 0,
+      transaction_date TEXT,
+      approval_status TEXT,
+      payment_status TEXT,
+      billable INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      updated_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (source_type, source_id, category)
+    )`);
+    database.exec(
+      "CREATE INDEX IF NOT EXISTS project_cost_ledger_project_idx ON project_cost_ledger(project_id)",
+    );
+    database.exec(
+      "CREATE INDEX IF NOT EXISTS project_cost_ledger_category_idx ON project_cost_ledger(project_id, category)",
+    );
+  }
+
+  const laborColsPhase6 = database
+    .prepare("pragma table_info(labor_entries)")
+    .all() as Array<{ name: string }>;
+  if (laborColsPhase6.length) {
+    if (!laborColsPhase6.some((c) => c.name === "burden_pct")) {
+      database.exec(
+        "alter table labor_entries add column burden_pct real not null default 0",
+      );
+    }
+    if (!laborColsPhase6.some((c) => c.name === "billing_rate")) {
+      database.exec(
+        "alter table labor_entries add column billing_rate real not null default 0",
+      );
+    }
+  }
+
+  const phase36Tables: Array<[string, string]> = [
+    [
+      "project_change_orders",
+      `CREATE TABLE IF NOT EXISTS project_change_orders (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        co_number TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        revenue_delta REAL NOT NULL DEFAULT 0,
+        budget_material_delta REAL NOT NULL DEFAULT 0,
+        budget_labor_delta REAL NOT NULL DEFAULT 0,
+        budget_expense_delta REAL NOT NULL DEFAULT 0,
+        budget_subcontractor_delta REAL NOT NULL DEFAULT 0,
+        budget_overhead_delta REAL NOT NULL DEFAULT 0,
+        requested_by TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        effective_date TEXT,
+        customer_reference TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, co_number)
+      )`,
+    ],
+    [
+      "project_invoices",
+      `CREATE TABLE IF NOT EXISTS project_invoices (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        invoice_number TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        invoice_date TEXT NOT NULL,
+        due_date TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        sent_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, invoice_number)
+      )`,
+    ],
+    [
+      "project_invoice_lines",
+      `CREATE TABLE IF NOT EXISTS project_invoice_lines (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL REFERENCES project_invoices(id) ON DELETE CASCADE,
+        description TEXT NOT NULL,
+        quantity REAL NOT NULL DEFAULT 1,
+        unit_price REAL NOT NULL DEFAULT 0,
+        amount REAL NOT NULL DEFAULT 0,
+        change_order_id TEXT REFERENCES project_change_orders(id) ON DELETE SET NULL,
+        category TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )`,
+    ],
+    [
+      "project_payments",
+      `CREATE TABLE IF NOT EXISTS project_payments (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        payment_date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        method TEXT,
+        reference TEXT,
+        notes TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "project_payment_applications",
+      `CREATE TABLE IF NOT EXISTS project_payment_applications (
+        id TEXT PRIMARY KEY,
+        payment_id TEXT NOT NULL REFERENCES project_payments(id) ON DELETE CASCADE,
+        invoice_id TEXT NOT NULL REFERENCES project_invoices(id) ON DELETE CASCADE,
+        amount REAL NOT NULL DEFAULT 0,
+        UNIQUE (payment_id, invoice_id)
+      )`,
+    ],
+    [
+      "project_financial_snapshots",
+      `CREATE TABLE IF NOT EXISTS project_financial_snapshots (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+        trigger TEXT NOT NULL DEFAULT 'manual',
+        current_revenue REAL,
+        original_cost_budget REAL,
+        revised_cost_budget REAL,
+        committed REAL NOT NULL DEFAULT 0,
+        actual REAL NOT NULL DEFAULT 0,
+        forecast_final REAL NOT NULL DEFAULT 0,
+        forecast_profit REAL,
+        forecast_margin REAL,
+        billed REAL NOT NULL DEFAULT 0,
+        collected REAL NOT NULL DEFAULT 0,
+        ar_outstanding REAL NOT NULL DEFAULT 0,
+        material_sale REAL NOT NULL DEFAULT 0,
+        material_only_profit REAL NOT NULL DEFAULT 0,
+        percent_complete REAL NOT NULL DEFAULT 0
+      )`,
+    ],
+    [
+      "vendor_bills",
+      `CREATE TABLE IF NOT EXISTS vendor_bills (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        purchase_order_id TEXT REFERENCES purchase_orders(id) ON DELETE SET NULL,
+        vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
+        vendor_invoice_number TEXT,
+        bill_date TEXT,
+        due_date TEXT,
+        amount REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'accrued',
+        notes TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "project_subcontracts",
+      `CREATE TABLE IF NOT EXISTS project_subcontracts (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
+        sub_name TEXT,
+        description TEXT NOT NULL,
+        contract_amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'draft',
+        billed_to_date REAL NOT NULL DEFAULT 0,
+        paid_to_date REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "project_subcontract_bills",
+      `CREATE TABLE IF NOT EXISTS project_subcontract_bills (
+        id TEXT PRIMARY KEY,
+        subcontract_id TEXT NOT NULL REFERENCES project_subcontracts(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        bill_date TEXT NOT NULL,
+        description TEXT,
+        amount REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'billed',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+  ];
+  const haveAllRefresh = new Set(
+    (
+      database
+        .prepare("select name from sqlite_master where type = 'table'")
+        .all() as Array<{ name: string }>
+    ).map((t) => t.name),
+  );
+  for (const [name, ddl] of phase36Tables) {
+    if (!haveAllRefresh.has(name)) database.exec(ddl);
   }
 
   // Backfill project creators as managers when membership is missing

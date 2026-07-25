@@ -38,12 +38,16 @@ export default async function ProjectsPage({
     projectsQuery = projectsQuery.neq("status", "archived");
   }
 
-  const [{ data: projects }, { data: clients }, { data: templates }] =
+  const [{ data: projects }, { data: allClients }, { data: templates }] =
     await Promise.all([
       projectsQuery,
-      supabase.from("clients").select("id, name").order("name"),
+      supabase.from("clients").select("id, name, active").order("name"),
       supabase.from("project_templates").select("id, name").order("name"),
     ]);
+
+  const clients = (allClients ?? []).filter(
+    (c) => c.active !== false && c.active !== 0,
+  );
 
   const canEdit = canManageProjects(profile.role);
   const filter = showArchived ? "archived" : showAll ? "all" : "active";

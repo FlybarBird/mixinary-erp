@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { rollupBomLineQuantities } from "@/lib/projects/workspace";
+import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
+import { allocateNextPoNumber } from "@/lib/projects/numbering";
+import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 
 export async function GET(
   _request: Request,
@@ -77,21 +80,10 @@ export async function POST(
 
   const supabase = await createClient();
 
-  // Auto-generate po_number
+  // Auto-generate po_number from project #: PO-26070101
   let poNumber: string = body.po_number ?? "";
   if (!poNumber) {
-    const { data: existing } = await supabase
-      .from("purchase_orders")
-      .select("po_number")
-      .eq("project_id", projectId);
-    const nums = (existing ?? [])
-      .map((r) => {
-        const m = String(r.po_number ?? "").match(/^PO-(\d+)$/);
-        return m ? parseInt(m[1], 10) : 0;
-      })
-      .filter(Boolean);
-    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-    poNumber = `PO-${String(next).padStart(3, "0")}`;
+    poNumber = await allocateNextPoNumber(supabase, projectId);
   }
 
   const subtotal = items.reduce(
@@ -137,6 +129,14 @@ export async function POST(
 
   for (const lineItemId of lineItemIds) {
     await rollupBomLineQuantities(supabase, lineItemId);
+  }
+
+  await recalcPurchaseOrderEconomics(supabase, poId);
+
+  try {
+    await rebuildProjectCostLedger(supabase, projectId);
+  } catch {
+    // non-fatal
   }
 
   const { data: po } = await supabase

@@ -390,6 +390,24 @@ button {
   border-color: var(--accent);
 }
 
+button.currency-display.field {
+  display: block;
+  text-align: left;
+  cursor: text;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+button.currency-display.field:focus,
+button.currency-display.field:hover {
+  outline: 2px solid rgba(0, 112, 242, 0.28);
+  border-color: var(--accent);
+}
+
+input.currency-edit.field {
+  font-variant-numeric: tabular-nums;
+}
+
 .field-light {
   width: 100%;
   border: 1px solid var(--surface-line);
@@ -655,6 +673,46 @@ button {
 .oop-bad {
   color: #e53935 !important;
   font-weight: 700;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.badge-neutral {
+  background: var(--bg-soft);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.badge-green {
+  background: #e8f7ed;
+  border-color: #91c89c;
+  color: #256f3a;
+}
+
+.badge-red {
+  background: #fdecea;
+  border-color: #f5b5b0;
+  color: #bb0000;
+}
+
+.badge-blue {
+  background: #e8f3ff;
+  border-color: #90cdf4;
+  color: #0057d2;
 }
 
 .badge-ordered {
@@ -1022,6 +1080,25 @@ button {
   color: var(--ink);
 }
 
+.menu-trigger-prominent {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-size: 1.35rem;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(34, 53, 72, 0.08);
+}
+
+.menu-trigger-prominent:hover,
+.menu[data-open="true"] .menu-trigger-prominent {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-2);
+  box-shadow: 0 2px 6px rgba(34, 53, 72, 0.12);
+}
+
 .menu-panel {
   position: absolute;
   top: calc(100% + 0.15rem);
@@ -1065,6 +1142,25 @@ button {
 .menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.menu-item-link {
+  text-decoration: none;
+}
+
+.menu-section {
+  padding: 0.4rem 0.85rem 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0.35rem 0;
 }
 
 .segmented {

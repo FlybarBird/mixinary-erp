@@ -684,6 +684,35 @@ function migrate(database: Database.Database) {
         "alter table labor_entries add column billing_rate real not null default 0",
       );
     }
+    if (!laborColsPhase6.some((c) => c.name === "sort_order")) {
+      database.exec(
+        "alter table labor_entries add column sort_order integer not null default 0",
+      );
+    }
+    if (!laborColsPhase6.some((c) => c.name === "rate_type")) {
+      database.exec(
+        "alter table labor_entries add column rate_type text not null default 'hourly'",
+      );
+    }
+    if (!laborColsPhase6.some((c) => c.name === "qty")) {
+      database.exec(
+        "alter table labor_entries add column qty real not null default 1",
+      );
+    }
+    if (!laborColsPhase6.some((c) => c.name === "msrp")) {
+      database.exec(
+        "alter table labor_entries add column msrp real not null default 0",
+      );
+      database.exec(
+        "update labor_entries set msrp = hourly_rate where coalesce(msrp, 0) = 0 and coalesce(hourly_rate, 0) > 0",
+      );
+    }
+    if (!laborColsPhase6.some((c) => c.name === "quote")) {
+      database.exec("alter table labor_entries add column quote real");
+    }
+    if (!laborColsPhase6.some((c) => c.name === "override_pct")) {
+      database.exec("alter table labor_entries add column override_pct real");
+    }
   }
 
   const phase36Tables: Array<[string, string]> = [

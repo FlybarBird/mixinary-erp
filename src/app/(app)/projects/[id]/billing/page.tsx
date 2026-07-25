@@ -59,7 +59,7 @@ export default async function BillingPage({
       .order("bill_date", { ascending: false }),
     supabase
       .from("purchase_orders")
-      .select("id, po_number, vendor_id")
+      .select("id, po_number, vendor_id, total")
       .eq("project_id", id)
       .order("created_at", { ascending: false }),
     supabase.from("vendors").select("id, name").order("name"),

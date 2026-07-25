@@ -10,6 +10,7 @@ export function CurrencyInput({
   allowEmpty = false,
   isDefault = false,
   defaultDisplay,
+  className,
   onChange,
 }: {
   value: number | null;
@@ -19,6 +20,7 @@ export function CurrencyInput({
   isDefault?: boolean;
   /** Value to show while still on the default (e.g. MSRP). */
   defaultDisplay?: number | null;
+  className?: string;
   onChange: (value: number | null) => void;
 }) {
   const [focused, setFocused] = useState(false);
@@ -41,6 +43,7 @@ export function CurrencyInput({
         className={cn(
           "currency-display",
           isDefault ? "is-default-quote" : "",
+          className,
         )}
         style={{ fontVariantNumeric: "tabular-nums" }}
       >
@@ -60,6 +63,7 @@ export function CurrencyInput({
         className={cn(
           "currency-display",
           isDefault ? "is-default-quote" : "",
+          className,
         )}
         title={
           isDefault
@@ -79,7 +83,11 @@ export function CurrencyInput({
 
   return (
     <input
-      className={cn("currency-edit", isDefault ? "is-default-quote" : "")}
+      className={cn(
+        "currency-edit",
+        isDefault ? "is-default-quote" : "",
+        className,
+      )}
       type="number"
       step="0.01"
       autoFocus

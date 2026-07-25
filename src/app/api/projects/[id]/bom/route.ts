@@ -120,5 +120,22 @@ export async function PUT(
     .update({ updated_at: new Date().toISOString() })
     .eq("id", projectId);
 
-  return NextResponse.json({ ok: true });
+  const [{ data: savedSections }, { data: savedLines }] = await Promise.all([
+    supabase
+      .from("project_sections")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("sort_order"),
+    supabase
+      .from("line_items")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("sort_order"),
+  ]);
+
+  return NextResponse.json({
+    ok: true,
+    sections: savedSections ?? [],
+    lines: savedLines ?? [],
+  });
 }

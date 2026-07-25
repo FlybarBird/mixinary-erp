@@ -5,9 +5,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 export function OverflowMenu({
   children,
   label = "More actions",
+  wide = false,
+  prominent = false,
 }: {
   children: ReactNode;
   label?: string;
+  /** Wider panel for longer labels (e.g. export links). */
+  wide?: boolean;
+  /** Stronger bordered trigger for primary page actions. */
+  prominent?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -34,7 +40,7 @@ export function OverflowMenu({
     <div className="menu" data-open={open ? "true" : "false"} ref={rootRef}>
       <button
         type="button"
-        className="menu-trigger"
+        className={prominent ? "menu-trigger menu-trigger-prominent" : "menu-trigger"}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -43,7 +49,12 @@ export function OverflowMenu({
         ⋯
       </button>
       {open ? (
-        <div className="menu-panel" role="menu" onClick={() => setOpen(false)}>
+        <div
+          className="menu-panel"
+          role="menu"
+          onClick={() => setOpen(false)}
+          style={wide ? { minWidth: 230 } : undefined}
+        >
           {children}
         </div>
       ) : null}

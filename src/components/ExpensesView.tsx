@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { ProjectExpense, ExpenseCategory, ApprovalStatus, PaymentStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/pricing";
+import { useProjectExpenseSummary } from "@/components/ProjectBomSummaryBar";
+import { sumApprovedExpenses } from "@/lib/projects/expense-totals";
 
 interface Props {
   projectId: string;
@@ -71,18 +73,36 @@ export function ExpensesView({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const expenseSummary = useProjectExpenseSummary();
+  const setApprovedExpenses = expenseSummary?.setApprovedExpenses;
+  useEffect(() => {
+    setApprovedExpenses?.(sumApprovedExpenses(expenses));
+  }, [expenses, setApprovedExpenses]);
+
   const summary = useMemo(() => {
-    const total = expenses.reduce((s, e) => s + Number(e.amount ?? 0) + Number(e.tax ?? 0), 0);
-    const approved = expenses
+    const rows = expenses.filter(Boolean);
+    const total = rows.reduce(
+      (s, e) => s + Number(e.amount ?? 0) + Number(e.tax ?? 0),
+      0,
+    );
+    const approved = rows
       .filter((e) => e.approval_status === "approved")
       .reduce((s, e) => s + Number(e.amount ?? 0) + Number(e.tax ?? 0), 0);
-    const paid = expenses
-      .filter((e) => e.payment_status === "paid" || e.payment_status === "reimbursed")
+    const paid = rows
+      .filter(
+        (e) =>
+          e.payment_status === "paid" || e.payment_status === "reimbursed",
+      )
       .reduce((s, e) => s + Number(e.amount ?? 0) + Number(e.tax ?? 0), 0);
 
     const byCategory = new Map<ExpenseCategory, number>();
-    for (const e of expenses) {
-      byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + Number(e.amount ?? 0) + Number(e.tax ?? 0));
+    for (const e of rows) {
+      byCategory.set(
+        e.category,
+        (byCategory.get(e.category) ?? 0) +
+          Number(e.amount ?? 0) +
+          Number(e.tax ?? 0),
+      );
     }
 
     return { total, approved, paid, byCategory };
@@ -158,10 +178,16 @@ export function ExpensesView({
         return;
       }
 
+      if (!json.expense) {
+        setMessage("Saved, but no expense was returned");
+        return;
+      }
       if (editingId) {
-        setExpenses((prev) => prev.map((e) => (e.id === editingId ? json.expense : e)));
+        setExpenses((prev) =>
+          prev.map((e) => (e?.id === editingId ? json.expense : e)).filter(Boolean),
+        );
       } else {
-        setExpenses((prev) => [json.expense, ...prev]);
+        setExpenses((prev) => [json.expense, ...prev.filter(Boolean)]);
       }
       cancelForm();
     } finally {
@@ -218,7 +244,7 @@ export function ExpensesView({
         </div>
         <div className="workspace-stat">
           <div className="label">Count</div>
-          <div className="value">{expenses.length}</div>
+          <div className="value">{expenses.filter(Boolean).length}</div>
         </div>
       </div>
 
@@ -367,7 +393,7 @@ export function ExpensesView({
         </div>
       )}
 
-      {expenses.length === 0 ? (
+      {expenses.filter(Boolean).length === 0 ? (
         <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>No expenses yet.</p>
       ) : (
         <div style={{ overflowX: "auto" }}>
@@ -388,7 +414,7 @@ export function ExpensesView({
               </tr>
             </thead>
             <tbody>
-              {expenses.map((expense) => (
+              {expenses.filter(Boolean).map((expense) => (
                 <tr key={expense.id}>
                   <td>{expense.expense_date}</td>
                   <td>{CATEGORY_LABEL[expense.category]}</td>

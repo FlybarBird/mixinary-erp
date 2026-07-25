@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
   ProjectInvoice,
@@ -9,16 +9,32 @@ import type {
   VendorBillStatus,
 } from "@/lib/types";
 import { formatMoney } from "@/lib/pricing";
+import { CurrencyInput } from "@/components/CurrencyInput";
+import {
+  useProjectBillingSummary,
+  useProjectBomSummary,
+} from "@/components/ProjectBomSummaryBar";
+import { sumBilledInvoices } from "@/lib/projects/billing-totals";
 
 interface Props {
   projectId: string;
   initialInvoices: ProjectInvoice[];
   initialPayments: ProjectPayment[];
   initialVendorBills: VendorBill[];
-  purchaseOrders: { id: string; po_number: string; vendor_id: string | null }[];
+  purchaseOrders: {
+    id: string;
+    po_number: string;
+    vendor_id: string | null;
+    total?: number | null;
+  }[];
   vendors: { id: string; name: string }[];
   canEdit: boolean;
   canManageAp: boolean;
+}
+
+function quoteAmountNumber(totalQuote: number) {
+  if (!Number.isFinite(totalQuote) || totalQuote <= 0) return null;
+  return Math.round(totalQuote * 100) / 100;
 }
 
 export function BillingView({
@@ -32,19 +48,38 @@ export function BillingView({
   canManageAp,
 }: Props) {
   const router = useRouter();
+  const bomSummary = useProjectBomSummary();
+  const defaultInvoiceAmount = quoteAmountNumber(
+    (bomSummary?.economics.totalQuote ?? 0) +
+      (bomSummary?.labor.totalQuote ?? 0),
+  );
+
   const [invoices, setInvoices] = useState(initialInvoices);
   const [payments, setPayments] = useState(initialPayments);
   const [vendorBills, setVendorBills] = useState(initialVendorBills);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [invForm, setInvForm] = useState({
+  const [invForm, setInvForm] = useState<{
+    description: string;
+    amount: number | null;
+    tax: number | null;
+    due_date: string;
+    send: boolean;
+  }>({
     description: "Progress billing",
-    amount: "",
-    tax: "",
+    amount: null,
+    tax: null,
     due_date: "",
     send: false,
   });
+
+  useEffect(() => {
+    if (defaultInvoiceAmount == null) return;
+    setInvForm((f) =>
+      f.amount == null ? { ...f, amount: defaultInvoiceAmount } : f,
+    );
+  }, [defaultInvoiceAmount]);
   const [payForm, setPayForm] = useState({
     invoice_id: "",
     amount: "",
@@ -52,19 +87,24 @@ export function BillingView({
     method: "",
     reference: "",
   });
-  const [apForm, setApForm] = useState({
+  const [apForm, setApForm] = useState<{
+    purchase_order_id: string;
+    vendor_id: string;
+    vendor_invoice_number: string;
+    amount: number | null;
+    bill_date: string;
+    status: VendorBillStatus;
+  }>({
     purchase_order_id: "",
     vendor_id: "",
     vendor_invoice_number: "",
-    amount: "",
+    amount: null,
     bill_date: new Date().toISOString().slice(0, 10),
-    status: "billed" as VendorBillStatus,
+    status: "billed",
   });
 
   const summary = useMemo(() => {
-    const billed = invoices
-      .filter((i) => ["sent", "partially_paid", "paid"].includes(i.status))
-      .reduce((s, i) => s + Number(i.total || 0), 0);
+    const billed = sumBilledInvoices(invoices);
     const collected = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
     const ar = Math.max(0, billed - collected);
     const apUnpaid = vendorBills
@@ -76,6 +116,12 @@ export function BillingView({
       );
     return { billed, collected, ar, apUnpaid };
   }, [invoices, payments, vendorBills]);
+
+  const billingSummary = useProjectBillingSummary();
+  const setBilled = billingSummary?.setBilled;
+  useEffect(() => {
+    setBilled?.(summary.billed);
+  }, [summary.billed, setBilled]);
 
   async function createInvoice() {
     if (!canEdit) return;
@@ -107,8 +153,8 @@ export function BillingView({
     setInvoices((prev) => [data.invoice, ...prev]);
     setInvForm({
       description: "Progress billing",
-      amount: "",
-      tax: "",
+      amount: defaultInvoiceAmount,
+      tax: null,
       due_date: "",
       send: false,
     });
@@ -194,6 +240,11 @@ export function BillingView({
       return;
     }
     setVendorBills((prev) => [data.vendorBill, ...prev]);
+    setApForm((f) => ({
+      ...f,
+      vendor_invoice_number: "",
+      amount: null,
+    }));
     router.refresh();
   }
 
@@ -235,14 +286,10 @@ export function BillingView({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gap: "0.75rem",
         }}
       >
-        <div className="workspace-stat">
-          <div className="label">Billed</div>
-          <div className="value">{formatMoney(summary.billed)}</div>
-        </div>
         <div className="workspace-stat">
           <div className="label">Collected</div>
           <div className="value">{formatMoney(summary.collected)}</div>
@@ -263,56 +310,73 @@ export function BillingView({
         <div
           className="panel"
           style={{
-            padding: "1rem",
+            padding: 0,
             display: "grid",
-            gridTemplateColumns: "1.2fr 1fr",
-            gap: "1rem",
+            gridTemplateColumns: "1.15fr 1fr",
+            overflow: "hidden",
           }}
         >
-          <div className="stack" style={{ gap: "0.5rem" }}>
-            <strong>New invoice</strong>
-            <label className="field">
-              <span>Description</span>
+          <div
+            className="stack"
+            style={{
+              gap: "0.65rem",
+              padding: "1rem 1.1rem",
+              borderRight: "1px solid var(--line)",
+            }}
+          >
+            <strong style={{ fontSize: "0.95rem" }}>New invoice</strong>
+            <label>
+              <span className="label">Description</span>
               <input
+                className="field"
                 value={invForm.description}
+                placeholder="Progress billing"
                 onChange={(e) =>
                   setInvForm((f) => ({ ...f, description: e.target.value }))
                 }
               />
             </label>
-            <label className="field">
-              <span>Amount</span>
-              <input
-                type="number"
-                step="0.01"
-                value={invForm.amount}
-                onChange={(e) =>
-                  setInvForm((f) => ({ ...f, amount: e.target.value }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Tax</span>
-              <input
-                type="number"
-                step="0.01"
-                value={invForm.tax}
-                onChange={(e) =>
-                  setInvForm((f) => ({ ...f, tax: e.target.value }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Due date</span>
-              <input
-                type="date"
-                value={invForm.due_date}
-                onChange={(e) =>
-                  setInvForm((f) => ({ ...f, due_date: e.target.value }))
-                }
-              />
-            </label>
-            <label className="row" style={{ gap: "0.4rem" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "0.65rem",
+              }}
+            >
+              <label>
+                <span className="label">Amount</span>
+                <CurrencyInput
+                  className="field"
+                  value={invForm.amount}
+                  allowEmpty
+                  onChange={(amount) => setInvForm((f) => ({ ...f, amount }))}
+                />
+              </label>
+              <label>
+                <span className="label">Tax</span>
+                <CurrencyInput
+                  className="field"
+                  value={invForm.tax}
+                  allowEmpty
+                  onChange={(tax) => setInvForm((f) => ({ ...f, tax }))}
+                />
+              </label>
+              <label>
+                <span className="label">Due date</span>
+                <input
+                  className="field"
+                  type="date"
+                  value={invForm.due_date}
+                  onChange={(e) =>
+                    setInvForm((f) => ({ ...f, due_date: e.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <label
+              className="row"
+              style={{ gap: "0.45rem", alignItems: "center", marginTop: "0.15rem" }}
+            >
               <input
                 type="checkbox"
                 checked={invForm.send}
@@ -320,29 +384,38 @@ export function BillingView({
                   setInvForm((f) => ({ ...f, send: e.target.checked }))
                 }
               />
-              <span>Mark as sent</span>
+              <span style={{ fontSize: "0.9rem" }}>Mark as sent</span>
             </label>
             <button
               type="button"
               className="btn btn-primary"
               disabled={saving}
               onClick={() => void createInvoice()}
+              style={{ alignSelf: "start", marginTop: "0.15rem" }}
             >
               Create invoice
             </button>
           </div>
 
-          <div className="stack" style={{ gap: "0.5rem" }}>
-            <strong>Record payment</strong>
-            <label className="field">
-              <span>Apply to invoice</span>
+          <div
+            className="stack"
+            style={{
+              gap: "0.65rem",
+              padding: "1rem 1.1rem",
+              background: "var(--bg-soft)",
+            }}
+          >
+            <strong style={{ fontSize: "0.95rem" }}>Record payment</strong>
+            <label>
+              <span className="label">Apply to invoice</span>
               <select
+                className="field"
                 value={payForm.invoice_id}
                 onChange={(e) =>
                   setPayForm((f) => ({ ...f, invoice_id: e.target.value }))
                 }
               >
-                <option value="">—</option>
+                <option value="">Select invoice…</option>
                 {openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
                     {inv.invoice_number} · open{" "}
@@ -353,30 +426,41 @@ export function BillingView({
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span>Amount</span>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "0.65rem",
+              }}
+            >
+              <label>
+                <span className="label">Amount</span>
+                <input
+                  className="field"
+                  type="number"
+                  step="0.01"
+                  value={payForm.amount}
+                  onChange={(e) =>
+                    setPayForm((f) => ({ ...f, amount: e.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span className="label">Date</span>
+                <input
+                  className="field"
+                  type="date"
+                  value={payForm.payment_date}
+                  onChange={(e) =>
+                    setPayForm((f) => ({ ...f, payment_date: e.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              <span className="label">Method / reference</span>
               <input
-                type="number"
-                step="0.01"
-                value={payForm.amount}
-                onChange={(e) =>
-                  setPayForm((f) => ({ ...f, amount: e.target.value }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Date</span>
-              <input
-                type="date"
-                value={payForm.payment_date}
-                onChange={(e) =>
-                  setPayForm((f) => ({ ...f, payment_date: e.target.value }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Method / reference</span>
-              <input
+                className="field"
                 value={payForm.method}
                 placeholder="ACH / check #"
                 onChange={(e) =>
@@ -389,6 +473,7 @@ export function BillingView({
               className="btn btn-primary"
               disabled={saving || !payForm.invoice_id}
               onClick={() => void recordPayment()}
+              style={{ alignSelf: "start", marginTop: "0.15rem" }}
             >
               Record payment
             </button>
@@ -396,137 +481,215 @@ export function BillingView({
         </div>
       ) : null}
 
-      <div className="panel" style={{ padding: "0.75rem", overflowX: "auto" }}>
-        <strong>Invoices</strong>
-        <table className="data-table" style={{ width: "100%", marginTop: "0.5rem" }}>
-          <thead>
-            <tr>
-              <th>Number</th>
-              <th>Date</th>
-              <th style={{ textAlign: "right" }}>Total</th>
-              <th style={{ textAlign: "right" }}>Paid</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {invoices.map((inv) => (
-              <tr key={inv.id}>
-                <td>{inv.invoice_number}</td>
-                <td>{inv.invoice_date}</td>
-                <td style={{ textAlign: "right" }}>{formatMoney(inv.total)}</td>
-                <td style={{ textAlign: "right" }}>
-                  {formatMoney(inv.amount_paid)}
-                </td>
-                <td>
-                  <span className="badge badge-neutral">{inv.status}</span>
-                </td>
-                <td>
-                  {canEdit && inv.status === "draft" ? (
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={saving}
-                      onClick={() => void markSent(inv.id)}
-                    >
-                      Mark sent
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="panel" style={{ padding: "0.85rem 1rem" }}>
+        <strong style={{ fontSize: "0.95rem" }}>Invoices</strong>
+        {invoices.length === 0 ? (
+          <p className="muted" style={{ margin: "0.65rem 0 0", fontSize: "0.85rem" }}>
+            No invoices yet.
+          </p>
+        ) : (
+          <div style={{ overflowX: "auto", marginTop: "0.65rem" }}>
+            <table
+              className="bom-table data-table"
+              style={{ width: "100%", fontSize: "0.85rem" }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ width: "18%" }}>Number</th>
+                  <th style={{ width: "14%" }}>Date</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>Total</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>Paid</th>
+                  <th style={{ width: "14%" }}>Status</th>
+                  <th style={{ width: "26%", textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <tr key={inv.id}>
+                    <td>
+                      <strong>{inv.invoice_number}</strong>
+                    </td>
+                    <td>{inv.invoice_date}</td>
+                    <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {formatMoney(inv.total)}
+                    </td>
+                    <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {formatMoney(inv.amount_paid)}
+                    </td>
+                    <td>
+                      <span
+                        className={`badge badge-${
+                          inv.status === "paid"
+                            ? "green"
+                            : inv.status === "draft"
+                              ? "draft"
+                              : inv.status === "void"
+                                ? "neutral"
+                                : "blue"
+                        }`}
+                      >
+                        {String(inv.status).replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "0.4rem",
+                          justifyContent: "flex-end",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <a
+                          className="btn"
+                          href={`/api/projects/${projectId}/invoices/${inv.id}/pdf`}
+                          download
+                        >
+                          PDF
+                        </a>
+                        {canEdit && inv.status === "draft" ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={saving}
+                            onClick={() => void markSent(inv.id)}
+                          >
+                            Mark sent
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      <div id="ap" className="panel" style={{ padding: "0.75rem" }}>
-        <strong>Vendor AP</strong>
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
+      <div id="ap" className="panel" style={{ padding: "0.85rem 1rem" }}>
+        <strong style={{ fontSize: "0.95rem" }}>Vendor AP</strong>
+        <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>
           Tracks vendor billed/paid stages. Does not inflate project actual cost
           (PO ledger remains the cost source).
         </p>
+
         {canManageAp ? (
           <div
+            className="stack"
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: "0.5rem",
-              marginBottom: "0.75rem",
+              gap: "0.65rem",
+              marginTop: "0.85rem",
+              marginBottom: "1rem",
+              padding: "0.85rem",
+              background: "var(--bg-soft)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--line)",
             }}
           >
-            <label className="field">
-              <span>PO</span>
-              <select
-                value={apForm.purchase_order_id}
-                onChange={(e) =>
-                  setApForm((f) => ({
-                    ...f,
-                    purchase_order_id: e.target.value,
-                  }))
-                }
-              >
-                <option value="">—</option>
-                {purchaseOrders.map((po) => (
-                  <option key={po.id} value={po.id}>
-                    {po.po_number}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Vendor</span>
-              <select
-                value={apForm.vendor_id}
-                onChange={(e) =>
-                  setApForm((f) => ({ ...f, vendor_id: e.target.value }))
-                }
-              >
-                <option value="">—</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Amount</span>
-              <input
-                type="number"
-                step="0.01"
-                value={apForm.amount}
-                onChange={(e) =>
-                  setApForm((f) => ({ ...f, amount: e.target.value }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Vendor invoice #</span>
-              <input
-                value={apForm.vendor_invoice_number}
-                onChange={(e) =>
-                  setApForm((f) => ({
-                    ...f,
-                    vendor_invoice_number: e.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Bill date</span>
-              <input
-                type="date"
-                value={apForm.bill_date}
-                onChange={(e) =>
-                  setApForm((f) => ({ ...f, bill_date: e.target.value }))
-                }
-              />
-            </label>
-            <div style={{ display: "flex", alignItems: "end" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.1fr 1.2fr 0.9fr",
+                gap: "0.65rem",
+              }}
+            >
+              <label>
+                <span className="label">PO</span>
+                <select
+                  className="field"
+                  value={apForm.purchase_order_id}
+                  onChange={(e) => {
+                    const purchase_order_id = e.target.value;
+                    const po = purchaseOrders.find(
+                      (p) => p.id === purchase_order_id,
+                    );
+                    setApForm((f) => ({
+                      ...f,
+                      purchase_order_id,
+                      vendor_id: po?.vendor_id ?? "",
+                      amount:
+                        po != null && Number(po.total || 0) > 0
+                          ? Math.round(Number(po.total) * 100) / 100
+                          : null,
+                    }));
+                  }}
+                >
+                  <option value="">Select PO…</option>
+                  {purchaseOrders.map((po) => (
+                    <option key={po.id} value={po.id}>
+                      {po.po_number}
+                      {po.total != null
+                        ? ` · ${formatMoney(Number(po.total || 0))}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="label">Vendor</span>
+                <select
+                  className="field"
+                  value={apForm.vendor_id}
+                  onChange={(e) =>
+                    setApForm((f) => ({ ...f, vendor_id: e.target.value }))
+                  }
+                >
+                  <option value="">Select vendor…</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="label">Amount</span>
+                <CurrencyInput
+                  className="field"
+                  value={apForm.amount}
+                  allowEmpty
+                  onChange={(amount) => setApForm((f) => ({ ...f, amount }))}
+                />
+              </label>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.2fr 0.9fr auto",
+                gap: "0.65rem",
+                alignItems: "end",
+              }}
+            >
+              <label>
+                <span className="label">Vendor invoice #</span>
+                <input
+                  className="field"
+                  value={apForm.vendor_invoice_number}
+                  placeholder="Optional"
+                  onChange={(e) =>
+                    setApForm((f) => ({
+                      ...f,
+                      vendor_invoice_number: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                <span className="label">Bill date</span>
+                <input
+                  className="field"
+                  type="date"
+                  value={apForm.bill_date}
+                  onChange={(e) =>
+                    setApForm((f) => ({ ...f, bill_date: e.target.value }))
+                  }
+                />
+              </label>
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={saving}
+                disabled={saving || apForm.amount == null || apForm.amount <= 0}
                 onClick={() => void createVendorBill()}
               >
                 Add vendor bill
@@ -534,53 +697,83 @@ export function BillingView({
             </div>
           </div>
         ) : null}
-        <table className="data-table" style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              <th>Vendor inv #</th>
-              <th>Date</th>
-              <th style={{ textAlign: "right" }}>Amount</th>
-              <th style={{ textAlign: "right" }}>Paid</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {vendorBills.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="muted">
-                  No vendor bills.
-                </td>
-              </tr>
-            ) : (
-              vendorBills.map((b) => (
-                <tr key={b.id}>
-                  <td>{b.vendor_invoice_number || "—"}</td>
-                  <td>{b.bill_date || "—"}</td>
-                  <td style={{ textAlign: "right" }}>{formatMoney(b.amount)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    {formatMoney(b.amount_paid)}
-                  </td>
-                  <td>
-                    <span className="badge badge-neutral">{b.status}</span>
-                  </td>
-                  <td>
-                    {canManageAp && b.status !== "paid" && b.status !== "void" ? (
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={saving}
-                        onClick={() => void markVendorPaid(b.id, Number(b.amount))}
-                      >
-                        Mark paid
-                      </button>
-                    ) : null}
-                  </td>
+
+        {vendorBills.length === 0 ? (
+          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+            No vendor bills yet.
+          </p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table
+              className="bom-table data-table"
+              style={{ width: "100%", fontSize: "0.85rem" }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ width: "22%" }}>Vendor inv #</th>
+                  <th style={{ width: "14%" }}>Date</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>Amount</th>
+                  <th style={{ width: "14%", textAlign: "right" }}>Paid</th>
+                  <th style={{ width: "16%" }}>Status</th>
+                  <th style={{ width: "20%", textAlign: "right" }}>Actions</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {vendorBills.map((b) => (
+                  <tr key={b.id}>
+                    <td>{b.vendor_invoice_number || "—"}</td>
+                    <td>{b.bill_date || "—"}</td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatMoney(b.amount)}
+                    </td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatMoney(b.amount_paid)}
+                    </td>
+                    <td>
+                      <span
+                        className={`badge badge-${
+                          b.status === "paid"
+                            ? "green"
+                            : b.status === "void"
+                              ? "neutral"
+                              : "blue"
+                        }`}
+                      >
+                        {String(b.status).replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {canManageAp &&
+                      b.status !== "paid" &&
+                      b.status !== "void" ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={saving}
+                          onClick={() =>
+                            void markVendorPaid(b.id, Number(b.amount))
+                          }
+                        >
+                          Mark paid
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

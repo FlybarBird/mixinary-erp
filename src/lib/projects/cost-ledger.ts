@@ -1,5 +1,6 @@
 import { newId } from "@/lib/local/db";
 import { calculateLinePricing } from "@/lib/pricing";
+import { laborLinePricing } from "@/lib/projects/labor-export";
 import { allocatePoOverhead } from "@/lib/projects/procurement";
 import { createClient } from "@/lib/supabase/server";
 
@@ -78,7 +79,7 @@ export async function rebuildProjectCostLedger(
     supabase
       .from("labor_entries")
       .select(
-        "id, worker_name, estimated_hours, actual_hours, hourly_rate, burden_pct, billing_rate, total_cost, approval_status, work_date",
+        "id, worker_name, task_description, qty, msrp, quote, override_pct, hourly_rate, burden_pct, total_cost, approval_status, work_date",
       )
       .eq("project_id", projectId),
     supabase
@@ -241,35 +242,30 @@ export async function rebuildProjectCostLedger(
     }
   }
 
+  const defaultOverride = Number(project.default_override_pct || 0);
   for (const entry of labor ?? []) {
     const approved = entry.approval_status === "approved";
-    const estH = Number(entry.estimated_hours || 0);
-    const actH = Number(entry.actual_hours || 0);
-    const rate = Number(entry.hourly_rate || 0);
+    const pricing = laborLinePricing(entry, defaultOverride);
     const burdenPct = Number(
       entry.burden_pct != null ? entry.burden_pct : defaultBurden,
     );
     const burdenMult = burdenEnabled ? 1 + burdenPct : 1;
-    const baseActual = Number(entry.total_cost || 0);
-    const actual = approved
-      ? money(
-          burdenEnabled
-            ? actH > 0
-              ? actH * rate * burdenMult
-              : baseActual * burdenMult
-            : baseActual,
-        )
-      : 0;
-    const remainingH = Math.max(0, estH - actH);
-    const forecast = money(remainingH * rate * burdenMult);
+    // Cost basis = total quote; approved → actual, else forecast
+    const quoteCost = money(pricing.totalQuote * burdenMult);
+    const actual = approved ? quoteCost : 0;
+    const forecast = approved ? 0 : quoteCost;
 
     if (!actual && !forecast) continue;
+    const label =
+      (entry.task_description as string | null) ||
+      (entry.worker_name as string | null) ||
+      "Labor";
     push({
       category: "labor",
       source_type: "labor_entry",
       source_id: entry.id,
       vendor_or_person: entry.worker_name ?? null,
-      description: entry.worker_name ?? "Labor",
+      description: label,
       budget_amount: 0,
       committed_amount: 0,
       actual_amount: actual,
@@ -277,7 +273,7 @@ export async function rebuildProjectCostLedger(
       transaction_date: entry.work_date ?? null,
       approval_status: entry.approval_status ?? null,
       payment_status: null,
-      billable: Number(entry.billing_rate || 0) > 0,
+      billable: pricing.totalSale > 0,
     });
   }
 
@@ -344,7 +340,6 @@ export async function rebuildProjectCostLedger(
   }
 
   // Forecast uncommitted: BOM qty not yet on active POs
-  const defaultOverride = Number(project.default_override_pct || 0);
   for (const line of lines ?? []) {
     const qty = Number(line.qty || 0);
     const qtyOrdered = Number(line.qty_ordered || 0);

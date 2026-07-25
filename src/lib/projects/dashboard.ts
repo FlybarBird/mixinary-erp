@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { calculateLinePricing, sumPricing } from "@/lib/pricing";
 import { ensureProjectCostLedger } from "@/lib/projects/cost-ledger";
 import { buildDuplicateCostAlerts } from "@/lib/projects/duplicate-alerts";
+import { laborLinePricing, laborMsrp } from "@/lib/projects/labor-export";
 import {
   arOutstanding,
   approvedChangeOrderBudgetDeltas,
@@ -241,7 +242,7 @@ export async function buildProjectDashboard(
     supabase
       .from("labor_entries")
       .select(
-        "id, estimated_hours, actual_hours, total_cost, approval_status, hourly_rate, billing_rate, worker_name, work_date",
+        "id, qty, msrp, quote, override_pct, hourly_rate, total_cost, approval_status, worker_name, work_date",
       )
       .eq("project_id", projectId),
     supabase
@@ -432,15 +433,14 @@ export async function buildProjectDashboard(
   const approvedLabor = (laborEntries ?? []).filter(
     (e) => e.approval_status === "approved",
   );
-  const laborBillableValue = approvedLabor.reduce(
-    (s, e) =>
-      s + Number(e.actual_hours || 0) * Number(e.billing_rate || 0),
-    0,
-  );
-  const laborCostApproved = approvedLabor.reduce(
-    (s, e) => s + Number(e.total_cost || 0),
-    0,
-  );
+  const laborBillableValue = approvedLabor.reduce((s, e) => {
+    const pricing = laborLinePricing(e, defaultOverride);
+    return s + pricing.totalSale;
+  }, 0);
+  const laborCostApproved = approvedLabor.reduce((s, e) => {
+    const pricing = laborLinePricing(e, defaultOverride);
+    return s + pricing.totalQuote;
+  }, 0);
   const laborProfit =
     laborBillableValue > 0 || laborCostApproved > 0
       ? laborBillableValue - laborCostApproved
@@ -450,9 +450,7 @@ export async function buildProjectDashboard(
       ? null
       : laborProfit / laborBillableValue;
   const missingLaborRates = approvedLabor.filter(
-    (e) =>
-      Number(e.actual_hours || 0) > 0 &&
-      (Number(e.hourly_rate || 0) <= 0 || Number(e.billing_rate || 0) <= 0),
+    (e) => laborMsrp(e) <= 0,
   ).length;
   const missingReceipts = (expenses ?? []).filter(
     (e) =>
@@ -531,14 +529,14 @@ export async function buildProjectDashboard(
     (s, l) => s + Number(l.qty_received || 0),
     0,
   );
-  const estHours = (laborEntries ?? []).reduce(
-    (s, e) => s + Number(e.estimated_hours || 0),
+  const laborQtyTotal = (laborEntries ?? []).reduce(
+    (s, e) => s + (Number(e.qty || 0) > 0 ? Number(e.qty) : 1),
     0,
   );
-  const actHours = (laborEntries ?? []).reduce(
-    (s, e) => s + Number(e.actual_hours || 0),
-    0,
-  );
+  const laborQtyApproved = (laborEntries ?? []).reduce((s, e) => {
+    if (e.approval_status !== "approved") return s;
+    return s + (Number(e.qty || 0) > 0 ? Number(e.qty) : 1);
+  }, 0);
 
   const percentComplete = Number(project.percent_complete || 0);
   const budgetForProgress = revisedBudget ?? budget;
@@ -547,7 +545,9 @@ export async function buildProjectDashboard(
       ? (finalCost / budgetForProgress) * 100
       : null;
   const percentLaborHoursUsed =
-    estHours > 0 ? Math.min(100, (actHours / estHours) * 100) : null;
+    laborQtyTotal > 0
+      ? Math.min(100, (laborQtyApproved / laborQtyTotal) * 100)
+      : null;
   const percentMaterialsOrdered =
     totalQty > 0 ? Math.min(100, (orderedQty / totalQty) * 100) : null;
   const percentMaterialsReceived =

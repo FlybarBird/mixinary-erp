@@ -7,23 +7,8 @@ import {
 } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { canAccessProject } from "@/lib/project-access";
+import { allocateNextInvoiceNumber } from "@/lib/projects/numbering";
 import { captureProjectFinancialSnapshot } from "@/lib/projects/snapshots";
-
-async function nextInvoiceNumber(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  projectId: string,
-) {
-  const { data } = await supabase
-    .from("project_invoices")
-    .select("invoice_number")
-    .eq("project_id", projectId);
-  let max = 0;
-  for (const row of data ?? []) {
-    const m = String(row.invoice_number || "").match(/(\d+)\s*$/);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `INV-${String(max + 1).padStart(3, "0")}`;
-}
 
 export async function GET(
   _request: Request,
@@ -98,7 +83,7 @@ export async function POST(
   const supabase = await createClient();
   const invoiceNumber =
     String(body.invoice_number || "").trim() ||
-    (await nextInvoiceNumber(supabase, projectId));
+    (await allocateNextInvoiceNumber(supabase, projectId));
 
   type BuiltLine = {
     id: string;

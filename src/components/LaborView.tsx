@@ -59,7 +59,9 @@ export function LaborView({
   canApprove,
   canViewRates = false,
 }: Props) {
-  const [entries, setEntries] = useState<LaborEntry[]>(initialEntries);
+  const [entries, setEntries] = useState<LaborEntry[]>(() =>
+    (initialEntries ?? []).filter((e): e is LaborEntry => e != null),
+  );
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -67,10 +69,11 @@ export function LaborView({
   const [message, setMessage] = useState<string | null>(null);
 
   const summary = useMemo(() => {
-    const estHours = entries.reduce((s, e) => s + Number(e.estimated_hours ?? 0), 0);
-    const actHours = entries.reduce((s, e) => s + Number(e.actual_hours ?? 0), 0);
-    const totalCost = entries.reduce((s, e) => s + Number(e.total_cost ?? 0), 0);
-    const approved = entries.filter((e) => e.approval_status === "approved");
+    const rows = entries.filter((e): e is LaborEntry => e != null);
+    const estHours = rows.reduce((s, e) => s + Number(e.estimated_hours ?? 0), 0);
+    const actHours = rows.reduce((s, e) => s + Number(e.actual_hours ?? 0), 0);
+    const totalCost = rows.reduce((s, e) => s + Number(e.total_cost ?? 0), 0);
+    const approved = rows.filter((e) => e.approval_status === "approved");
     const approvedCost = approved.reduce((s, e) => s + Number(e.total_cost ?? 0), 0);
     const billableValue = approved.reduce(
       (s, e) =>
@@ -83,8 +86,8 @@ export function LaborView({
     const avgRate =
       actHours > 0
         ? approvedCost / Math.max(actHours, 0.0001)
-        : entries.reduce((s, e) => s + Number(e.hourly_rate || 0), 0) /
-          Math.max(entries.length, 1);
+        : rows.reduce((s, e) => s + Number(e.hourly_rate || 0), 0) /
+          Math.max(rows.length, 1);
     const forecastCost = forecastHours * avgRate;
 
     const byWorker = new Map<
@@ -96,7 +99,7 @@ export function LaborView({
       { hours: number; cost: number; billable: number; estHours: number }
     >();
 
-    for (const e of entries) {
+    for (const e of rows) {
       const hours = Number(e.actual_hours ?? 0);
       const cost = Number(e.total_cost ?? 0);
       const billable = hours * Number(e.billing_rate || 0);
@@ -214,10 +217,21 @@ export function LaborView({
         return;
       }
 
+      if (!json.entry) {
+        setMessage("Saved, but entry response was empty — refresh the page.");
+        return;
+      }
       if (editingId) {
-        setEntries((prev) => prev.map((e) => (e.id === editingId ? json.entry : e)));
+        setEntries((prev) =>
+          prev
+            .filter((e): e is LaborEntry => e != null)
+            .map((e) => (e.id === editingId ? json.entry : e)),
+        );
       } else {
-        setEntries((prev) => [json.entry, ...prev]);
+        setEntries((prev) => [
+          json.entry,
+          ...prev.filter((e): e is LaborEntry => e != null),
+        ]);
       }
       cancelForm();
     } finally {
@@ -229,7 +243,9 @@ export function LaborView({
     if (!confirm("Delete this labor entry?")) return;
     const res = await fetch(`/api/projects/${projectId}/labor/${id}`, { method: "DELETE" });
     if (res.ok) {
-      setEntries((prev) => prev.filter((e) => e.id !== id));
+      setEntries((prev) =>
+        prev.filter((e): e is LaborEntry => e != null && e.id !== id),
+      );
     }
   }
 
@@ -241,7 +257,12 @@ export function LaborView({
     });
     if (res.ok) {
       const { entry } = await res.json();
-      setEntries((prev) => prev.map((e) => (e.id === id ? entry : e)));
+      if (!entry) return;
+      setEntries((prev) =>
+        prev
+          .filter((e): e is LaborEntry => e != null)
+          .map((e) => (e.id === id ? entry : e)),
+      );
     }
   }
 
@@ -491,7 +512,7 @@ export function LaborView({
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => (
+              {entries.filter((e): e is LaborEntry => e != null).map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.worker_name}</td>
                   <td>{entry.work_category ?? "—"}</td>

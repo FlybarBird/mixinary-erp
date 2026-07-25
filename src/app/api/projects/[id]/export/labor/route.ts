@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { canViewFinancials, getCurrentProfile } from "@/lib/auth";
+import {
+  laborExportHeaders,
+  laborExportRow,
+  sortLaborLines,
+} from "@/lib/projects/labor-export";
+import type { LaborEntry } from "@/lib/types";
 
 function esc(v: unknown): string {
   const s = v == null ? "" : String(v);
@@ -20,45 +26,27 @@ export async function GET(
 ) {
   const { id: projectId } = await params;
   const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!profile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
+  const includeRates = canViewFinancials(profile.role);
   const supabase = await createClient();
-  const { data: entries } = await supabase
-    .from("labor_entries")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("work_date");
-
-  const headers = [
-    "Work Date",
-    "Worker Name",
-    "Category",
-    "Task Description",
-    "Estimated Hours",
-    "Actual Hours",
-    "Regular Hours",
-    "Overtime Hours",
-    "Hourly Rate",
-    "Total Cost",
-    "Approval Status",
-    "Notes",
-  ];
-
-  const rows = (entries ?? []).map((e) => [
-    e.work_date,
-    e.worker_name,
-    e.work_category ?? "",
-    e.task_description ?? "",
-    e.estimated_hours,
-    e.actual_hours,
-    e.regular_hours,
-    e.overtime_hours,
-    e.hourly_rate,
-    e.total_cost,
-    e.approval_status,
-    e.notes ?? "",
+  const [{ data: project }, { data: entries }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("default_override_pct")
+      .eq("id", projectId)
+      .maybeSingle(),
+    supabase.from("labor_entries").select("*").eq("project_id", projectId),
   ]);
+  const defaultOverride = Number(project?.default_override_pct ?? 0);
 
+  const sorted = sortLaborLines((entries ?? []) as LaborEntry[]);
+  const headers = laborExportHeaders(includeRates);
+  const rows = sorted.map((e, i) =>
+    laborExportRow(e, includeRates, i, defaultOverride),
+  );
   const csv = [row(headers), ...rows.map(row)].join("\r\n");
 
   return new NextResponse(csv, {

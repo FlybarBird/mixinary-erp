@@ -8,10 +8,12 @@ import {
   formatStatusLabel,
   computePoEconomics,
 } from "@/lib/projects/procurement";
+import { computeBomHeaderEconomics } from "@/lib/projects/bom-header-economics";
 import {
   formatPct,
   formatSignedMoney,
 } from "@/lib/pricing";
+import { useProjectBomSummary } from "@/components/ProjectBomSummaryBar";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import type { PurchaseOrder, PurchaseOrderItem, PoStatus, PoItemStatus, Vendor } from "@/lib/types";
 
@@ -238,6 +240,38 @@ export function ProcurementView({
     for (const line of bomLineState) map.set(line.id, line);
     return map;
   }, [bomLineState]);
+
+  const headerEconomics = useMemo(() => {
+    const purchaseOrders = orders.map((o) => ({
+      id: o.id,
+      status: o.status,
+      shipping: o.shipping,
+      tax: o.tax,
+    }));
+    const poItems = orders.flatMap((o) =>
+      o.items.map((item) => ({
+        po_id: o.id,
+        line_item_id: item.line_item_id,
+        qty_ordered: item.qty_ordered,
+        unit_price: item.unit_price,
+        line_total: item.line_total,
+        item_status: item.item_status,
+      })),
+    );
+    return computeBomHeaderEconomics({
+      lines: bomLineState,
+      purchaseOrders,
+      poItems,
+      projectDefaultOverridePct: defaultOverridePct,
+    });
+  }, [orders, bomLineState, defaultOverridePct]);
+
+  const bomSummary = useProjectBomSummary();
+  const setBomSummary = bomSummary?.setEconomics;
+  useEffect(() => {
+    setBomSummary?.(headerEconomics);
+  }, [setBomSummary, headerEconomics]);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PoStatus | "">("");
   const [vendorFilter, setVendorFilter] = useState("");
@@ -261,21 +295,19 @@ export function ProcurementView({
     (l) => l.procurement_status === "not_ordered" || l.procurement_status === "partially_ordered",
   ).length;
 
-  const committed = orders
-    .filter((o) => o.status !== "cancelled")
-    .reduce((s, o) => s + Number(o.total || 0), 0);
-
   const summaryEconomics = useMemo(() => {
+    let ordered = 0;
     let sale = 0;
     let profit = 0;
     for (const o of orders) {
       if (o.status === "cancelled") continue;
       const live = livePoEconomics(o, bomById, defaultOverridePct);
+      for (const line of live.lines) ordered += line.cost_total;
       sale += live.po.sale_total;
       profit += live.po.profit;
     }
     return {
-      sale,
+      ordered,
       profit,
       margin: sale > 0 ? profit / sale : null,
     };
@@ -509,12 +541,8 @@ export function ProcurementView({
       {/* Summary strip */}
       <div className="workspace-summary">
         <div className="workspace-stat">
-          <div className="label">Committed</div>
-          <div className="value">{currencyFmt(committed)}</div>
-        </div>
-        <div className="workspace-stat">
-          <div className="label">Sale</div>
-          <div className="value">{currencyFmt(summaryEconomics.sale)}</div>
+          <div className="label">Ordered</div>
+          <div className="value">{currencyFmt(summaryEconomics.ordered)}</div>
         </div>
         <div className="workspace-stat">
           <div className="label">Profit</div>

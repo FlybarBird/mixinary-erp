@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/format";
-import { canViewFinancials } from "@/lib/auth";
+import { canViewFinancials } from "@/lib/permissions";
 
 const primaryLinks = [
   { href: "/dashboard", label: "My Home" },

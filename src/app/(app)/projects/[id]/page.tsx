@@ -42,7 +42,7 @@ export default async function ProjectBomPage({
     supabase.from("vendors").select("*").order("code"),
     supabase
       .from("purchase_orders")
-      .select("id, status, shipping")
+      .select("id, status, shipping, tax")
       .eq("project_id", id),
   ]);
 

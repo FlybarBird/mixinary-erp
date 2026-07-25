@@ -517,6 +517,8 @@ export interface TrackingEvent {
   created_by: string | null;
 }
 
+export type LaborRateType = "hourly" | "flat";
+
 export interface LaborEntry {
   id: string;
   project_id: string;
@@ -530,11 +532,19 @@ export interface LaborEntry {
   regular_hours: number;
   overtime_hours: number;
   hourly_rate: number;
+  /** hourly = hours × rate; flat = fixed dollar amount in hourly_rate / billing_rate */
+  rate_type?: LaborRateType | null;
+  /** BOM-style pricing quantity (defaults to 1). */
+  qty?: number | null;
+  msrp?: number | null;
+  quote?: number | null;
+  override_pct?: number | null;
   burden_pct?: number | null;
   billing_rate?: number | null;
   total_cost: number;
   approval_status: ApprovalStatus;
   notes: string | null;
+  sort_order?: number;
   created_by: string | null;
 }
 

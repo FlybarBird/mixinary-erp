@@ -3,22 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { canEditLabor, canApproveLabor, getCurrentProfile } from "@/lib/auth";
 import { writeAuditEvent } from "@/lib/projects/workspace";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
-
-function computeTotalCost(body: {
-  regular_hours?: number | null;
-  overtime_hours?: number | null;
-  actual_hours?: number | null;
-  hourly_rate: number;
-}): number {
-  const rate = Number(body.hourly_rate ?? 0);
-  const reg = Number(body.regular_hours ?? 0);
-  const ot = Number(body.overtime_hours ?? 0);
-  const actual = Number(body.actual_hours ?? 0);
-  if (reg > 0 || ot > 0) {
-    return (reg + ot * 1.5) * rate;
-  }
-  return actual * rate;
-}
+import {
+  laborLinePricing,
+  laborMsrp,
+  laborQty,
+} from "@/lib/projects/labor-export";
 
 export async function PATCH(
   request: Request,
@@ -34,50 +23,101 @@ export async function PATCH(
   }
 
   const supabase = await createClient();
-  const { data: existing, error: fetchError } = await supabase
-    .from("labor_entries")
-    .select("*")
-    .eq("id", entryId)
-    .eq("project_id", projectId)
-    .maybeSingle();
+  const [{ data: existing, error: fetchError }, { data: project }] =
+    await Promise.all([
+      supabase
+        .from("labor_entries")
+        .select("*")
+        .eq("id", entryId)
+        .eq("project_id", projectId)
+        .maybeSingle(),
+      supabase
+        .from("projects")
+        .select("default_override_pct")
+        .eq("id", projectId)
+        .maybeSingle(),
+    ]);
 
   if (fetchError || !existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   const body = await request.json();
+  const defaultOverride = Number(project?.default_override_pct ?? 0);
 
-  const regular_hours = body.regular_hours !== undefined ? Number(body.regular_hours) : Number(existing.regular_hours ?? 0);
-  const overtime_hours = body.overtime_hours !== undefined ? Number(body.overtime_hours) : Number(existing.overtime_hours ?? 0);
-  const actual_hours = body.actual_hours !== undefined ? Number(body.actual_hours) : Number(existing.actual_hours ?? 0);
-  const hourly_rate = body.hourly_rate !== undefined ? Number(body.hourly_rate) : Number(existing.hourly_rate ?? 0);
-  const total_cost = computeTotalCost({ regular_hours, overtime_hours, actual_hours, hourly_rate });
+  const qty =
+    body.qty !== undefined
+      ? laborQty({ qty: Number(body.qty) })
+      : laborQty(existing);
+  const msrp =
+    body.msrp !== undefined ? Number(body.msrp) || 0 : laborMsrp(existing);
+  const quote =
+    body.quote !== undefined
+      ? body.quote === null || body.quote === ""
+        ? null
+        : Number(body.quote)
+      : existing.quote != null
+        ? Number(existing.quote)
+        : null;
+  const override_pct =
+    body.override_pct !== undefined
+      ? body.override_pct === null || body.override_pct === ""
+        ? null
+        : Number(body.override_pct)
+      : existing.override_pct != null
+        ? Number(existing.override_pct)
+        : null;
+
+  const pricing = laborLinePricing(
+    { qty, msrp, quote, override_pct, hourly_rate: msrp },
+    defaultOverride,
+  );
 
   const updates: Record<string, unknown> = {
-    worker_name: body.worker_name !== undefined ? String(body.worker_name) : existing.worker_name,
-    work_category: body.work_category !== undefined ? (body.work_category as string | null) : existing.work_category,
-    task_description: body.task_description !== undefined ? (body.task_description as string | null) : existing.task_description,
-    work_date: body.work_date !== undefined ? String(body.work_date) : existing.work_date,
-    estimated_hours: body.estimated_hours !== undefined ? Number(body.estimated_hours) : Number(existing.estimated_hours ?? 0),
-    actual_hours,
-    regular_hours,
-    overtime_hours,
-    hourly_rate,
+    worker_name:
+      body.worker_name !== undefined
+        ? String(body.worker_name)
+        : existing.worker_name,
+    work_category:
+      body.work_category !== undefined
+        ? (body.work_category as string | null)
+        : existing.work_category,
+    task_description:
+      body.task_description !== undefined
+        ? (body.task_description as string | null)
+        : existing.task_description,
+    work_date:
+      body.work_date !== undefined
+        ? String(body.work_date)
+        : existing.work_date,
+    estimated_hours: 0,
+    actual_hours: 0,
+    regular_hours: 0,
+    overtime_hours: 0,
+    hourly_rate: msrp,
+    rate_type: "flat",
+    qty,
+    msrp,
+    quote,
+    override_pct,
     burden_pct:
       body.burden_pct !== undefined
         ? Number(body.burden_pct) || 0
         : Number(existing.burden_pct ?? 0) || 0,
-    billing_rate:
-      body.billing_rate !== undefined
-        ? Number(body.billing_rate) || 0
-        : Number(existing.billing_rate ?? 0) || 0,
-    total_cost,
-    notes: body.notes !== undefined ? (body.notes as string | null) : existing.notes,
+    billing_rate: pricing.unitSale,
+    total_cost: pricing.totalQuote,
+    notes:
+      body.notes !== undefined
+        ? (body.notes as string | null)
+        : existing.notes,
   };
 
   if (body.approval_status !== undefined) {
     if (!canApproveLabor(profile.role)) {
-      return NextResponse.json({ error: "Cannot approve labor without approval permission" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Cannot approve labor without approval permission" },
+        { status: 403 },
+      );
     }
     updates.approval_status = body.approval_status;
   }

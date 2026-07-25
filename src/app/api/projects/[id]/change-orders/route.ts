@@ -7,22 +7,9 @@ import {
 } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { canAccessProject } from "@/lib/project-access";
+import { allocateNextCoNumber } from "@/lib/projects/numbering";
 import { captureProjectFinancialSnapshot } from "@/lib/projects/snapshots";
 import type { ChangeOrderStatus } from "@/lib/types";
-
-async function nextCoNumber(supabase: Awaited<ReturnType<typeof createClient>>, projectId: string) {
-  const { data } = await supabase
-    .from("project_change_orders")
-    .select("co_number")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false });
-  let max = 0;
-  for (const row of data ?? []) {
-    const m = String(row.co_number || "").match(/(\d+)\s*$/);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `CO-${String(max + 1).padStart(3, "0")}`;
-}
 
 export async function GET(
   _request: Request,
@@ -79,7 +66,7 @@ export async function POST(
   const supabase = await createClient();
   const coNumber =
     String(body.co_number || "").trim() ||
-    (await nextCoNumber(supabase, projectId));
+    (await allocateNextCoNumber(supabase, projectId));
 
   const status = (body.status as ChangeOrderStatus) || "draft";
   const now = new Date().toISOString();

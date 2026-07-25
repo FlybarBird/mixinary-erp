@@ -1,11 +1,17 @@
 "use client";
 
-import { Fragment, useMemo, useState, type DragEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateLinePricing,
   formatMoney,
-  formatPct,
   formatSignedMoney,
   outOfPocketStyle,
 } from "@/lib/pricing";
@@ -20,10 +26,17 @@ import type {
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { PartPickerModal } from "@/components/PartPickerModal";
 import { AttachmentsPanel } from "@/components/AttachmentsPanel";
+import { useProjectBomSummary } from "@/components/ProjectBomSummaryBar";
+import { useDebouncedAutosave } from "@/lib/hooks/useDebouncedAutosave";
 
 type EditableLine = LineItem & { _key: string };
 
-type HeaderPo = { id: string; status: string; shipping?: number | null };
+type HeaderPo = {
+  id: string;
+  status: string;
+  shipping?: number | null;
+  tax?: number | null;
+};
 type HeaderPoItem = {
   po_id: string;
   line_item_id?: string | null;
@@ -58,7 +71,7 @@ export function BomEditor({
     initialLines.map((l) => ({ ...l, _key: l.id })),
   );
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
+  const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [productUrl, setProductUrl] = useState("");
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
@@ -68,6 +81,8 @@ export function BomEditor({
     key: string;
     place: "before" | "after";
   } | null>(null);
+
+  const bump = useCallback(() => setRevision((r) => r + 1), []);
 
   const priced = useMemo(
     () =>
@@ -92,6 +107,11 @@ export function BomEditor({
       }),
     [lines, purchaseOrders, poItems, defaultOverridePct],
   );
+  const bomSummary = useProjectBomSummary();
+  const setBomSummary = bomSummary?.setEconomics;
+  useEffect(() => {
+    setBomSummary?.(headerEconomics);
+  }, [setBomSummary, headerEconomics]);
 
   const sectionMap = useMemo(
     () => new Map(sections.map((s) => [s.id, s])),
@@ -128,6 +148,7 @@ export function BomEditor({
     setLines((prev) =>
       prev.map((line) => (line._key === key ? { ...line, ...patch } : line)),
     );
+    bump();
   }
 
   function toggleSelectAll() {
@@ -202,6 +223,7 @@ export function BomEditor({
         return { ...line, sort_order: index };
       });
     });
+    bump();
   }
 
   function moveLineToSection(fromKey: string, sectionId: string | null) {
@@ -246,6 +268,7 @@ export function BomEditor({
         return { ...line, sort_order: index };
       });
     });
+    bump();
   }
 
   function onLineDragStart(e: DragEvent, key: string) {
@@ -340,6 +363,7 @@ export function BomEditor({
         ...prefill,
       },
     ]);
+    bump();
   }
 
   function openPicker(sectionId: string | null) {
@@ -378,6 +402,7 @@ export function BomEditor({
         sort_order: prev.length,
       },
     ]);
+    bump();
   }
 
   async function sendToProcurement() {
@@ -408,8 +433,7 @@ export function BomEditor({
     router.refresh();
   }
 
-  async function save() {
-    setSaving(true);
+  const save = useCallback(async () => {
     setMessage(null);
     const orderedLines = visualOrderKeys(lines)
       .map((key) => lines.find((l) => l._key === key)!)
@@ -421,14 +445,28 @@ export function BomEditor({
       body: JSON.stringify({ sections, lines: orderedLines }),
     });
     const data = await res.json();
-    setSaving(false);
     if (!res.ok) {
       setMessage(data.error || "Save failed");
-      return;
+      throw new Error(data.error || "Save failed");
     }
-    setMessage("Saved");
+    if (Array.isArray(data.sections)) {
+      setSections(data.sections as ProjectSection[]);
+    }
+    if (Array.isArray(data.lines)) {
+      setLines(
+        (data.lines as LineItem[]).map((l) => ({ ...l, _key: l.id })),
+      );
+      setSelected(new Set());
+    }
     router.refresh();
-  }
+  }, [lines, sections, projectId, router]);
+
+  useDebouncedAutosave({
+    revision,
+    enabled: true,
+    delayMs: 900,
+    save,
+  });
 
   async function refreshMsrp() {
     const ids = [...selected];
@@ -477,14 +515,6 @@ export function BomEditor({
       <div className="row">
         {canEditPricing ? (
           <>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={save}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save BOM"}
-            </button>
             <button type="button" className="btn" onClick={addSection}>
               Add section
             </button>
@@ -532,48 +562,15 @@ export function BomEditor({
               />
             </label>
           </>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={save}
-            disabled={saving}
-          >
-            {saving ? "Saving…" : "Save status / tracking"}
-          </button>
-        )}
+        ) : null}
         {message ? <span className="muted">{message}</span> : null}
       </div>
 
-      <div className="row" style={{ gap: "1.25rem", flexWrap: "wrap" }}>
-        <span>MSRP {formatMoney(headerEconomics.totalMsrp)}</span>
-        <span>Quote {formatMoney(headerEconomics.totalQuote)}</span>
-        <span>Sale {formatMoney(headerEconomics.totalSale)}</span>
-        <span>Savings {formatMoney(headerEconomics.clientSavings)}</span>
-        <span
-          title={`Cost = PO items ${formatMoney(headerEconomics.poItemCost)} + shipping ${formatMoney(headerEconomics.poShipping)} + unordered quote ${formatMoney(headerEconomics.unorderedQuoteCost)}`}
-          style={outOfPocketStyle(
-            headerEconomics.outOfPocket,
-            headerEconomics.totalSale,
-          )}
-        >
-          Quoted Material Profit {formatSignedMoney(headerEconomics.outOfPocket)}
-        </span>
-        <span
-          style={outOfPocketStyle(
-            headerEconomics.outOfPocket,
-            headerEconomics.totalSale,
-          )}
-        >
-          Margin{" "}
-          {headerEconomics.margin == null
-            ? "—"
-            : formatPct(headerEconomics.margin)}
-        </span>
-        {selected.size ? (
-          <span className="muted">{selected.size} selected</span>
-        ) : null}
-      </div>
+      {selected.size ? (
+        <div className="muted" style={{ fontSize: "0.85rem" }}>
+          {selected.size} selected
+        </div>
+      ) : null}
 
       <div className="table-wrap panel-light">
         <table className="bom-table">

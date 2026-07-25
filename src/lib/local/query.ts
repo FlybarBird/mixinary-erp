@@ -17,7 +17,7 @@ const BOOL_FIELDS: Record<string, string[]> = {
   quote_extracted_lines: ["selected"],
   catalog_parts: ["active"],
   catalog_part_proposals: ["accepted"],
-  project_expenses: ["is_additional_charge"],
+  project_expenses: ["is_additional_charge", "is_billable"],
   project_cost_ledger: ["billable"],
   clients: ["active"],
   user_profiles: ["active"],
@@ -49,7 +49,7 @@ function encodeValue(table: string, key: string, value: unknown) {
   if ((JSON_FIELDS[table] ?? []).includes(key)) {
     return value == null ? null : JSON.stringify(value);
   }
-  if ((BOOL_FIELDS[table] ?? []).includes(key)) {
+  if ((BOOL_FIELDS[table] ?? []).includes(key) || typeof value === "boolean") {
     if (value == null) return null;
     return value ? 1 : 0;
   }
@@ -310,10 +310,13 @@ class QueryBuilder {
           );
           const sql = `insert into ${this.table} (${keys.join(",")}) values (${keys.map(() => "?").join(",")})`;
           db.prepare(sql).run(...values);
-          inserted.push(decodeRow(this.table, data)!);
+          const stored = db
+            .prepare(`select * from ${this.table} where id = ?`)
+            .get(data.id) as Row | undefined;
+          inserted.push(decodeRow(this.table, stored ?? data)!);
         }
         if (this.singleMode !== "none") {
-          return { data: inserted[0], error: null };
+          return { data: inserted[0] ?? null, error: null };
         }
         return { data: inserted, error: null };
       }
@@ -329,7 +332,23 @@ class QueryBuilder {
           ...values,
           ...params,
         );
-        return { data: null, error: null };
+        if (!this.returning && this.singleMode === "none") {
+          return { data: null, error: null };
+        }
+        const selectSql = `select * from ${this.table}${where}${this.orderClause}`;
+        const updated = (db.prepare(selectSql).all(...params) as Row[]).map(
+          (r) => decodeRow(this.table, r)!,
+        );
+        if (this.singleMode === "single") {
+          if (!updated[0]) {
+            return { data: null, error: { message: "No rows" } };
+          }
+          return { data: updated[0], error: null };
+        }
+        if (this.singleMode === "maybe") {
+          return { data: updated[0] ?? null, error: null };
+        }
+        return { data: updated, error: null };
       }
 
       if (this.action === "upsert") {

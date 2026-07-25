@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateLinePricing,
@@ -18,6 +18,7 @@ import type {
 } from "@/lib/types";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { PartPickerModal } from "@/components/PartPickerModal";
+import { useDebouncedAutosave } from "@/lib/hooks/useDebouncedAutosave";
 
 type EditableLine = TemplateLineItem & { _key: string };
 
@@ -40,10 +41,12 @@ export function TemplateEditor({
   const [lines, setLines] = useState<EditableLine[]>(
     initialLines.map((l) => ({ ...l, _key: l.id })),
   );
-  const [saving, setSaving] = useState(false);
+  const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [pickerSectionId, setPickerSectionId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  const bump = useCallback(() => setRevision((r) => r + 1), []);
 
   const vendorCodeById = useMemo(
     () => new Map(vendors.map((v) => [v.id, v.code])),
@@ -69,6 +72,7 @@ export function TemplateEditor({
     setLines((prev) =>
       prev.map((line) => (line._key === key ? { ...line, ...patch } : line)),
     );
+    bump();
   }
 
   function addLine(
@@ -95,10 +99,12 @@ export function TemplateEditor({
         ...prefill,
       },
     ]);
+    bump();
   }
 
   function removeLine(key: string) {
     setLines((prev) => prev.filter((l) => l._key !== key));
+    bump();
   }
 
   function addSection() {
@@ -114,6 +120,7 @@ export function TemplateEditor({
         sort_order: prev.length,
       },
     ]);
+    bump();
   }
 
   function renameSection(section: TemplateSection) {
@@ -124,6 +131,7 @@ export function TemplateEditor({
         s.id === section.id ? { ...s, name: name.trim() } : s,
       ),
     );
+    bump();
   }
 
   function removeSection(sectionId: string) {
@@ -137,6 +145,7 @@ export function TemplateEditor({
         l.section_id === sectionId ? { ...l, section_id: null } : l,
       ),
     );
+    bump();
   }
 
   function openPicker(sectionId: string | null) {
@@ -163,9 +172,8 @@ export function TemplateEditor({
     );
   }
 
-  async function save() {
+  const save = useCallback(async () => {
     if (!canEdit) return;
-    setSaving(true);
     setMessage(null);
     const res = await fetch(`/api/templates/${template.id}/contents`, {
       method: "PUT",
@@ -185,10 +193,9 @@ export function TemplateEditor({
       }),
     });
     const data = await res.json();
-    setSaving(false);
     if (!res.ok) {
       setMessage(data.error || "Save failed");
-      return;
+      throw new Error(data.error || "Save failed");
     }
 
     const saved = data.data as {
@@ -199,9 +206,15 @@ export function TemplateEditor({
     setTemplate(saved.template);
     setSections(saved.sections);
     setLines(saved.lines.map((l) => ({ ...l, _key: l.id })));
-    setMessage("Saved");
     router.refresh();
-  }
+  }, [canEdit, template, sections, lines, router]);
+
+  useDebouncedAutosave({
+    revision,
+    enabled: canEdit,
+    delayMs: 900,
+    save,
+  });
 
   const sectionMap = new Map(sections.map((s) => [s.id, s]));
   const unsorted = lines.filter(
@@ -238,9 +251,10 @@ export function TemplateEditor({
               className="field"
               value={template.name}
               disabled={!canEdit}
-              onChange={(e) =>
-                setTemplate((t) => ({ ...t, name: e.target.value }))
-              }
+              onChange={(e) => {
+                setTemplate((t) => ({ ...t, name: e.target.value }));
+                bump();
+              }}
             />
           </div>
           <div>
@@ -249,12 +263,13 @@ export function TemplateEditor({
               className="field"
               value={template.description || ""}
               disabled={!canEdit}
-              onChange={(e) =>
+              onChange={(e) => {
                 setTemplate((t) => ({
                   ...t,
                   description: e.target.value || null,
-                }))
-              }
+                }));
+                bump();
+              }}
             />
           </div>
           <div>
@@ -265,12 +280,13 @@ export function TemplateEditor({
               step="0.01"
               disabled={!canEdit}
               value={Number((template.default_override_pct * 100).toFixed(4))}
-              onChange={(e) =>
+              onChange={(e) => {
                 setTemplate((t) => ({
                   ...t,
                   default_override_pct: Number(e.target.value || 0) / 100,
-                }))
-              }
+                }));
+                bump();
+              }}
             />
           </div>
         </div>
@@ -279,14 +295,6 @@ export function TemplateEditor({
       <div className="row">
         {canEdit ? (
           <>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => void save()}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save template"}
-            </button>
             <button type="button" className="btn" onClick={addSection}>
               Add section
             </button>

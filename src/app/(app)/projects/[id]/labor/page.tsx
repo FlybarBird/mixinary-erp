@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { LaborView } from "@/components/LaborView";
+import { LaborEditor } from "@/components/LaborEditor";
 import {
   canEditLabor,
   canApproveLabor,
@@ -20,7 +20,7 @@ export default async function LaborPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id")
+    .select("id, default_override_pct")
     .eq("id", id)
     .maybeSingle();
 
@@ -30,12 +30,14 @@ export default async function LaborPage({
     .from("labor_entries")
     .select("*")
     .eq("project_id", id)
-    .order("work_date", { ascending: false });
+    .order("sort_order", { ascending: true })
+    .order("work_date", { ascending: true });
 
   return (
-    <LaborView
+    <LaborEditor
       projectId={id}
-      initialEntries={(entries ?? []) as LaborEntry[]}
+      defaultOverridePct={Number(project.default_override_pct ?? 0)}
+      initialLines={((entries ?? []).filter(Boolean) as LaborEntry[])}
       canEdit={canEditLabor(profile.role)}
       canApprove={canApproveLabor(profile.role)}
       canViewRates={canViewFinancials(profile.role)}

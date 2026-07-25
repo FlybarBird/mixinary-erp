@@ -3,8 +3,13 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ProjectStatus } from "@/lib/types";
+import type { ProjectMember, ProjectStatus, UserProfile } from "@/lib/types";
 import { OverflowMenu } from "@/components/OverflowMenu";
+import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
+import {
+  PROJECT_CSV_EXPORTS,
+  PROJECT_PDF_EXPORTS,
+} from "@/lib/projects/export-menu";
 import { cn } from "@/lib/format";
 
 const STATUSES: { value: ProjectStatus; label: string }[] = [
@@ -21,6 +26,9 @@ export function ProjectHeader({
   managers,
   canEdit,
   canEditFinancials = false,
+  members = [],
+  users = [],
+  canManageMembers = false,
 }: {
   project: {
     id: string;
@@ -51,9 +59,13 @@ export function ProjectHeader({
   managers: { id: string; name: string }[];
   canEdit: boolean;
   canEditFinancials?: boolean;
+  members?: ProjectMember[];
+  users?: UserProfile[];
+  canManageMembers?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -173,20 +185,59 @@ export function ProjectHeader({
             </span>
           </p>
         </div>
-        {canEdit ? (
-          <div className="row" style={{ gap: "0.4rem" }}>
+        <OverflowMenu label="Project actions" wide prominent>
+          {canEdit ? (
             <button
               type="button"
-              className="btn"
+              className="menu-item"
+              role="menuitem"
               disabled={loading}
               onClick={() => {
                 setEditing((v) => !v);
                 setError(null);
               }}
             >
-              {editing ? "Cancel" : "Edit"}
+              {editing ? "Cancel edit" : "Edit"}
             </button>
-            <OverflowMenu>
+          ) : null}
+          <button
+            type="button"
+            className="menu-item"
+            role="menuitem"
+            onClick={() => setMembersOpen((v) => !v)}
+          >
+            {membersOpen
+              ? "Hide members"
+              : `Members (${members.length})`}
+          </button>
+          <div className="menu-divider" />
+          <div className="menu-section">Export PDF</div>
+          {PROJECT_PDF_EXPORTS.map(({ label, href }) => (
+            <a
+              key={label}
+              href={href(project.id)}
+              download
+              role="menuitem"
+              className="menu-item menu-item-link"
+            >
+              {label}
+            </a>
+          ))}
+          <div className="menu-section">Export spreadsheet</div>
+          {PROJECT_CSV_EXPORTS.map(({ label, key }) => (
+            <a
+              key={key}
+              href={`/api/projects/${project.id}/export/${key}`}
+              download
+              role="menuitem"
+              className="menu-item menu-item-link"
+            >
+              {label}
+            </a>
+          ))}
+          {canEdit ? (
+            <>
+              <div className="menu-divider" />
               <button
                 type="button"
                 className="menu-item"
@@ -205,10 +256,19 @@ export function ProjectHeader({
               >
                 Delete
               </button>
-            </OverflowMenu>
-          </div>
-        ) : null}
+            </>
+          ) : null}
+        </OverflowMenu>
       </div>
+
+      <ProjectMembersPanel
+        projectId={project.id}
+        initialMembers={members}
+        users={users}
+        canManage={canManageMembers}
+        open={membersOpen}
+        onOpenChange={setMembersOpen}
+      />
 
       {editing && canEdit ? (
         <form className="panel" style={{ padding: "1rem" }} onSubmit={onSave}>
@@ -229,7 +289,7 @@ export function ProjectHeader({
                 title="Auto format: YYYYMM + sequence (e.g. 20260701)"
               />
               <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--muted)" }}>
-                Format YYYYMM + seq · POs use PO-YYMMPPnn
+                Format YYYYMM + seq · PO/CO/INV use PREFIX-YYMMPPnn
               </p>
             </div>
             <div>

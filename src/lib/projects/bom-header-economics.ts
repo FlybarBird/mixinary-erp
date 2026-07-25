@@ -1,6 +1,7 @@
 import { calculateLinePricing, sumPricing } from "@/lib/pricing";
 
-const INACTIVE_PO = new Set(["draft", "cancelled"]);
+/** Match procurement summary: only cancelled POs are excluded from live cost. */
+const INACTIVE_PO = new Set(["cancelled"]);
 
 export type BomHeaderLine = {
   id: string;
@@ -14,6 +15,7 @@ export type BomHeaderPo = {
   id: string;
   status: string;
   shipping?: number | null;
+  tax?: number | null;
 };
 
 export type BomHeaderPoItem = {
@@ -32,10 +34,11 @@ export type BomHeaderEconomics = {
   clientSavings: number;
   /** Quote-based OOP (Sale − Quote); kept for reference / line consistency checks */
   quoteOutOfPocket: number;
-  /** Active PO item costs + shipping + unordered BOM at quote */
+  /** Active PO item costs + shipping + tax + unordered BOM at quote */
   materialCost: number;
   poItemCost: number;
   poShipping: number;
+  poTax: number;
   unorderedQuoteCost: number;
   /** Sale − materialCost */
   outOfPocket: number;
@@ -99,9 +102,11 @@ export function computeBomHeaderEconomics(input: {
   }
 
   let poShipping = 0;
+  let poTax = 0;
   for (const po of input.purchaseOrders) {
     if (!activePoIds.has(po.id)) continue;
     poShipping += Number(po.shipping || 0);
+    poTax += Number(po.tax || 0);
   }
 
   let unorderedQuoteCost = 0;
@@ -115,7 +120,9 @@ export function computeBomHeaderEconomics(input: {
     unorderedQuoteCost += remaining * pricing.unitQuote;
   }
 
-  const materialCost = money(poItemCost + poShipping + unorderedQuoteCost);
+  const materialCost = money(
+    poItemCost + poShipping + poTax + unorderedQuoteCost,
+  );
   const outOfPocket = money(totals.totalSale - materialCost);
   const margin =
     totals.totalSale > 0 ? outOfPocket / totals.totalSale : null;
@@ -129,6 +136,7 @@ export function computeBomHeaderEconomics(input: {
     materialCost,
     poItemCost: money(poItemCost),
     poShipping: money(poShipping),
+    poTax: money(poTax),
     unorderedQuoteCost: money(unorderedQuoteCost),
     outOfPocket,
     margin,

@@ -143,7 +143,7 @@ export function ClientDocumentSettingsForm({
               className="field-light"
               value={form.logo_path}
               onChange={(e) => set("logo_path", e.target.value)}
-              placeholder="/brand/logo-1.png or https://…"
+              placeholder="/brand/logo-2.png or https://…"
             />
           </div>
           <div>

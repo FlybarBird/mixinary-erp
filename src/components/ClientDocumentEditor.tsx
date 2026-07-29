@@ -269,6 +269,43 @@ export function ClientDocumentEditor({
     );
   }
 
+  function movePricingLineBetween(
+    fromBlockId: string,
+    toBlockId: string,
+    lineId: string,
+  ) {
+    if (fromBlockId === toBlockId) return;
+    mutate((prev) => {
+      const source = prev.find((b) => b.id === fromBlockId);
+      if (!source) return prev;
+      const sourcePricing = normalizePricingContent(source.content);
+      const line = sourcePricing.lines.find((l) => l.id === lineId);
+      if (!line) return prev;
+      return prev.map((b) => {
+        if (b.id === fromBlockId) {
+          return {
+            ...b,
+            content: {
+              ...sourcePricing,
+              lines: sourcePricing.lines.filter((l) => l.id !== lineId),
+            } as unknown as Record<string, unknown>,
+          };
+        }
+        if (b.id === toBlockId) {
+          const targetPricing = normalizePricingContent(b.content);
+          return {
+            ...b,
+            content: {
+              ...targetPricing,
+              lines: [...targetPricing.lines, line],
+            } as unknown as Record<string, unknown>,
+          };
+        }
+        return b;
+      });
+    });
+  }
+
   function moveBlock(index: number, delta: number) {
     const target = index + delta;
     if (target < 0 || target >= blocks.length) return;
@@ -338,6 +375,14 @@ export function ClientDocumentEditor({
 
   const label = autosaveLabel(saveStatus);
   const lastCustomerEvent = events.find((e) => !e.actor_user_id);
+  const pricingSections = blocks
+    .filter((b) => b.block_type === "pricing")
+    .map((b, i) => ({
+      id: b.id,
+      title:
+        (normalizePricingContent(b.content).title ?? "").trim() ||
+        `Pricing section ${i + 1}`,
+    }));
 
   return (
     <div className="stack">
@@ -561,6 +606,10 @@ export function ClientDocumentEditor({
                 onContent={(patch) => updateContent(block.id, patch)}
                 onPricing={(fn) => updatePricing(block.id, fn)}
                 onOpenImport={() => setImportFor(block.id)}
+                pricingSections={pricingSections}
+                onMoveLineTo={(toBlockId, lineId) =>
+                  movePricingLineBetween(block.id, toBlockId, lineId)
+                }
               />
             ))}
           </div>
@@ -604,6 +653,8 @@ function BlockCard({
   onContent,
   onPricing,
   onOpenImport,
+  pricingSections,
+  onMoveLineTo,
 }: {
   block: ClientDocumentBlock;
   index: number;
@@ -620,6 +671,8 @@ function BlockCard({
   onContent: (patch: Record<string, unknown>) => void;
   onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
   onOpenImport: () => void;
+  pricingSections: Array<{ id: string; title: string }>;
+  onMoveLineTo: (toBlockId: string, lineId: string) => void;
 }) {
   const type = block.block_type as ClientDocBlockType;
   const label = CLIENT_DOC_BLOCK_LABELS[type] ?? block.block_type;
@@ -678,6 +731,8 @@ function BlockCard({
           onContent={onContent}
           onPricing={onPricing}
           onOpenImport={onOpenImport}
+          pricingSections={pricingSections}
+          onMoveLineTo={onMoveLineTo}
         />
       </div>
     </div>
@@ -748,12 +803,16 @@ function BlockForm({
   onContent,
   onPricing,
   onOpenImport,
+  pricingSections,
+  onMoveLineTo,
 }: {
   block: ClientDocumentBlock;
   editable: boolean;
   onContent: (patch: Record<string, unknown>) => void;
   onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
   onOpenImport: () => void;
+  pricingSections: Array<{ id: string; title: string }>;
+  onMoveLineTo: (toBlockId: string, lineId: string) => void;
 }) {
   const disabled = !editable;
   switch (block.block_type as ClientDocBlockType) {
@@ -828,6 +887,8 @@ function BlockForm({
           editable={editable}
           onPricing={onPricing}
           onOpenImport={onOpenImport}
+          pricingSections={pricingSections}
+          onMoveLineTo={onMoveLineTo}
         />
       );
     case "acceptance":
@@ -878,14 +939,19 @@ function PricingBlockEditor({
   editable,
   onPricing,
   onOpenImport,
+  pricingSections,
+  onMoveLineTo,
 }: {
   block: ClientDocumentBlock;
   editable: boolean;
   onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
   onOpenImport: () => void;
+  pricingSections: Array<{ id: string; title: string }>;
+  onMoveLineTo: (toBlockId: string, lineId: string) => void;
 }) {
   const pricing = normalizePricingContent(block.content);
   const disabled = !editable;
+  const otherSections = pricingSections.filter((s) => s.id !== block.id);
 
   function updateLine(lineId: string, patch: Partial<PricingLine>) {
     onPricing((p) => ({
@@ -896,6 +962,18 @@ function PricingBlockEditor({
 
   function removeLine(lineId: string) {
     onPricing((p) => ({ ...p, lines: p.lines.filter((l) => l.id !== lineId) }));
+  }
+
+  function moveLine(lineId: string, delta: number) {
+    onPricing((p) => {
+      const from = p.lines.findIndex((l) => l.id === lineId);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= p.lines.length) return p;
+      const lines = [...p.lines];
+      const [item] = lines.splice(from, 1);
+      lines.splice(to, 0, item!);
+      return { ...p, lines };
+    });
   }
 
   function addLine() {
@@ -964,7 +1042,7 @@ function PricingBlockEditor({
                 </td>
               </tr>
             ) : (
-              pricing.lines.map((line) => (
+              pricing.lines.map((line, lineIndex) => (
                 <tr key={line.id}>
                   <td>
                     <input
@@ -1042,14 +1120,57 @@ function PricingBlockEditor({
                   </td>
                   <td>
                     {editable ? (
-                      <button
-                        className="btn"
-                        type="button"
-                        onClick={() => removeLine(line.id)}
-                        title="Remove line"
+                      <div
+                        className="row"
+                        style={{ gap: "0.25rem", flexWrap: "nowrap" }}
                       >
-                        ✕
-                      </button>
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => moveLine(line.id, -1)}
+                          disabled={lineIndex === 0}
+                          title="Move line up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => moveLine(line.id, 1)}
+                          disabled={lineIndex === pricing.lines.length - 1}
+                          title="Move line down"
+                        >
+                          ↓
+                        </button>
+                        {otherSections.length > 0 ? (
+                          <select
+                            className="field-light"
+                            value=""
+                            title="Move line to another pricing section"
+                            style={{ width: 92 }}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                onMoveLineTo(e.target.value, line.id);
+                              }
+                            }}
+                          >
+                            <option value="">Move to…</option>
+                            {otherSections.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.title}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => removeLine(line.id)}
+                          title="Remove line"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     ) : null}
                   </td>
                 </tr>

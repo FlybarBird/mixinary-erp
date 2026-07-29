@@ -389,6 +389,11 @@ export function ClientDocumentRenderer({
                       and IP address are recorded.
                     </p>
                   </form>
+                ) : onSign ? (
+                  <p className="cdoc-sign-note">
+                    This document is no longer open for signature. Contact us if
+                    you need an updated copy.
+                  </p>
                 ) : (
                   <p className="cdoc-sign-note">
                     Signature is collected on the customer link.

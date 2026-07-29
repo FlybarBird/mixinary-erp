@@ -13,15 +13,22 @@ import type {
   CompanySettings,
 } from "@/lib/types";
 
+/** Brand assets that are white/light-on-transparent and unreadable on a white PDF page. */
+const LIGHT_BRAND_LOGOS = ["logo-1.png", "logo-4.png"];
+
 function resolveLogoPath(settings: CompanySettings): string | null {
-  const candidates: string[] = [];
-  if (settings.logo_path && settings.logo_path.startsWith("/")) {
+  // PDFs render on a white page, so prefer the dark wordmark over the
+  // configured logo, which is typically the light variant used on dark UI.
+  const candidates: string[] = [
+    path.join(process.cwd(), "public/brand/logo-2.png"),
+  ];
+  if (
+    settings.logo_path &&
+    settings.logo_path.startsWith("/") &&
+    !LIGHT_BRAND_LOGOS.some((name) => settings.logo_path?.endsWith(name))
+  ) {
     candidates.push(path.join(process.cwd(), "public", settings.logo_path));
   }
-  candidates.push(
-    path.join(process.cwd(), "public/brand/logo-2.png"),
-    path.join(process.cwd(), "public/brand/logo-1.png"),
-  );
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 

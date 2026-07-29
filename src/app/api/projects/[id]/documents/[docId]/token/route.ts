@@ -57,6 +57,33 @@ export async function POST(
       actorUserId: auth.profile.id,
     });
   }
+
+  // Sharing a link is equivalent to sending: promote pre-send statuses so the
+  // customer view is open for selection and signing (issue #6).
+  const PRE_SEND_STATUSES = [
+    "draft",
+    "internal_review",
+    "approved_to_send",
+    "changes_requested",
+  ];
+  if (PRE_SEND_STATUSES.includes(document.status)) {
+    const now = new Date().toISOString();
+    await supabase
+      .from("client_documents")
+      .update({
+        status: "sent",
+        sent_at: document.sent_at ?? now,
+        updated_at: now,
+      })
+      .eq("id", docId);
+    await writeClientDocEvent(supabase, {
+      documentId: docId,
+      eventType: "sent",
+      actorUserId: auth.profile.id,
+      metadata: { via: "secure_link" },
+    });
+  }
+
   return NextResponse.json({ url: buildClientDocumentUrl(token) });
 }
 

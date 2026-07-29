@@ -7,7 +7,12 @@ import {
   listUsers,
   updateUser,
 } from "@/lib/users";
-import { normalizeUserRole, USER_ROLES } from "@/lib/types";
+import {
+  normalizePermissionOverride,
+  normalizeUserRole,
+  PERMISSION_OVERRIDES,
+  USER_ROLES,
+} from "@/lib/types";
 
 export async function GET(request: Request) {
   const profile = await getCurrentProfile();
@@ -80,6 +85,16 @@ export async function PATCH(request: Request) {
     }
   }
 
+  if (
+    body.create_projects_override !== undefined &&
+    !PERMISSION_OVERRIDES.includes(String(body.create_projects_override) as never)
+  ) {
+    return NextResponse.json(
+      { error: "Invalid create_projects_override" },
+      { status: 400 },
+    );
+  }
+
   const result = await updateUser({
     actorId: profile.id,
     id,
@@ -93,6 +108,10 @@ export async function PATCH(request: Request) {
     role: body.role !== undefined ? normalizeUserRole(body.role) : undefined,
     active: body.active !== undefined ? Boolean(body.active) : undefined,
     password: body.password ? String(body.password) : null,
+    createProjectsOverride:
+      body.create_projects_override !== undefined
+        ? normalizePermissionOverride(body.create_projects_override)
+        : undefined,
   });
 
   if (!result.ok) {

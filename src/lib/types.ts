@@ -120,12 +120,35 @@ export type AiJobStatus =
   | "failed"
   | "rejected";
 
+/** Per-user / per-project-member permission override. */
+export type PermissionOverride = "inherit" | "allow" | "deny";
+
+export const PERMISSION_OVERRIDES: PermissionOverride[] = [
+  "inherit",
+  "allow",
+  "deny",
+];
+
+export const PERMISSION_OVERRIDE_LABELS: Record<PermissionOverride, string> = {
+  inherit: "Inherit (role default)",
+  allow: "Allow",
+  deny: "Deny",
+};
+
+export function normalizePermissionOverride(
+  value: string | null | undefined,
+): PermissionOverride {
+  return value === "allow" || value === "deny" ? value : "inherit";
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string | null;
   role: UserRole;
   active?: boolean;
+  /** Per-user override for the Create Projects permission. */
+  create_projects_override?: PermissionOverride;
 }
 
 export type ProjectAccessRole = "viewer" | "editor" | "manager";
@@ -147,6 +170,8 @@ export interface ProjectMember {
   project_id: string;
   user_id: string;
   access_role: ProjectAccessRole;
+  /** Per-member override for View money on this project. */
+  view_money: PermissionOverride;
   user_profiles?: Pick<UserProfile, "id" | "email" | "full_name" | "role"> | null;
 }
 

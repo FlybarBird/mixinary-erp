@@ -50,6 +50,8 @@ type Props = {
   bomLines: BomLineSummary[];
   canEdit: boolean;
   canReceive: boolean;
+  /** When false, all $ values/columns are omitted (values are also redacted server-side). */
+  canViewMoney?: boolean;
   /** Display name for PO email signature */
   signerName?: string | null;
   /** Global CC for PO order mailto links (Admin → Email) */
@@ -232,6 +234,7 @@ export function ProcurementView({
   bomLines,
   canEdit,
   canReceive,
+  canViewMoney = true,
   signerName = null,
   poOrderCc = null,
 }: Props) {
@@ -593,24 +596,28 @@ export function ProcurementView({
     <div className="stack">
       {/* Summary strip */}
       <div className="workspace-summary">
-        <div className="workspace-stat">
-          <div className="label">Ordered</div>
-          <div className="value">{currencyFmt(summaryEconomics.ordered)}</div>
-        </div>
-        <div className="workspace-stat">
-          <div className="label">Profit</div>
-          <div className="value" style={profitStyle(summaryEconomics.profit)}>
-            {formatSignedMoney(summaryEconomics.profit)}
-          </div>
-        </div>
-        <div className="workspace-stat">
-          <div className="label">Margin</div>
-          <div className="value">
-            {summaryEconomics.margin != null
-              ? formatPct(summaryEconomics.margin)
-              : "—"}
-          </div>
-        </div>
+        {canViewMoney ? (
+          <>
+            <div className="workspace-stat">
+              <div className="label">Ordered</div>
+              <div className="value">{currencyFmt(summaryEconomics.ordered)}</div>
+            </div>
+            <div className="workspace-stat">
+              <div className="label">Profit</div>
+              <div className="value" style={profitStyle(summaryEconomics.profit)}>
+                {formatSignedMoney(summaryEconomics.profit)}
+              </div>
+            </div>
+            <div className="workspace-stat">
+              <div className="label">Margin</div>
+              <div className="value">
+                {summaryEconomics.margin != null
+                  ? formatPct(summaryEconomics.margin)
+                  : "—"}
+              </div>
+            </div>
+          </>
+        ) : null}
         <div className="workspace-stat">
           <div className="label">Open Orders</div>
           <div className="value">{openOrders}</div>
@@ -687,7 +694,8 @@ export function ProcurementView({
             >
               <strong>{vendor ? `${vendor.code} — ${vendor.name}` : "Unknown Vendor"}</strong>
               <span style={{ marginLeft: "auto", fontSize: "0.85rem", color: "var(--muted)" }}>
-                {vOrders.length} PO{vOrders.length !== 1 ? "s" : ""} · {currencyFmt(vendorTotal)}
+                {vOrders.length} PO{vOrders.length !== 1 ? "s" : ""}
+                {canViewMoney ? ` · ${currencyFmt(vendorTotal)}` : ""}
               </span>
               <span style={{ marginLeft: "0.75rem" }}>{collapsed ? "▶" : "▼"}</span>
             </div>
@@ -746,29 +754,33 @@ export function ProcurementView({
                           {po.expected_delivery_date}
                         </span>
                       )}
-                      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.85rem" }}>
-                        <span style={{ color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                          Ship
-                          <CurrencyInput
-                            value={Number(po.shipping || 0)}
-                            disabled={!canEdit}
-                            onChange={(value) => {
-                              const shipping = value ?? 0;
-                              if (shipping === Number(po.shipping || 0)) return;
-                              void patchPo(po.id, { shipping });
-                            }}
-                          />
+                      {canViewMoney ? (
+                        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.85rem" }}>
+                          <span style={{ color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            Ship
+                            <CurrencyInput
+                              value={Number(po.shipping || 0)}
+                              disabled={!canEdit}
+                              onChange={(value) => {
+                                const shipping = value ?? 0;
+                                if (shipping === Number(po.shipping || 0)) return;
+                                void patchPo(po.id, { shipping });
+                              }}
+                            />
+                          </span>
+                          <strong>{currencyFmt(Number(po.total || 0))}</strong>
+                          <span style={profitStyle(poEcon.po.profit)}>
+                            {formatSignedMoney(poEcon.po.profit)}
+                          </span>
+                          <span style={{ color: "var(--muted)" }}>
+                            {poEcon.po.margin_pct != null
+                              ? formatPct(poEcon.po.margin_pct)
+                              : "—"}
+                          </span>
                         </span>
-                        <strong>{currencyFmt(Number(po.total || 0))}</strong>
-                        <span style={profitStyle(poEcon.po.profit)}>
-                          {formatSignedMoney(poEcon.po.profit)}
-                        </span>
-                        <span style={{ color: "var(--muted)" }}>
-                          {poEcon.po.margin_pct != null
-                            ? formatPct(poEcon.po.margin_pct)
-                            : "—"}
-                        </span>
-                      </span>
+                      ) : (
+                        <span style={{ marginLeft: "auto" }} />
+                      )}
                       <a
                         className="btn btn-ghost"
                         href={buildPoOrderEmail(
@@ -818,11 +830,15 @@ export function ProcurementView({
                               <th style={{ textAlign: "left", padding: "0.3rem 0.5rem" }}>Description</th>
                               <th>SKU</th>
                               <th>Qty Ord</th>
-                              <th>Unit $</th>
-                              <th>Total</th>
-                              <th>Vs cost</th>
-                              <th>Profit</th>
-                              <th>Margin</th>
+                              {canViewMoney ? (
+                                <>
+                                  <th>Unit $</th>
+                                  <th>Total</th>
+                                  <th>Vs cost</th>
+                                  <th>Profit</th>
+                                  <th>Margin</th>
+                                </>
+                              ) : null}
                               <th>Status</th>
                               <th>Tracking</th>
                               <th>Rcvd</th>
@@ -861,37 +877,41 @@ export function ProcurementView({
                                   <td style={{ padding: "0.3rem 0.5rem" }}>{item.description}</td>
                                   <td style={{ textAlign: "center" }}>{item.sku || "—"}</td>
                                   <td style={{ textAlign: "center" }}>{qtyOrdered}</td>
-                                  <td style={{ textAlign: "right" }}>
-                                    <CurrencyInput
-                                      value={Number(item.unit_price || 0)}
-                                      disabled={!canEdit}
-                                      onChange={(value) => {
-                                        const unit_price = value ?? 0;
-                                        if (unit_price === Number(item.unit_price || 0)) return;
-                                        void patchItem(po.id, item.id, { unit_price });
-                                      }}
-                                    />
-                                  </td>
-                                  <td style={{ textAlign: "right" }}>
-                                    <CurrencyInput
-                                      value={lineTotal}
-                                      disabled={!canEdit}
-                                      onChange={(value) => {
-                                        const next = value ?? 0;
-                                        if (next === lineTotal) return;
-                                        void patchItem(po.id, item.id, { line_total: next });
-                                      }}
-                                    />
-                                  </td>
-                                  <td style={{ textAlign: "right", ...(vsCost != null ? varianceStyle(vsCost) : {}) }}>
-                                    {vsCost != null ? formatSignedMoney(vsCost) : "—"}
-                                  </td>
-                                  <td style={{ textAlign: "right", ...profitStyle(displayProfit) }}>
-                                    {formatSignedMoney(displayProfit)}
-                                  </td>
-                                  <td style={{ textAlign: "right" }}>
-                                    {displayMargin != null ? formatPct(displayMargin) : "—"}
-                                  </td>
+                                  {canViewMoney ? (
+                                    <>
+                                      <td style={{ textAlign: "right" }}>
+                                        <CurrencyInput
+                                          value={Number(item.unit_price || 0)}
+                                          disabled={!canEdit}
+                                          onChange={(value) => {
+                                            const unit_price = value ?? 0;
+                                            if (unit_price === Number(item.unit_price || 0)) return;
+                                            void patchItem(po.id, item.id, { unit_price });
+                                          }}
+                                        />
+                                      </td>
+                                      <td style={{ textAlign: "right" }}>
+                                        <CurrencyInput
+                                          value={lineTotal}
+                                          disabled={!canEdit}
+                                          onChange={(value) => {
+                                            const next = value ?? 0;
+                                            if (next === lineTotal) return;
+                                            void patchItem(po.id, item.id, { line_total: next });
+                                          }}
+                                        />
+                                      </td>
+                                      <td style={{ textAlign: "right", ...(vsCost != null ? varianceStyle(vsCost) : {}) }}>
+                                        {vsCost != null ? formatSignedMoney(vsCost) : "—"}
+                                      </td>
+                                      <td style={{ textAlign: "right", ...profitStyle(displayProfit) }}>
+                                        {formatSignedMoney(displayProfit)}
+                                      </td>
+                                      <td style={{ textAlign: "right" }}>
+                                        {displayMargin != null ? formatPct(displayMargin) : "—"}
+                                      </td>
+                                    </>
+                                  ) : null}
 
                                   <td style={{ textAlign: "center" }}>
                                     {canTouchLine ? (
@@ -1068,33 +1088,37 @@ export function ProcurementView({
                 />
               </label>
 
-              <label>
-                <div className="label">Shipping</div>
-                <input
-                  type="number"
-                  className="field"
-                  step="0.01"
-                  min={0}
-                  value={editFields.shipping ?? 0}
-                  onChange={(e) =>
-                    setEditFields((p) => ({ ...p, shipping: Number(e.target.value) }))
-                  }
-                />
-              </label>
+              {canViewMoney ? (
+                <>
+                  <label>
+                    <div className="label">Shipping</div>
+                    <input
+                      type="number"
+                      className="field"
+                      step="0.01"
+                      min={0}
+                      value={editFields.shipping ?? 0}
+                      onChange={(e) =>
+                        setEditFields((p) => ({ ...p, shipping: Number(e.target.value) }))
+                      }
+                    />
+                  </label>
 
-              <label>
-                <div className="label">Tax</div>
-                <input
-                  type="number"
-                  className="field"
-                  step="0.01"
-                  min={0}
-                  value={editFields.tax ?? 0}
-                  onChange={(e) =>
-                    setEditFields((p) => ({ ...p, tax: Number(e.target.value) }))
-                  }
-                />
-              </label>
+                  <label>
+                    <div className="label">Tax</div>
+                    <input
+                      type="number"
+                      className="field"
+                      step="0.01"
+                      min={0}
+                      value={editFields.tax ?? 0}
+                      onChange={(e) =>
+                        setEditFields((p) => ({ ...p, tax: Number(e.target.value) }))
+                      }
+                    />
+                  </label>
+                </>
+              ) : null}
 
               <label>
                 <div className="label">Vendor contact override</div>

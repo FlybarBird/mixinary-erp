@@ -3,8 +3,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  PERMISSION_OVERRIDE_LABELS,
+  PERMISSION_OVERRIDES,
   PROJECT_ACCESS_LABELS,
   PROJECT_ACCESS_ROLES,
+  type PermissionOverride,
   type ProjectAccessRole,
   type ProjectMember,
   type UserProfile,
@@ -80,6 +83,18 @@ export function ProjectMembersPanel({
     setMessage(res.ok ? "Access updated" : data.error || "Failed");
   }
 
+  async function setViewMoney(memberId: string, view_money: PermissionOverride) {
+    setLoading(true);
+    const res = await fetch(`/api/projects/${projectId}/members`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ member_id: memberId, view_money }),
+    });
+    const data = await refreshFrom(res);
+    setLoading(false);
+    setMessage(res.ok ? "Money visibility updated" : data.error || "Failed");
+  }
+
   async function remove(memberId: string) {
     if (!confirm("Remove this member from the project?")) return;
     setLoading(true);
@@ -121,6 +136,7 @@ export function ProjectMembersPanel({
               <tr>
                 <th>User</th>
                 <th>Access</th>
+                <th>View money</th>
                 {canManage ? <th /> : null}
               </tr>
             </thead>
@@ -158,6 +174,31 @@ export function ProjectMembersPanel({
                       </select>
                     ) : (
                       PROJECT_ACCESS_LABELS[m.access_role]
+                    )}
+                  </td>
+                  <td>
+                    {m.user_profiles?.role === "administrator" ? (
+                      <span className="muted">Always</span>
+                    ) : canManage ? (
+                      <select
+                        className="field-light"
+                        value={m.view_money ?? "inherit"}
+                        disabled={loading}
+                        onChange={(e) =>
+                          void setViewMoney(
+                            m.id,
+                            e.target.value as PermissionOverride,
+                          )
+                        }
+                      >
+                        {PERMISSION_OVERRIDES.map((v) => (
+                          <option key={v} value={v}>
+                            {PERMISSION_OVERRIDE_LABELS[v]}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      PERMISSION_OVERRIDE_LABELS[m.view_money ?? "inherit"]
                     )}
                   </td>
                   {canManage ? (

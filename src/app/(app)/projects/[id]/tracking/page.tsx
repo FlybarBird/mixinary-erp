@@ -1,5 +1,10 @@
 import { TrackingView } from "@/components/TrackingView";
 import { canManageProcurement, canReceive, requireProfile } from "@/lib/auth";
+import { redactPoItemMoney } from "@/lib/money-redaction";
+import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { PurchaseOrderItem } from "@/lib/types";
 
@@ -10,6 +15,8 @@ export default async function TrackingPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  const canMoney = membership.canViewMoney;
   const supabase = await createClient();
 
   // Load all POs for this project with vendor info
@@ -65,12 +72,24 @@ export default async function TrackingPage({
     });
   }
 
+  const safeItems = canMoney
+    ? enrichedItems
+    : enrichedItems.map((item) => redactPoItemMoney(item));
+
   return (
     <TrackingView
       projectId={id}
-      items={enrichedItems}
-      canEdit={canManageProcurement(profile.role)}
-      canReceive={canReceive(profile.role)}
+      items={safeItems}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canManageProcurement(profile.role),
+      )}
+      canReceive={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canReceive(profile.role),
+      )}
     />
   );
 }

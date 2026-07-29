@@ -1,14 +1,15 @@
 # Mixinary ERP permissions matrix
 
-Edit this file directly, replacing `Y` (allowed) and `—` (not allowed). Add comments in the **Notes / requested change** column, then hand the file back to the agent.
+This document records the **approved** permission policy as implemented in code
+(`src/lib/permissions.ts`, project membership overrides, page/API gates, and
+money redaction). Edit and re-approve before changing the policy again.
 
 ## Legend and permission order
 
 - `Y` = allowed
 - `—` = not allowed
 - `Inherit` = use the user's global role default
-- `Allow` / `Deny` = override the global role default for one user on one project
-- `NEW` = proposed permission that is not yet implemented as a distinct code check
+- `Allow` / `Deny` = override the global role default
 - A non-administrator must be an assigned project member before any project-page permission applies.
 - Project **Viewer** = view only.
 - Project **Editor** = may edit when the user's global role also allows that action.
@@ -22,6 +23,9 @@ Effective page access should be:
 Effective money visibility should be:
 
 `project View money override (Allow/Deny)` OR, when set to `Inherit`, `global role default`
+
+Administrators always see money; a project `Deny` override cannot hide money
+from an Administrator.
 
 The project override belongs to the individual project member, not to the whole
 project. This allows two users with the same global role to have different money
@@ -39,45 +43,45 @@ Role abbreviations:
 
 ## Global capabilities
 
-| Capability | Admin | PM | Purch. | Whse. | Acct. | Field | Read | Notes / requested change |
+| Capability | Admin | PM | Purch. | Whse. | Acct. | Field | Read | Notes |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
 | Admin settings and users | Y | — | — | — | — | — | — | |
-| View any money / `$` value **(NEW)** | Y | Y | Y | — | Y | — | — | Global role default; overridable per user per project. |
-| View financial pages | Y | Y | Y | — | Y | — | — | Existing `canViewFinancials`. |
-| Create projects **(NEW)** | Y | Y | Y | — | — | — | — | Global role default; should also support a per-user override. |
+| View any money / `$` value | Y | Y | Y | — | Y | — | — | Global role default; overridable per user per project (`project_members.view_money`). Admin cannot be denied. |
+| View financial pages | Y | Y | Y | — | Y | — | — | `canViewFinancials`. Financial pages also require effective View money. |
+| Create projects | Y | Y | Y | — | — | — | — | Global role default; per-user override via `user_profiles.create_projects_override`. |
 | Manage projects | Y | Y | Y | — | — | — | — | |
-| Manage vendors | Y | — | Y | — | — | — | — | |
-| Manage clients | Y | Y | — | — | — | — | — | |
-| Manage project members | Y | * | * | * | * | * | * | `*` requires Project Manager access role; global role is not currently checked. |
+| Manage vendors | Y | — | Y | — | Y | — | — | Accounting approved (canvas). |
+| Manage clients | Y | Y | — | — | Y | — | — | Accounting approved (canvas). |
+| Manage project members | Y | * | * | * | * | * | * | `*` requires Project Manager access role on the project. |
 
 ## Project pages — view
 
 Every `Y` below still requires project assignment for non-administrators.
 
-| Project page | Admin | PM | Purch. | Whse. | Acct. | Field | Read | Notes / requested change |
+| Project page | Admin | PM | Purch. | Whse. | Acct. | Field | Read | Notes |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
 | BOM | Y | Y | Y | Y | Y | Y | Y | Every monetary field additionally requires **View money**. |
-| Labor | Y | Y | Y | Y | Y | Y | Y | Labor rates are currently hidden without financial access. |
+| Labor | Y | Y | Y | Y | Y | Y | Y | Rates/totals require **View money**. |
 | Procurement | Y | Y | Y | Y | Y | Y | Y | Every monetary field additionally requires **View money**. |
 | Tracking | Y | Y | Y | Y | Y | Y | Y | |
-| Expenses | Y | Y | Y | Y | Y | Y | Y | Every monetary field additionally requires **View money**. |
-| Change Orders | Y | Y | Y | — | Y | — | — | Financial page. |
-| Billing | Y | Y | Y | — | Y | — | — | Financial page. |
-| Subcontracts | Y | Y | Y | — | Y | — | — | Financial page. |
-| Financial Dashboard | Y | Y | Y | — | Y | — | — | Financial page; all values are costs/revenue. |
-| Client Documents | Y | Y | Y | — | Y | — | — | Also requires the Client Documents add-on. |
+| Expenses | Y | Y | Y | Y | Y | Y | — | Read-Only cannot open Expenses (canvas). Monetary fields require **View money**. |
+| Change Orders | Y | Y | Y | — | Y | — | — | Financial page; also requires **View money**. |
+| Billing | Y | Y | Y | — | Y | — | — | Financial page; also requires **View money**. |
+| Subcontracts | Y | Y | Y | — | Y | — | — | Financial page; also requires **View money**. |
+| Financial Dashboard | Y | Y | Y | — | Y | — | — | Financial page; also requires **View money**. |
+| Client Documents | Y | Y | Y | — | Y | — | — | Also requires the Client Documents add-on and **View money**. |
 
 ## Project pages — edit and approve
 
-Editing should require Project **Editor** or **Manager** access in addition to the global role below.
+Editing requires Project **Editor** or **Manager** access in addition to the global role below.
 
-| Project action | Admin | PM | Purch. | Whse. | Acct. | Field | Read | Notes / requested change |
+| Project action | Admin | PM | Purch. | Whse. | Acct. | Field | Read | Notes |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
 | BOM — edit | Y | Y | — | — | — | — | — | |
 | Labor — edit | Y | Y | — | — | — | Y | — | |
 | Labor — approve | Y | Y | — | — | — | — | — | |
-| Procurement / POs — edit | Y | Y | Y | — | — | — | — | |
-| Tracking — edit shipment details | Y | Y | Y | — | — | — | — | |
+| Procurement / POs — edit | Y | Y | Y | Y | — | — | — | Warehouse approved (canvas). |
+| Tracking — edit shipment details | Y | Y | Y | Y | — | — | — | Warehouse approved (canvas); same helper as procurement edit. |
 | Tracking — receive items | Y | Y | Y | Y | — | — | — | |
 | Expenses — edit | Y | Y | — | — | Y | Y | — | |
 | Expenses — approve | Y | Y | — | — | Y | — | — | |
@@ -85,15 +89,15 @@ Editing should require Project **Editor** or **Manager** access in addition to t
 | Change Orders — approve | Y | Y | — | — | — | — | — | |
 | Billing / invoices — edit | Y | Y | — | — | Y | — | — | |
 | Billing — manage AP | Y | Y | Y | — | — | — | — | |
-| Subcontracts — edit | Y | Y | Y | — | — | — | — | |
-| Financial Dashboard — edit | — | — | — | — | — | — | — | Dashboard is read-only. |
-| Client Documents — create/edit/send | Y | Y | — | — | Y | — | — | Also requires the add-on. |
+| Subcontracts — edit | Y | Y | Y | — | Y | — | — | Accounting approved (canvas); split from AP. |
+| Financial Dashboard — edit | — | — | — | — | — | — | — | Dashboard remains read-only. Canvas had Accounting=Y / Admin=—; treated as a misconfiguration and not implemented. |
+| Client Documents — create/edit/send | Y | Y | — | — | Y | — | — | Also requires the add-on and **View money**. |
 
 ## View-money permission scope
 
-When **View any money / `$` value** is implemented, it controls every monetary
-value independently from page access. A denied user may still use an allowed
-page, but must not receive or see the monetary data.
+**View any money / `$` value** controls every monetary value independently from
+page access. A denied user may still use an allowed page, but must not receive
+or see the monetary data.
 
 - Currency symbols, formatted dollar strings, and raw monetary numbers
 - MSRP/list price, estimates, cost, unit price, quote, sale price, revenue, and budgets
@@ -119,34 +123,43 @@ each role.
 
 ### User-level override
 
-Each user may have `Inherit`, `Allow`, or `Deny` for **Create projects**. This
-cannot be a project override because the project does not exist yet.
+Each user may have `Inherit`, `Allow`, or `Deny` for **Create projects**
+(`user_profiles.create_projects_override`). This cannot be a project override
+because the project does not exist yet. Administrators always retain create
+permission.
 
 ### Per-project member override
 
-Each project member has a **View money** selector:
+Each project member has a **View money** selector (`project_members.view_money`):
 
 - `Inherit` — use the global role default.
 - `Allow` — show monetary values on this project.
 - `Deny` — hide monetary values on this project.
 
-Administrators default to `Allow`. Decide whether administrators may be denied
-money visibility on an individual project before implementation.
+Administrators always see money; a project override may not deny them.
 
-## Implementation audit note
+## Implementation status
 
-The code currently has global role helpers in `src/lib/permissions.ts` and project membership helpers in `src/lib/project-access.ts`. The BOM combines both checks, but several other project pages currently pass only the global role check to their editor component. Before treating this document as enforced policy, those pages and their API routes should be aligned so Project **Viewer** cannot mutate data through the UI or direct API calls.
+Implemented:
 
-## Decisions for the next implementation pass
+- Global helpers and AP/subcontracts split in `src/lib/permissions.ts`
+- Schema columns + migration `023_permission_policy.sql`
+- Project membership resolution + `requireProjectApiContext` API guard
+- Money redaction helpers and page/API/export gating
+- Override UIs: Users → Create projects; Project members → View money
+- Project Viewer cannot mutate via UI or project-scoped API routes (editor access required)
 
-- [ ] The role defaults for **View any money / `$` value** are approved.
-- [ ] The role defaults for **Create projects** are approved.
-- [ ] Per-user `Create projects` overrides are approved.
-- [ ] Per-project-member `View money` overrides are approved.
-- [ ] Decide whether a project override may deny an Administrator.
-- [ ] Page-view choices are approved.
-- [ ] Page-edit and approval choices are approved.
-- [ ] Every money-bearing export and external output must follow the permission.
-- [ ] Money-bearing API fields must be omitted or redacted when permission is denied.
-- [ ] Customer-facing priced-document exception is approved.
-- [ ] Existing project Viewer enforcement gaps should be fixed.
+## Approved decisions
+
+- [x] The role defaults for **View any money / `$` value** are approved.
+- [x] The role defaults for **Create projects** are approved.
+- [x] Per-user `Create projects` overrides are approved.
+- [x] Per-project-member `View money` overrides are approved.
+- [x] A project override may **not** deny an Administrator.
+- [x] Page-view choices are approved (including Expenses hidden for Read-Only).
+- [x] Page-edit and approval choices are approved (including Warehouse procurement/tracking edit, Accounting vendors/clients/subcontracts).
+- [x] Every money-bearing export and external output must follow the permission.
+- [x] Money-bearing API fields must be omitted or redacted when permission is denied.
+- [x] Customer-facing priced-document exception is approved (requires View money to preview/edit/send).
+- [x] Existing project Viewer enforcement gaps should be fixed.
+- [x] Financial Dashboard remains read-only despite canvas `edit-dashboard` Accounting quirk.

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditLabor, canApproveLabor, getCurrentProfile } from "@/lib/auth";
+import { canEditLabor, canApproveLabor } from "@/lib/auth";
+import { redactLaborEntryMoney } from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { writeAuditEvent } from "@/lib/projects/workspace";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import {
@@ -14,13 +16,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; entryId: string }> },
 ) {
   const { id: projectId, entryId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditLabor(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditLabor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const canRates = ctx.canViewMoney;
 
   const supabase = await createClient();
   const [{ data: existing, error: fetchError }, { data: project }] =
@@ -50,9 +52,11 @@ export async function PATCH(
       ? laborQty({ qty: Number(body.qty) })
       : laborQty(existing);
   const msrp =
-    body.msrp !== undefined ? Number(body.msrp) || 0 : laborMsrp(existing);
+    canRates && body.msrp !== undefined
+      ? Number(body.msrp) || 0
+      : laborMsrp(existing);
   const quote =
-    body.quote !== undefined
+    canRates && body.quote !== undefined
       ? body.quote === null || body.quote === ""
         ? null
         : Number(body.quote)
@@ -60,7 +64,7 @@ export async function PATCH(
         ? Number(existing.quote)
         : null;
   const override_pct =
-    body.override_pct !== undefined
+    canRates && body.override_pct !== undefined
       ? body.override_pct === null || body.override_pct === ""
         ? null
         : Number(body.override_pct)
@@ -101,7 +105,7 @@ export async function PATCH(
     quote,
     override_pct,
     burden_pct:
-      body.burden_pct !== undefined
+      canRates && body.burden_pct !== undefined
         ? Number(body.burden_pct) || 0
         : Number(existing.burden_pct ?? 0) || 0,
     billing_rate: pricing.unitSale,
@@ -113,7 +117,7 @@ export async function PATCH(
   };
 
   if (body.approval_status !== undefined) {
-    if (!canApproveLabor(profile.role)) {
+    if (!ctx.canEdit(canApproveLabor)) {
       return NextResponse.json(
         { error: "Cannot approve labor without approval permission" },
         { status: 403 },
@@ -150,7 +154,9 @@ export async function PATCH(
     // non-fatal
   }
 
-  return NextResponse.json({ entry: data });
+  return NextResponse.json({
+    entry: canRates ? data : redactLaborEntryMoney(data),
+  });
 }
 
 export async function DELETE(
@@ -158,11 +164,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; entryId: string }> },
 ) {
   const { id: projectId, entryId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditLabor(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditLabor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

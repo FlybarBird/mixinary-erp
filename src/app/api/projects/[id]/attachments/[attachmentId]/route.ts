@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@/lib/supabase/server";
-import { canEditBom, canEditExpenses, canManageProcurement, getCurrentProfile } from "@/lib/auth";
+import { canEditBom, canEditExpenses, canManageProcurement } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { isLocalMode } from "@/lib/local/db";
 
 const LOCAL_FILES_DIR = path.join(process.cwd(), ".data", "project-files");
@@ -20,9 +21,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; attachmentId: string }> },
 ) {
   const { id: projectId, attachmentId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canWrite(profile.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!ctx.canEdit((role) => canWrite(role))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const supabase = await createClient();
   const { data: attachment } = await supabase

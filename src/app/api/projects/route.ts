@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, canManageProjects } from "@/lib/auth";
+import { getCurrentProfile, resolveCreateProjects } from "@/lib/auth";
 import { addProjectMember } from "@/lib/project-access";
 import { allocateNextProjectNumber } from "@/lib/projects/numbering";
 
 export async function POST(request: Request) {
   const profile = await getCurrentProfile();
-  if (!profile || !canManageProjects(profile.role)) {
+  if (
+    !profile ||
+    !resolveCreateProjects(profile.role, profile.create_projects_override)
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

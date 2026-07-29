@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { createClient } from "@/lib/supabase/server";
-import { canViewFinancials, getCurrentProfile } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import {
   laborExportHeaders,
   laborExportRow,
@@ -15,12 +15,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
-  const includeRates = canViewFinancials(profile.role);
+  const includeRates = ctx.canViewMoney;
   const supabase = await createClient();
   const [{ data: project }, { data: entries }] = await Promise.all([
     supabase

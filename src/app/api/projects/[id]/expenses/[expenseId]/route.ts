@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditExpenses, canApproveExpenses, getCurrentProfile } from "@/lib/auth";
+import { canEditExpenses, canApproveExpenses } from "@/lib/auth";
+import { redactExpenseMoney } from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { writeAuditEvent } from "@/lib/projects/workspace";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import type { ExpenseCategory, ApprovalStatus, PaymentStatus } from "@/lib/types";
@@ -22,11 +24,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; expenseId: string }> },
 ) {
   const { id: projectId, expenseId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditExpenses(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditExpenses)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -55,8 +56,13 @@ export async function PATCH(
   }
   if (body.payee !== undefined) updates.payee = body.payee as string | null;
   if (body.description !== undefined) updates.description = String(body.description);
-  if (body.amount !== undefined) updates.amount = Number(body.amount);
-  if (body.tax !== undefined) updates.tax = Number(body.tax);
+  // Money-denied editors must not overwrite stored amounts.
+  if (ctx.canViewMoney && body.amount !== undefined) {
+    updates.amount = Number(body.amount);
+  }
+  if (ctx.canViewMoney && body.tax !== undefined) {
+    updates.tax = Number(body.tax);
+  }
   if (body.cost_code !== undefined) updates.cost_code = body.cost_code as string | null;
   if (body.is_additional_charge !== undefined) updates.is_additional_charge = Boolean(body.is_additional_charge);
   if (body.is_billable !== undefined) updates.is_billable = Boolean(body.is_billable);
@@ -67,14 +73,14 @@ export async function PATCH(
   if (body.notes !== undefined) updates.notes = body.notes as string | null;
 
   if (body.approval_status !== undefined) {
-    if (!canApproveExpenses(profile.role)) {
+    if (!ctx.canEdit(canApproveExpenses)) {
       return NextResponse.json({ error: "Cannot approve expenses without approval permission" }, { status: 403 });
     }
     updates.approval_status = body.approval_status as ApprovalStatus;
   }
 
   if (body.payment_status !== undefined) {
-    if (!canApproveExpenses(profile.role)) {
+    if (!ctx.canEdit(canApproveExpenses)) {
       return NextResponse.json({ error: "Cannot update payment status without approval permission" }, { status: 403 });
     }
     updates.payment_status = body.payment_status as PaymentStatus;
@@ -108,7 +114,9 @@ export async function PATCH(
     // non-fatal
   }
 
-  return NextResponse.json({ expense: data });
+  return NextResponse.json({
+    expense: ctx.canViewMoney ? data : redactExpenseMoney(data),
+  });
 }
 
 export async function DELETE(
@@ -116,11 +124,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; expenseId: string }> },
 ) {
   const { id: projectId, expenseId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditExpenses(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditExpenses)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

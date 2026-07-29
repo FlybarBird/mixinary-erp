@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canManageApAndSubs, getCurrentProfile } from "@/lib/auth";
+import { canEditSubcontracts, canViewFinancials } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import type { SubcontractStatus } from "@/lib/types";
@@ -10,9 +11,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; subId: string }> },
 ) {
   const { id: projectId, subId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageApAndSubs(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!canViewFinancials(ctx.profile.role) || !ctx.canViewMoney) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!ctx.canEdit(canEditSubcontracts)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const body = await request.json();
@@ -102,9 +106,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; subId: string }> },
 ) {
   const { id: projectId, subId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageApAndSubs(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!canViewFinancials(ctx.profile.role) || !ctx.canViewMoney) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!ctx.canEdit(canEditSubcontracts)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const supabase = await createClient();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
+import { canManageProcurement } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
 import { rollupBomLineQuantities } from "@/lib/projects/workspace";
 import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
@@ -12,9 +13,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageProcurement(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canManageProcurement)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

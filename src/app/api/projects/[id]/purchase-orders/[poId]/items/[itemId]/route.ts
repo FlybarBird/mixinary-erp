@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canManageProcurement, canReceive, getCurrentProfile } from "@/lib/auth";
+import { canManageProcurement, canReceive } from "@/lib/auth";
+import {
+  redactPoItemMoney,
+  redactPurchaseOrderMoney,
+} from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
 import {
   createNotification,
@@ -55,16 +60,23 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; poId: string; itemId: string }> },
 ) {
   const { id: projectId, poId, itemId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
 
-  const isManager = canManageProcurement(profile.role);
-  const isReceiver = canReceive(profile.role);
+  const isManager = ctx.canEdit(canManageProcurement);
+  const isReceiver = ctx.canEdit(canReceive);
   if (!isManager && !isReceiver) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await request.json() as Record<string, unknown>;
+
+  if (!ctx.canViewMoney) {
+    // Money-denied editors cannot change item pricing.
+    delete body.unit_price;
+    delete body.line_total;
+  }
 
   if (!isManager) {
     const attemptedKeys = Object.keys(body);
@@ -250,12 +262,31 @@ export async function PATCH(
     supabase.from("purchase_order_items").select("*").eq("po_id", poId),
   ]);
 
+  let safeUpdated = updated;
+  let safePo = po ? { ...po, items: items ?? [] } : null;
+  let safePoTotals = poTotals;
+  if (!ctx.canViewMoney) {
+    safeUpdated = updated
+      ? redactPoItemMoney(updated as Record<string, unknown>)
+      : updated;
+    if (safePo) {
+      const redacted = redactPurchaseOrderMoney(
+        safePo as Record<string, unknown>,
+      );
+      redacted.items = (items ?? []).map((item) =>
+        redactPoItemMoney(item as Record<string, unknown>),
+      );
+      safePo = redacted as typeof safePo;
+    }
+    safePoTotals = null;
+  }
+
   return NextResponse.json({
-    data: updated,
-    poTotals,
+    data: safeUpdated,
+    poTotals: safePoTotals,
     poStatus,
-    bomLine,
-    bomPricing,
-    po: po ? { ...po, items: items ?? [] } : null,
+    bomLine: ctx.canViewMoney ? bomLine : null,
+    bomPricing: ctx.canViewMoney ? bomPricing : null,
+    po: safePo,
   });
 }

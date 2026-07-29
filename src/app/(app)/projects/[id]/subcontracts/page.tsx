@@ -1,10 +1,14 @@
 import { notFound } from "next/navigation";
 import { SubcontractsView } from "@/components/SubcontractsView";
 import {
-  canManageApAndSubs,
+  canEditSubcontracts,
   canViewFinancials,
   requireProfile,
 } from "@/lib/auth";
+import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectSubcontract } from "@/lib/types";
 
@@ -15,7 +19,8 @@ export default async function SubcontractsPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  if (!canViewFinancials(profile.role)) {
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  if (!canViewFinancials(profile.role) || !membership.canViewMoney) {
     return (
       <div className="panel" style={{ padding: "1.25rem" }}>
         <strong>Subcontracts</strong>
@@ -62,7 +67,11 @@ export default async function SubcontractsPage({
         bills: bySub.get(s.id) ?? [],
       })) as ProjectSubcontract[]}
       vendors={vendors ?? []}
-      canEdit={canManageApAndSubs(profile.role)}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canEditSubcontracts(profile.role),
+      )}
     />
   );
 }

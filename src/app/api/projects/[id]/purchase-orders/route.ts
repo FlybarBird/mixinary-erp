@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
+import { canManageProcurement } from "@/lib/auth";
+import {
+  redactPoItemMoney,
+  redactPurchaseOrderMoney,
+} from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
 import { rollupBomLineQuantities } from "@/lib/projects/workspace";
 import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
@@ -12,8 +17,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
   const supabase = await createClient();
 
@@ -42,10 +47,15 @@ export async function GET(
     itemsByPo.get(i.po_id)!.push(item);
   }
 
-  const result = (orders ?? []).map((o) => ({
-    ...o,
-    items: itemsByPo.get(o.id) ?? [],
-  }));
+  const result = (orders ?? []).map((o) => {
+    const base = ctx.canViewMoney ? o : redactPurchaseOrderMoney(o);
+    const poItems = (itemsByPo.get(o.id) ?? []).map((item) =>
+      ctx.canViewMoney
+        ? item
+        : redactPoItemMoney(item as Record<string, unknown>),
+    );
+    return { ...base, items: poItems };
+  });
 
   return NextResponse.json({ data: result });
 }
@@ -55,9 +65,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageProcurement(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canManageProcurement)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -161,5 +172,14 @@ export async function POST(
     .select("*")
     .eq("po_id", poId);
 
-  return NextResponse.json({ data: { ...po, items: poItems ?? [] } }, { status: 201 });
+  const safePo = ctx.canViewMoney
+    ? po
+    : redactPurchaseOrderMoney((po ?? {}) as Record<string, unknown>);
+  const safeItems = (poItems ?? []).map((item) =>
+    ctx.canViewMoney ? item : redactPoItemMoney(item),
+  );
+  return NextResponse.json(
+    { data: { ...safePo, items: safeItems } },
+    { status: 201 },
+  );
 }

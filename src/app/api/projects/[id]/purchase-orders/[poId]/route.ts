@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canManageProcurement, getCurrentProfile } from "@/lib/auth";
+import { canManageProcurement } from "@/lib/auth";
+import {
+  redactPoItemMoney,
+  redactPurchaseOrderMoney,
+} from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import {
   rollupBomLineQuantities,
   rollupBomLinesForPo,
@@ -17,13 +22,21 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; poId: string }> },
 ) {
   const { id: projectId, poId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageProcurement(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canManageProcurement)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await request.json();
+  if (!ctx.canViewMoney) {
+    // Money-denied editors cannot change PO money fields.
+    delete (body as Record<string, unknown>).shipping;
+    delete (body as Record<string, unknown>).tax;
+    delete (body as Record<string, unknown>).subtotal;
+    delete (body as Record<string, unknown>).total;
+  }
   const { cascadeItemStatus, item_status, ...fields } = body as {
     cascadeItemStatus?: boolean;
     item_status?: string;
@@ -156,8 +169,23 @@ export async function PATCH(
     supabase.from("purchase_order_items").select("*").eq("po_id", poId),
   ]);
 
+  const responsePo = po ? { ...po, items: items ?? [] } : updated;
+  let safeData = responsePo;
+  if (responsePo && !ctx.canViewMoney) {
+    const redacted = redactPurchaseOrderMoney(
+      responsePo as Record<string, unknown>,
+    );
+    const rawItems = (responsePo as { items?: unknown[] }).items;
+    if (Array.isArray(rawItems)) {
+      redacted.items = rawItems.map((item) =>
+        redactPoItemMoney(item as Record<string, unknown>),
+      );
+    }
+    safeData = redacted;
+  }
+
   return NextResponse.json({
-    data: po ? { ...po, items: items ?? [] } : updated,
+    data: safeData,
     bomLines,
   });
 }
@@ -167,9 +195,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; poId: string }> },
 ) {
   const { id: projectId, poId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageProcurement(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!ctx.canEdit(canManageProcurement)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

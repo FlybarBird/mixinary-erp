@@ -1,6 +1,16 @@
 import { notFound } from "next/navigation";
 import { ExpensesView } from "@/components/ExpensesView";
-import { canEditExpenses, canApproveExpenses, requireProfile } from "@/lib/auth";
+import {
+  canApproveExpenses,
+  canEditExpenses,
+  canViewExpenses,
+  requireProfile,
+} from "@/lib/auth";
+import { redactExpenseMoney } from "@/lib/money-redaction";
+import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectExpense } from "@/lib/types";
 
@@ -11,6 +21,19 @@ export default async function ExpensesPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
+  if (!canViewExpenses(profile.role)) {
+    return (
+      <div className="panel" style={{ padding: "1.25rem" }}>
+        <strong>Expenses</strong>
+        <p style={{ color: "var(--muted)", marginTop: "0.5rem" }}>
+          You do not have permission to view project expenses.
+        </p>
+      </div>
+    );
+  }
+
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  const canMoney = membership.canViewMoney;
   const supabase = await createClient();
 
   const { data: project } = await supabase
@@ -34,12 +57,25 @@ export default async function ExpensesPage({
       .order("co_number"),
   ]);
 
+  const safeExpenses = ((expenses ?? []) as ProjectExpense[]).map((expense) =>
+    canMoney ? expense : redactExpenseMoney(expense),
+  );
+
   return (
     <ExpensesView
       projectId={id}
-      initialExpenses={(expenses ?? []) as ProjectExpense[]}
-      canEdit={canEditExpenses(profile.role)}
-      canApprove={canApproveExpenses(profile.role)}
+      initialExpenses={safeExpenses}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canEditExpenses(profile.role),
+      )}
+      canApprove={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canApproveExpenses(profile.role),
+      )}
+      canViewMoney={canMoney}
       changeOrders={changeOrders ?? []}
     />
   );

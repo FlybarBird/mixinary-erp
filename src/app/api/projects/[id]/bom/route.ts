@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditPricing, getCurrentProfile } from "@/lib/auth";
+import { canEditBom } from "@/lib/auth";
+import { redactLineItemMoney } from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
   const body = await request.json();
   const supabase = await createClient();
-  const pricingEditor = canEditPricing(profile.role);
+  const pricingEditor = ctx.canEdit(canEditBom);
+  const canMoney = ctx.canViewMoney;
 
   const sections = (body.sections ?? []) as Array<{
     id: string;
@@ -22,6 +23,36 @@ export async function PUT(
     sort_order: number;
   }>;
   const lines = (body.lines ?? []) as Array<Record<string, unknown>>;
+
+  // A money-denied editor works against redacted values; never let those
+  // overwrite the stored pricing fields.
+  const existingMoney = new Map<
+    string,
+    {
+      msrp: number;
+      quote: number | null;
+      override_pct: number | null;
+      estimated_unit_cost: number | null;
+    }
+  >();
+  if (pricingEditor && !canMoney) {
+    const { data: existing } = await supabase
+      .from("line_items")
+      .select("id, msrp, quote, override_pct, estimated_unit_cost")
+      .eq("project_id", projectId);
+    for (const row of existing ?? []) {
+      existingMoney.set(String(row.id), {
+        msrp: Number(row.msrp ?? 0),
+        quote: row.quote == null ? null : Number(row.quote),
+        override_pct:
+          row.override_pct == null ? null : Number(row.override_pct),
+        estimated_unit_cost:
+          row.estimated_unit_cost == null
+            ? null
+            : Number(row.estimated_unit_cost),
+      });
+    }
+  }
 
   if (pricingEditor) {
     const sectionIdMap = new Map<string, string>();
@@ -57,6 +88,26 @@ export async function PUT(
       const sectionId = line.section_id
         ? sectionIdMap.get(String(line.section_id)) ?? null
         : null;
+      const lineId = String(line.id);
+      const isNew = lineId.startsWith("new-");
+      const money = canMoney
+        ? {
+            msrp: Number(line.msrp ?? 0),
+            quote: line.quote == null ? null : Number(line.quote),
+            override_pct:
+              line.override_pct == null ? null : Number(line.override_pct),
+            estimated_unit_cost:
+              line.estimated_unit_cost == null ||
+              line.estimated_unit_cost === ""
+                ? null
+                : Number(line.estimated_unit_cost),
+          }
+        : existingMoney.get(lineId) ?? {
+            msrp: 0,
+            quote: null,
+            override_pct: null,
+            estimated_unit_cost: null,
+          };
       const payload = {
         project_id: projectId,
         section_id: sectionId,
@@ -66,13 +117,7 @@ export async function PUT(
         category: (line.category as string | null) ?? null,
         uom: (line.uom as string | null) || "ea",
         qty: Number(line.qty ?? 0),
-        msrp: Number(line.msrp ?? 0),
-        quote: line.quote == null ? null : Number(line.quote),
-        override_pct: line.override_pct == null ? null : Number(line.override_pct),
-        estimated_unit_cost:
-          line.estimated_unit_cost == null || line.estimated_unit_cost === ""
-            ? null
-            : Number(line.estimated_unit_cost),
+        ...money,
         required_by_date: (line.required_by_date as string | null) || null,
         vendor_id: (line.vendor_id as string | null) ?? null,
         catalog_part_id: (line.catalog_part_id as string | null) ?? null,
@@ -81,7 +126,7 @@ export async function PUT(
         notes: (line.notes as string | null) ?? null,
       };
 
-      if (String(line.id).startsWith("new-")) {
+      if (isNew) {
         const { error } = await supabase.from("line_items").insert(payload);
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 400 });
@@ -90,7 +135,7 @@ export async function PUT(
         const { error } = await supabase
           .from("line_items")
           .update(payload)
-          .eq("id", String(line.id))
+          .eq("id", lineId)
           .eq("project_id", projectId);
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 400 });
@@ -98,6 +143,10 @@ export async function PUT(
       }
     }
   } else {
+    // Status/tracking/notes updates still require project Editor access.
+    if (!ctx.canEdit(() => true)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     for (const line of lines) {
       if (String(line.id).startsWith("new-")) continue;
       const { error } = await supabase
@@ -136,6 +185,8 @@ export async function PUT(
   return NextResponse.json({
     ok: true,
     sections: savedSections ?? [],
-    lines: savedLines ?? [],
+    lines: (savedLines ?? []).map((l) =>
+      canMoney ? l : redactLineItemMoney(l),
+    ),
   });
 }

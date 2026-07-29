@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ProjectDashboardView } from "@/components/ProjectDashboardView";
 import { canViewFinancials, requireProfile } from "@/lib/auth";
+import { getProjectMembership } from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import { buildProjectDashboard } from "@/lib/projects/dashboard";
 
@@ -11,7 +12,8 @@ export default async function DashboardPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  if (!canViewFinancials(profile.role)) {
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  if (!canViewFinancials(profile.role) || !membership.canViewMoney) {
     return (
       <div className="panel" style={{ padding: "1.25rem" }}>
         <strong>Financial dashboard</strong>

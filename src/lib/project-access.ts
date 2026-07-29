@@ -1,7 +1,10 @@
 import { getLocalDb, isLocalMode, newId } from "@/lib/local/db";
+import { resolveViewMoney } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 import {
+  normalizePermissionOverride,
   normalizeUserRole,
+  type PermissionOverride,
   type ProjectAccessRole,
   type ProjectMember,
   type UserRole,
@@ -61,23 +64,71 @@ export async function getProjectAccessRole(
   role: UserRole,
   projectId: string,
 ): Promise<ProjectAccessRole | "administrator" | null> {
-  if (isAdministrator(role)) return "administrator";
-  if (isLocalMode()) {
-    const row = getLocalDb()
-      .prepare(
-        `select access_role from project_members where project_id = ? and user_id = ?`,
-      )
-      .get(projectId, userId) as { access_role: string } | undefined;
-    return (row?.access_role as ProjectAccessRole) ?? null;
+  const membership = await getProjectMembership(userId, role, projectId);
+  return membership.access;
+}
+
+export interface ProjectMembership {
+  access: ProjectAccessRole | "administrator" | null;
+  /** Raw per-member View money override (administrators: always "inherit"). */
+  viewMoneyOverride: PermissionOverride;
+  /** Effective money visibility on this project (override resolved against role default). */
+  canViewMoney: boolean;
+}
+
+/**
+ * Fetch project access role and effective money visibility in one query.
+ * Non-members get `access: null` and no money visibility (administrators
+ * bypass membership and always see money).
+ */
+export async function getProjectMembership(
+  userId: string,
+  role: UserRole,
+  projectId: string,
+): Promise<ProjectMembership> {
+  if (isAdministrator(role)) {
+    return { access: "administrator", viewMoneyOverride: "inherit", canViewMoney: true };
   }
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("project_members")
-    .select("access_role")
-    .eq("project_id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  return (data?.access_role as ProjectAccessRole) ?? null;
+
+  let row:
+    | { access_role: string; view_money: string | null }
+    | undefined;
+  if (isLocalMode()) {
+    row = getLocalDb()
+      .prepare(
+        `select access_role, view_money from project_members where project_id = ? and user_id = ?`,
+      )
+      .get(projectId, userId) as typeof row;
+  } else {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("project_members")
+      .select("access_role, view_money")
+      .eq("project_id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    row = (data as typeof row) ?? undefined;
+  }
+
+  if (!row) {
+    return { access: null, viewMoneyOverride: "inherit", canViewMoney: false };
+  }
+  const override = normalizePermissionOverride(row.view_money);
+  return {
+    access: (row.access_role as ProjectAccessRole) ?? null,
+    viewMoneyOverride: override,
+    canViewMoney: resolveViewMoney(role, override),
+  };
+}
+
+/** Effective View money permission for one user on one project. */
+export async function canViewProjectMoney(
+  userId: string,
+  role: UserRole,
+  projectId: string,
+): Promise<boolean> {
+  const membership = await getProjectMembership(userId, role, projectId);
+  return membership.canViewMoney;
 }
 
 export async function addProjectMember(opts: {
@@ -115,7 +166,7 @@ export async function listProjectMembers(
   if (isLocalMode()) {
     const rows = getLocalDb()
       .prepare(
-        `select m.id, m.project_id, m.user_id, m.access_role,
+        `select m.id, m.project_id, m.user_id, m.access_role, m.view_money,
                 u.email, u.full_name, u.role
          from project_members m
          join user_profiles u on u.id = m.user_id
@@ -127,6 +178,7 @@ export async function listProjectMembers(
       project_id: string;
       user_id: string;
       access_role: ProjectAccessRole;
+      view_money: string | null;
       email: string;
       full_name: string | null;
       role: string;
@@ -136,6 +188,7 @@ export async function listProjectMembers(
       project_id: r.project_id,
       user_id: r.user_id,
       access_role: r.access_role,
+      view_money: normalizePermissionOverride(r.view_money),
       user_profiles: {
         id: r.user_id,
         email: r.email,
@@ -148,10 +201,15 @@ export async function listProjectMembers(
   const supabase = await createClient();
   const { data } = await supabase
     .from("project_members")
-    .select("id, project_id, user_id, access_role, user_profiles(id, email, full_name, role)")
+    .select(
+      "id, project_id, user_id, access_role, view_money, user_profiles(id, email, full_name, role)",
+    )
     .eq("project_id", projectId)
     .order("created_at");
-  return (data ?? []) as unknown as ProjectMember[];
+  return ((data ?? []) as unknown as ProjectMember[]).map((m) => ({
+    ...m,
+    view_money: normalizePermissionOverride(m.view_money),
+  }));
 }
 
 export async function removeProjectMember(memberId: string) {
@@ -179,6 +237,25 @@ export async function updateProjectMemberAccess(
   await supabase
     .from("project_members")
     .update({ access_role: accessRole, updated_at: new Date().toISOString() })
+    .eq("id", memberId);
+}
+
+export async function updateProjectMemberViewMoney(
+  memberId: string,
+  viewMoney: PermissionOverride,
+) {
+  if (isLocalMode()) {
+    getLocalDb()
+      .prepare(
+        `update project_members set view_money = ?, updated_at = datetime('now') where id = ?`,
+      )
+      .run(viewMoney, memberId);
+    return;
+  }
+  const supabase = await createClient();
+  await supabase
+    .from("project_members")
+    .update({ view_money: viewMoney, updated_at: new Date().toISOString() })
     .eq("id", memberId);
 }
 

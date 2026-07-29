@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditClientDocuments, getCurrentProfile } from "@/lib/auth";
+import { canEditClientDocuments, canViewFinancials } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { buildClientDocumentUrl } from "@/lib/email";
-import { canAccessProject } from "@/lib/project-access";
 import {
   ensureDocToken,
   getDocForProject,
@@ -11,17 +11,17 @@ import {
 } from "@/lib/projects/client-documents-server";
 
 async function authorize(projectId: string) {
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) {
+    return { error: ctx };
   }
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+  if (!canViewFinancials(ctx.profile.role) || !ctx.canViewMoney) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  if (!canEditClientDocuments(profile.role)) {
+  if (!ctx.canEdit(canEditClientDocuments)) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  return { profile };
+  return { profile: ctx.profile };
 }
 
 /** Create (or reuse) the active secure link for a document. */

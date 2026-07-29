@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditExpenses, getCurrentProfile } from "@/lib/auth";
+import { canEditExpenses, canViewExpenses } from "@/lib/auth";
+import { redactExpenseMoney } from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
 import { writeAuditEvent } from "@/lib/projects/workspace";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
@@ -23,9 +25,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!canViewExpenses(ctx.profile.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const supabase = await createClient();
@@ -39,7 +42,10 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ expenses: data ?? [] });
+  const expenses = (data ?? []).map((expense) =>
+    ctx.canViewMoney ? expense : redactExpenseMoney(expense),
+  );
+  return NextResponse.json({ expenses });
 }
 
 export async function POST(
@@ -47,11 +53,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditExpenses(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditExpenses)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -108,5 +113,8 @@ export async function POST(
     // non-fatal
   }
 
-  return NextResponse.json({ expense: data }, { status: 201 });
+  return NextResponse.json(
+    { expense: ctx.canViewMoney ? data : redactExpenseMoney(data) },
+    { status: 201 },
+  );
 }

@@ -5,12 +5,16 @@ import {
   ProjectBomSummaryBar,
   ProjectBomSummaryProvider,
 } from "@/components/ProjectBomSummaryBar";
-import { canEditBom, canViewFinancials, requireProfile } from "@/lib/auth";
 import {
-  canAccessProject,
+  canEditBom,
+  canViewExpenses,
+  canViewFinancials,
+  requireProfile,
+} from "@/lib/auth";
+import {
   canEditProjectContent,
   canManageProjectMembers,
-  getProjectAccessRole,
+  getProjectMembership,
   listProjectMembers,
 } from "@/lib/project-access";
 import { getCompanySettings } from "@/lib/company-settings";
@@ -32,11 +36,13 @@ export default async function ProjectLayout({
   const { id } = await params;
   const profile = await requireProfile();
 
-  if (!(await canAccessProject(profile.id, profile.role, id))) {
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  if (!membership.access) {
     notFound();
   }
 
-  const access = await getProjectAccessRole(profile.id, profile.role, id);
+  const access = membership.access;
+  const canMoney = membership.canViewMoney;
   const supabase = await createClient();
 
   const [
@@ -148,12 +154,24 @@ export default async function ProjectLayout({
   );
   const canManageMembers = canManageProjectMembers(access);
 
+  const emptyLabor = {
+    totalEst: 0,
+    totalQuote: 0,
+    totalSale: 0,
+    profit: 0,
+    margin: null,
+  };
+
   return (
     <ProjectBomSummaryProvider
-      initial={bomSummary}
-      initialLabor={laborSummary}
-      initialApprovedExpenses={approvedExpenses}
-      initialBilled={billedTotal}
+      initial={
+        canMoney
+          ? bomSummary
+          : computeBomHeaderEconomics({ lines: [], purchaseOrders: [], poItems: [] })
+      }
+      initialLabor={canMoney ? laborSummary : emptyLabor}
+      initialApprovedExpenses={canMoney ? approvedExpenses : 0}
+      initialBilled={canMoney ? billedTotal : 0}
     >
       <div className="stack">
         <ProjectHeader
@@ -163,31 +181,42 @@ export default async function ProjectLayout({
             name: project.name,
             client_id: project.client_id,
             project_manager_id: managerId,
-            material_budget:
-              (project as { material_budget?: number | null }).material_budget ??
-              null,
-            labor_budget:
-              (project as { labor_budget?: number | null }).labor_budget ?? null,
-            expense_budget:
-              (project as { expense_budget?: number | null }).expense_budget ??
-              null,
-            subcontractor_budget:
-              (project as { subcontractor_budget?: number | null })
-                .subcontractor_budget ?? null,
-            overhead_budget:
-              (project as { overhead_budget?: number | null }).overhead_budget ??
-              null,
-            original_revenue:
-              (project as { original_revenue?: number | null })
-                .original_revenue ?? null,
-            revenue_additions: Number(
-              (project as { revenue_additions?: number | null })
-                .revenue_additions ?? 0,
-            ),
-            revenue_credits: Number(
-              (project as { revenue_credits?: number | null }).revenue_credits ??
-                0,
-            ),
+            material_budget: !canMoney
+              ? null
+              : (project as { material_budget?: number | null })
+                  .material_budget ?? null,
+            labor_budget: !canMoney
+              ? null
+              : (project as { labor_budget?: number | null }).labor_budget ??
+                null,
+            expense_budget: !canMoney
+              ? null
+              : (project as { expense_budget?: number | null })
+                  .expense_budget ?? null,
+            subcontractor_budget: !canMoney
+              ? null
+              : (project as { subcontractor_budget?: number | null })
+                  .subcontractor_budget ?? null,
+            overhead_budget: !canMoney
+              ? null
+              : (project as { overhead_budget?: number | null })
+                  .overhead_budget ?? null,
+            original_revenue: !canMoney
+              ? null
+              : (project as { original_revenue?: number | null })
+                  .original_revenue ?? null,
+            revenue_additions: !canMoney
+              ? 0
+              : Number(
+                  (project as { revenue_additions?: number | null })
+                    .revenue_additions ?? 0,
+                ),
+            revenue_credits: !canMoney
+              ? 0
+              : Number(
+                  (project as { revenue_credits?: number | null })
+                    .revenue_credits ?? 0,
+                ),
             labor_burden_enabled: Boolean(
               (project as { labor_burden_enabled?: boolean | number | null })
                 .labor_burden_enabled,
@@ -218,15 +247,16 @@ export default async function ProjectLayout({
             name: m.full_name || m.email,
           }))}
           canEdit={canEdit}
-          canEditFinancials={canEdit && canViewFinancials(profile.role)}
+          canEditFinancials={canEdit && canViewFinancials(profile.role) && canMoney}
           members={members}
           users={users}
           canManageMembers={canManageMembers}
         />
-        <ProjectBomSummaryBar />
+        {canMoney ? <ProjectBomSummaryBar /> : null}
         <ProjectWorkspaceNav
           projectId={id}
-          canViewFinancials={canViewFinancials(profile.role)}
+          canViewFinancials={canViewFinancials(profile.role) && canMoney}
+          canViewExpenses={canViewExpenses(profile.role)}
           clientDocumentsEnabled={companySettings.client_documents_enabled}
         />
         {children}

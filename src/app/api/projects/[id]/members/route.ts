@@ -13,11 +13,14 @@ import {
   listProjectMembers,
   removeProjectMember,
   updateProjectMemberAccess,
+  updateProjectMemberViewMoney,
 } from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import {
+  PERMISSION_OVERRIDES,
   PROJECT_ACCESS_LABELS,
   PROJECT_ACCESS_ROLES,
+  type PermissionOverride,
   type ProjectAccessRole,
 } from "@/lib/types";
 
@@ -128,11 +131,32 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   const body = await request.json();
   const memberId = String(body.member_id || body.id || "");
-  const accessRole = String(body.access_role || "") as ProjectAccessRole;
-  if (!memberId || !PROJECT_ACCESS_ROLES.includes(accessRole)) {
+  if (!memberId) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  await updateProjectMemberAccess(memberId, accessRole);
+
+  const hasAccessRole = body.access_role !== undefined;
+  const hasViewMoney = body.view_money !== undefined;
+  if (!hasAccessRole && !hasViewMoney) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  if (hasAccessRole) {
+    const accessRole = String(body.access_role || "") as ProjectAccessRole;
+    if (!PROJECT_ACCESS_ROLES.includes(accessRole)) {
+      return NextResponse.json({ error: "Invalid access_role" }, { status: 400 });
+    }
+    await updateProjectMemberAccess(memberId, accessRole);
+  }
+
+  if (hasViewMoney) {
+    const viewMoney = String(body.view_money || "") as PermissionOverride;
+    if (!PERMISSION_OVERRIDES.includes(viewMoney)) {
+      return NextResponse.json({ error: "Invalid view_money" }, { status: 400 });
+    }
+    await updateProjectMemberViewMoney(memberId, viewMoney);
+  }
+
   const members = await listProjectMembers(id);
   return NextResponse.json({ ok: true, members });
 }

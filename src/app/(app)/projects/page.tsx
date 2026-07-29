@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { requireProfile, canManageProjects } from "@/lib/auth";
+import {
+  canManageProjects,
+  requireProfile,
+  resolveCreateProjects,
+} from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { CreateProjectForm } from "@/components/CreateProjectForm";
 import { ProjectListActions } from "@/components/ProjectListActions";
@@ -50,6 +54,10 @@ export default async function ProjectsPage({
   );
 
   const canEdit = canManageProjects(profile.role);
+  const canCreate = resolveCreateProjects(
+    profile.role,
+    profile.create_projects_override,
+  );
   const filter = showArchived ? "archived" : showAll ? "all" : "active";
 
   return (
@@ -83,7 +91,7 @@ export default async function ProjectsPage({
         </div>
       </div>
 
-      {canEdit ? (
+      {canCreate ? (
         <CreateProjectForm
           clients={clients ?? []}
           templates={templates ?? []}

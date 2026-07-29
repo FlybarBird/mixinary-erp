@@ -3,10 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import {
   canEditBilling,
   canViewFinancials,
-  getCurrentProfile,
 } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
-import { canAccessProject } from "@/lib/project-access";
 import { allocateNextInvoiceNumber } from "@/lib/projects/numbering";
 import { captureProjectFinancialSnapshot } from "@/lib/projects/snapshots";
 
@@ -15,12 +14,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  if (!canViewFinancials(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!canViewFinancials(ctx.profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -70,12 +66,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!canViewFinancials(profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (!canEditBilling(profile.role)) {
+  if (!ctx.canEdit(canEditBilling)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

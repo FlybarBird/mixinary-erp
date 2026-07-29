@@ -588,6 +588,24 @@ function migrate(database: Database.Database) {
       "alter table user_profiles add column active integer not null default 1",
     );
   }
+  if (
+    profileCols.length &&
+    !profileCols.some((c) => c.name === "create_projects_override")
+  ) {
+    database.exec(
+      "alter table user_profiles add column create_projects_override text not null default 'inherit'",
+    );
+  }
+
+  // Permission policy: per-project-member View money override
+  const memberCols = database
+    .prepare("pragma table_info(project_members)")
+    .all() as Array<{ name: string }>;
+  if (memberCols.length && !memberCols.some((c) => c.name === "view_money")) {
+    database.exec(
+      "alter table project_members add column view_money text not null default 'inherit'",
+    );
+  }
 
   const userSystemTables: Array<[string, string]> = [
     [

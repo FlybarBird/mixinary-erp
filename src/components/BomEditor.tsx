@@ -55,6 +55,7 @@ export function BomEditor({
   purchaseOrders = [],
   poItems = [],
   canEditPricing,
+  canViewMoney = true,
 }: {
   projectId: string;
   defaultOverridePct: number;
@@ -64,6 +65,8 @@ export function BomEditor({
   purchaseOrders?: HeaderPo[];
   poItems?: HeaderPoItem[];
   canEditPricing: boolean;
+  /** When false, all $ columns are omitted (values are also redacted server-side). */
+  canViewMoney?: boolean;
 }) {
   const router = useRouter();
   const [sections, setSections] = useState(initialSections);
@@ -535,9 +538,11 @@ export function BomEditor({
             <button type="button" className="btn" onClick={toggleSelectAll}>
               {allSelected ? "Clear selection" : "Select all"}
             </button>
-            <button type="button" className="btn" onClick={refreshMsrp}>
-              Refresh MSRP
-            </button>
+            {canViewMoney ? (
+              <button type="button" className="btn" onClick={refreshMsrp}>
+                Refresh MSRP
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn"
@@ -545,22 +550,26 @@ export function BomEditor({
             >
               Send to Procurement
             </button>
-            <input
-              className="field"
-              style={{ maxWidth: 280 }}
-              placeholder="Optional product URL (allowlisted)"
-              value={productUrl}
-              onChange={(e) => setProductUrl(e.target.value)}
-            />
-            <label className="btn">
-              Upload PDF quote
-              <input
-                type="file"
-                accept="application/pdf"
-                hidden
-                onChange={(e) => uploadQuote(e.target.files?.[0] ?? null)}
-              />
-            </label>
+            {canViewMoney ? (
+              <>
+                <input
+                  className="field"
+                  style={{ maxWidth: 280 }}
+                  placeholder="Optional product URL (allowlisted)"
+                  value={productUrl}
+                  onChange={(e) => setProductUrl(e.target.value)}
+                />
+                <label className="btn">
+                  Upload PDF quote
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    hidden
+                    onChange={(e) => uploadQuote(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </>
+            ) : null}
           </>
         ) : null}
         {message ? <span className="muted">{message}</span> : null}
@@ -581,13 +590,17 @@ export function BomEditor({
             <col className="col-sku" />
             <col className="col-cat" />
             <col className="col-qty" />
-            <col className="col-money" />
-            <col className="col-money" />
-            <col className="col-money" />
-            <col className="col-pct" />
-            <col className="col-money" />
-            <col className="col-money" />
-            <col className="col-money" />
+            {canViewMoney ? (
+              <>
+                <col className="col-money" />
+                <col className="col-money" />
+                <col className="col-money" />
+                <col className="col-pct" />
+                <col className="col-money" />
+                <col className="col-money" />
+                <col className="col-money" />
+              </>
+            ) : null}
             <col className="col-vendor" />
             <col className="col-date" />
             <col className="col-proc" />
@@ -618,13 +631,17 @@ export function BomEditor({
               <th title="SKU">SKU</th>
               <th title="Category">Category</th>
               <th title="Quantity">Qty</th>
-              <th title="Estimated unit cost">Est.&nbsp;cost</th>
-              <th title="MSRP">MSRP</th>
-              <th title="Quote">Quote</th>
-              <th title="Override %">%</th>
-              <th title="Unit sale">Sale</th>
-              <th title="Total sale">Total&nbsp;sale</th>
-              <th title="Quoted Material Profit">QMP</th>
+              {canViewMoney ? (
+                <>
+                  <th title="Estimated unit cost">Est.&nbsp;cost</th>
+                  <th title="MSRP">MSRP</th>
+                  <th title="Quote">Quote</th>
+                  <th title="Override %">%</th>
+                  <th title="Unit sale">Sale</th>
+                  <th title="Total sale">Total&nbsp;sale</th>
+                  <th title="Quoted Material Profit">QMP</th>
+                </>
+              ) : null}
               <th title="Vendor">Vendor</th>
               <th title="Required by date">Required&nbsp;by</th>
               <th title="Procurement status">Procurement</th>
@@ -652,7 +669,7 @@ export function BomEditor({
                     onDragOver={onSectionDragOver}
                     onDrop={(e) => onSectionDrop(e, section?.id ?? null)}
                   >
-                    <td colSpan={23}>
+                    <td colSpan={canViewMoney ? 23 : 16}>
                       <div className="section-bar">
                         <label className="section-select">
                           <input
@@ -809,88 +826,92 @@ export function BomEditor({
                             }
                           />
                         </td>
-                        <td>
-                          <CurrencyInput
-                            value={line.estimated_unit_cost ?? null}
-                            allowEmpty
-                            disabled={!canEditPricing}
-                            onChange={(v) =>
-                              updateLine(line._key, {
-                                estimated_unit_cost: v,
-                              })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <CurrencyInput
-                            value={line.msrp}
-                            disabled={!canEditPricing}
-                            onChange={(msrp) =>
-                              updateLine(line._key, { msrp: msrp ?? 0 })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <CurrencyInput
-                            value={line.quote}
-                            allowEmpty
-                            isDefault={line.quote == null}
-                            defaultDisplay={line.msrp}
-                            disabled={!canEditPricing}
-                            onChange={(quote) =>
-                              updateLine(line._key, { quote })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={
-                              line.override_pct == null
-                                ? ""
-                                : Number(line.override_pct) * 100
-                            }
-                            placeholder={(defaultOverridePct * 100).toFixed(2)}
-                            disabled={!canEditPricing}
-                            onChange={(e) =>
-                              updateLine(line._key, {
-                                override_pct:
-                                  e.target.value === ""
-                                    ? null
-                                    : Number(e.target.value) / 100,
-                              })
-                            }
-                          />
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {formatMoney(pricing.unitSale)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {formatMoney(pricing.totalSale)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            fontVariantNumeric: "tabular-nums",
-                            ...outOfPocketStyle(
-                              pricing.outOfPocket,
-                              pricing.totalQuote,
-                            ),
-                          }}
-                        >
-                          {formatSignedMoney(pricing.outOfPocket)}
-                        </td>
+                        {canViewMoney ? (
+                          <>
+                            <td>
+                              <CurrencyInput
+                                value={line.estimated_unit_cost ?? null}
+                                allowEmpty
+                                disabled={!canEditPricing}
+                                onChange={(v) =>
+                                  updateLine(line._key, {
+                                    estimated_unit_cost: v,
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <CurrencyInput
+                                value={line.msrp}
+                                disabled={!canEditPricing}
+                                onChange={(msrp) =>
+                                  updateLine(line._key, { msrp: msrp ?? 0 })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <CurrencyInput
+                                value={line.quote}
+                                allowEmpty
+                                isDefault={line.quote == null}
+                                defaultDisplay={line.msrp}
+                                disabled={!canEditPricing}
+                                onChange={(quote) =>
+                                  updateLine(line._key, { quote })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={
+                                  line.override_pct == null
+                                    ? ""
+                                    : Number(line.override_pct) * 100
+                                }
+                                placeholder={(defaultOverridePct * 100).toFixed(2)}
+                                disabled={!canEditPricing}
+                                onChange={(e) =>
+                                  updateLine(line._key, {
+                                    override_pct:
+                                      e.target.value === ""
+                                        ? null
+                                        : Number(e.target.value) / 100,
+                                  })
+                                }
+                              />
+                            </td>
+                            <td
+                              style={{
+                                textAlign: "right",
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              {formatMoney(pricing.unitSale)}
+                            </td>
+                            <td
+                              style={{
+                                textAlign: "right",
+                                fontVariantNumeric: "tabular-nums",
+                              }}
+                            >
+                              {formatMoney(pricing.totalSale)}
+                            </td>
+                            <td
+                              style={{
+                                textAlign: "right",
+                                fontVariantNumeric: "tabular-nums",
+                                ...outOfPocketStyle(
+                                  pricing.outOfPocket,
+                                  pricing.totalQuote,
+                                ),
+                              }}
+                            >
+                              {formatSignedMoney(pricing.outOfPocket)}
+                            </td>
+                          </>
+                        ) : null}
                         <td>
                           <select
                             value={line.vendor_id ?? ""}

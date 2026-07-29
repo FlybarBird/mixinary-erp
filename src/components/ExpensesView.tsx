@@ -11,6 +11,8 @@ interface Props {
   initialExpenses: ProjectExpense[];
   canEdit: boolean;
   canApprove: boolean;
+  /** When false, $ values are omitted (values are also redacted server-side). */
+  canViewMoney?: boolean;
   changeOrders?: Array<{ id: string; co_number: string; title: string }>;
 }
 
@@ -64,6 +66,7 @@ export function ExpensesView({
   initialExpenses,
   canEdit,
   canApprove,
+  canViewMoney = true,
   changeOrders = [],
 }: Props) {
   const [expenses, setExpenses] = useState<ProjectExpense[]>(initialExpenses);
@@ -142,13 +145,20 @@ export function ExpensesView({
     setSaving(true);
     setMessage(null);
     try {
+      // A money-denied user editing an existing expense must not overwrite
+      // real amounts with redacted zeros — omit those fields entirely.
+      const includeMoney = canViewMoney || !editingId;
       const payload = {
         expense_date: form.expense_date,
         category: form.category,
         payee: form.payee || null,
         description: form.description,
-        amount: form.amount ? Number(form.amount) : 0,
-        tax: form.tax ? Number(form.tax) : 0,
+        ...(includeMoney
+          ? {
+              amount: form.amount ? Number(form.amount) : 0,
+              tax: form.tax ? Number(form.tax) : 0,
+            }
+          : {}),
         cost_code: form.cost_code || null,
         is_additional_charge: form.is_additional_charge,
         is_billable: form.is_billable,
@@ -230,25 +240,29 @@ export function ExpensesView({
   return (
     <div className="stack">
       <div className="workspace-summary">
-        <div className="workspace-stat">
-          <div className="label">Total Expenses</div>
-          <div className="value">{formatMoney(summary.total)}</div>
-        </div>
-        <div className="workspace-stat">
-          <div className="label">Approved</div>
-          <div className="value">{formatMoney(summary.approved)}</div>
-        </div>
-        <div className="workspace-stat">
-          <div className="label">Paid / Reimbursed</div>
-          <div className="value">{formatMoney(summary.paid)}</div>
-        </div>
+        {canViewMoney ? (
+          <>
+            <div className="workspace-stat">
+              <div className="label">Total Expenses</div>
+              <div className="value">{formatMoney(summary.total)}</div>
+            </div>
+            <div className="workspace-stat">
+              <div className="label">Approved</div>
+              <div className="value">{formatMoney(summary.approved)}</div>
+            </div>
+            <div className="workspace-stat">
+              <div className="label">Paid / Reimbursed</div>
+              <div className="value">{formatMoney(summary.paid)}</div>
+            </div>
+          </>
+        ) : null}
         <div className="workspace-stat">
           <div className="label">Count</div>
           <div className="value">{expenses.filter(Boolean).length}</div>
         </div>
       </div>
 
-      {summary.byCategory.size > 0 && (
+      {canViewMoney && summary.byCategory.size > 0 && (
         <div className="panel" style={{ padding: "1rem" }}>
           <div style={{ fontWeight: 600, marginBottom: "0.5rem", fontSize: "0.85rem" }}>By Category</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
@@ -296,14 +310,18 @@ export function ExpensesView({
               <span>Payee</span>
               <input value={form.payee} onChange={(e) => fieldVal("payee", e.target.value)} />
             </label>
-            <label className="field">
-              <span>Amount ($)</span>
-              <input type="number" min="0" step="0.01" value={form.amount} onChange={(e) => fieldVal("amount", e.target.value)} />
-            </label>
-            <label className="field">
-              <span>Tax ($)</span>
-              <input type="number" min="0" step="0.01" value={form.tax} onChange={(e) => fieldVal("tax", e.target.value)} />
-            </label>
+            {canViewMoney || !editingId ? (
+              <>
+                <label className="field">
+                  <span>Amount ($)</span>
+                  <input type="number" min="0" step="0.01" value={form.amount} onChange={(e) => fieldVal("amount", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Tax ($)</span>
+                  <input type="number" min="0" step="0.01" value={form.tax} onChange={(e) => fieldVal("tax", e.target.value)} />
+                </label>
+              </>
+            ) : null}
             <label className="field">
               <span>Cost Code</span>
               <input value={form.cost_code} onChange={(e) => fieldVal("cost_code", e.target.value)} />
@@ -404,9 +422,13 @@ export function ExpensesView({
                 <th style={{ textAlign: "left" }}>Category</th>
                 <th style={{ textAlign: "left" }}>Payee</th>
                 <th style={{ textAlign: "left" }}>Description</th>
-                <th style={{ textAlign: "right" }}>Amount</th>
-                <th style={{ textAlign: "right" }}>Tax</th>
-                <th style={{ textAlign: "right" }}>Total</th>
+                {canViewMoney ? (
+                  <>
+                    <th style={{ textAlign: "right" }}>Amount</th>
+                    <th style={{ textAlign: "right" }}>Tax</th>
+                    <th style={{ textAlign: "right" }}>Total</th>
+                  </>
+                ) : null}
                 <th style={{ textAlign: "center" }}>Add&rsquo;l</th>
                 <th style={{ textAlign: "center" }}>Approval</th>
                 <th style={{ textAlign: "center" }}>Payment</th>
@@ -420,11 +442,15 @@ export function ExpensesView({
                   <td>{CATEGORY_LABEL[expense.category]}</td>
                   <td>{expense.payee ?? "—"}</td>
                   <td>{expense.description}</td>
-                  <td style={{ textAlign: "right" }}>{formatMoney(expense.amount)}</td>
-                  <td style={{ textAlign: "right" }}>{formatMoney(expense.tax)}</td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }}>
-                    {formatMoney(Number(expense.amount ?? 0) + Number(expense.tax ?? 0))}
-                  </td>
+                  {canViewMoney ? (
+                    <>
+                      <td style={{ textAlign: "right" }}>{formatMoney(expense.amount)}</td>
+                      <td style={{ textAlign: "right" }}>{formatMoney(expense.tax)}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }}>
+                        {formatMoney(Number(expense.amount ?? 0) + Number(expense.tax ?? 0))}
+                      </td>
+                    </>
+                  ) : null}
                   <td style={{ textAlign: "center" }}>{expense.is_additional_charge ? "Yes" : "—"}</td>
                   <td style={{ textAlign: "center" }}>
                     <span className={`badge ${APPROVAL_BADGE[expense.approval_status]}`}>

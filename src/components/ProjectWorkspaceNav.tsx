@@ -9,7 +9,7 @@ const TABS = [
   { href: "/labor", label: "Labor", match: "labor" },
   { href: "/procurement", label: "Procurement", match: "procurement" },
   { href: "/tracking", label: "Tracking", match: "tracking" },
-  { href: "/expenses", label: "Expenses", match: "expenses" },
+  { href: "/expenses", label: "Expenses", match: "expenses", expenses: true },
   { href: "/change-orders", label: "Change Orders", match: "change-orders", financial: true },
   { href: "/billing", label: "Billing", match: "billing", financial: true },
   { href: "/subcontracts", label: "Subs", match: "subcontracts", financial: true },
@@ -26,10 +26,12 @@ const TABS = [
 export function ProjectWorkspaceNav({
   projectId,
   canViewFinancials = false,
+  canViewExpenses = true,
   clientDocumentsEnabled = false,
 }: {
   projectId: string;
   canViewFinancials?: boolean;
+  canViewExpenses?: boolean;
   clientDocumentsEnabled?: boolean;
 }) {
   const pathname = usePathname();
@@ -45,6 +47,7 @@ export function ProjectWorkspaceNav({
   const tabs = TABS.filter(
     (tab) =>
       (!("financial" in tab && tab.financial) || canViewFinancials) &&
+      (!("expenses" in tab && tab.expenses) || canViewExpenses) &&
       (!("addon" in tab && tab.addon) || clientDocumentsEnabled),
   );
 

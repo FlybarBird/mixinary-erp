@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  canApproveLabor,
-  canEditLabor,
-  canViewFinancials,
-  getCurrentProfile,
-} from "@/lib/auth";
+import { canApproveLabor, canEditLabor } from "@/lib/auth";
+import { redactLaborEntryMoney } from "@/lib/money-redaction";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
 import { writeAuditEvent } from "@/lib/projects/workspace";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
@@ -21,10 +18,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -38,7 +33,10 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ entries: data ?? [] });
+  const entries = (data ?? []).map((entry) =>
+    ctx.canViewMoney ? entry : redactLaborEntryMoney(entry),
+  );
+  return NextResponse.json({ entries });
 }
 
 /** Legacy single-create — kept for compatibility. Prefer PUT batch. */
@@ -47,17 +45,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditLabor(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditLabor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await request.json();
   const supabase = await createClient();
-  const canRates = canViewFinancials(profile.role);
+  const canRates = ctx.canViewMoney;
 
   const { data: project } = await supabase
     .from("projects")
@@ -146,7 +143,10 @@ export async function POST(
     // non-fatal
   }
 
-  return NextResponse.json({ entry: data }, { status: 201 });
+  return NextResponse.json(
+    { entry: canRates ? data : redactLaborEntryMoney(data) },
+    { status: 201 },
+  );
 }
 
 /**
@@ -158,18 +158,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!canEditLabor(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit(canEditLabor)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await request.json();
   const lines = (body.lines ?? []) as Array<Record<string, unknown>>;
-  const canRates = canViewFinancials(profile.role);
-  const canApprove = canApproveLabor(profile.role);
+  const canRates = ctx.canViewMoney;
+  const canApprove = ctx.canEdit(canApproveLabor);
 
   const supabase = await createClient();
   const [{ data: existing }, { data: project }] = await Promise.all([
@@ -350,5 +349,12 @@ export async function PUT(
     // non-fatal
   }
 
-  return NextResponse.json({ entries: saved, ok: true });
+  return NextResponse.json({
+    entries: canRates
+      ? saved
+      : saved.map((entry) =>
+          redactLaborEntryMoney(entry as Record<string, unknown>),
+        ),
+    ok: true,
+  });
 }

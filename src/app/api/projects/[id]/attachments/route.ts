@@ -7,9 +7,9 @@ import {
   canEditExpenses,
   canManageProcurement,
   canViewFinancials,
-  getCurrentProfile,
 } from "@/lib/auth";
-import { getLocalDb, isLocalMode, newId } from "@/lib/local/db";
+import { requireProjectApiContext } from "@/lib/project-guard";
+import { isLocalMode, newId } from "@/lib/local/db";
 
 const LOCAL_FILES_DIR = path.join(process.cwd(), ".data", "project-files");
 
@@ -27,8 +27,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
   const url = new URL(request.url);
   const entityType = url.searchParams.get("entity_type");
@@ -55,9 +55,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canWrite(profile.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!ctx.canEdit((role) => canWrite(role))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const form = await request.formData();
   const file = form.get("file");

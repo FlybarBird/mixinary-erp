@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { buildBomPdf } from "@/lib/projects/export-bom-pdf";
 import { createClient } from "@/lib/supabase/server";
 
@@ -8,17 +8,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
   const pricingParam = new URL(request.url).searchParams.get("pricing");
-  const withPricing = !(
+  const wantPricing = !(
     pricingParam === "0" ||
     pricingParam === "false" ||
     pricingParam === "without"
   );
+  const withPricing = wantPricing && ctx.canViewMoney;
 
   const supabase = await createClient();
   const [{ data: project }, { data: sections }, { data: lines }] =

@@ -2,10 +2,14 @@ import { notFound } from "next/navigation";
 import { BillingView } from "@/components/BillingView";
 import {
   canEditBilling,
-  canManageApAndSubs,
+  canManageAp,
   canViewFinancials,
   requireProfile,
 } from "@/lib/auth";
+import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectInvoice, ProjectPayment, VendorBill } from "@/lib/types";
 
@@ -16,7 +20,8 @@ export default async function BillingPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  if (!canViewFinancials(profile.role)) {
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  if (!canViewFinancials(profile.role) || !membership.canViewMoney) {
     return (
       <div className="panel" style={{ padding: "1.25rem" }}>
         <strong>Billing</strong>
@@ -90,8 +95,16 @@ export default async function BillingPage({
       initialVendorBills={(vendorBills ?? []) as VendorBill[]}
       purchaseOrders={pos ?? []}
       vendors={vendors ?? []}
-      canEdit={canEditBilling(profile.role)}
-      canManageAp={canManageApAndSubs(profile.role)}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canEditBilling(profile.role),
+      )}
+      canManageAp={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canManageAp(profile.role),
+      )}
     />
   );
 }

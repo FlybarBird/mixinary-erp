@@ -7,6 +7,10 @@ import {
 } from "@/lib/auth";
 import { getCompanySettings } from "@/lib/company-settings";
 import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
+import {
   getDocForProject,
   listDocBlocks,
 } from "@/lib/projects/client-documents-server";
@@ -27,7 +31,8 @@ export default async function ClientDocumentEditorPage({
   const { id, docId } = await params;
   const { preview } = await searchParams;
   const profile = await requireProfile();
-  if (!canViewFinancials(profile.role)) {
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  if (!canViewFinancials(profile.role) || !membership.canViewMoney) {
     return (
       <div className="panel" style={{ padding: "1.25rem" }}>
         <strong>Client Documents</strong>
@@ -84,7 +89,11 @@ export default async function ClientDocumentEditorPage({
       users={(users ?? []) as UserProfile[]}
       events={(events ?? []) as ClientDocumentEvent[]}
       signatures={(signatures ?? []) as ClientDocumentSignature[]}
-      canEdit={canEditClientDocuments(profile.role)}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canEditClientDocuments(profile.role),
+      )}
       startInPreview={preview === "1"}
     />
   );

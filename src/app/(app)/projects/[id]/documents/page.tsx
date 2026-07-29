@@ -6,6 +6,10 @@ import {
   requireProfile,
 } from "@/lib/auth";
 import { getCompanySettings } from "@/lib/company-settings";
+import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ClientDocument,
@@ -21,7 +25,8 @@ export default async function ClientDocumentsPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  if (!canViewFinancials(profile.role)) {
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  if (!canViewFinancials(profile.role) || !membership.canViewMoney) {
     return (
       <div className="panel" style={{ padding: "1.25rem" }}>
         <strong>Client Documents</strong>
@@ -98,7 +103,11 @@ export default async function ClientDocumentsPage({
       initialEvents={events}
       initialTokens={tokens}
       users={(users ?? []) as UserProfile[]}
-      canEdit={canEditClientDocuments(profile.role)}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canEditClientDocuments(profile.role),
+      )}
     />
   );
 }

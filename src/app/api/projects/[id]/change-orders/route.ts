@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  canApproveChangeOrders,
+  canEditChangeOrders,
   canViewFinancials,
-  getCurrentProfile,
 } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
-import { canAccessProject } from "@/lib/project-access";
 import { allocateNextCoNumber } from "@/lib/projects/numbering";
-import { captureProjectFinancialSnapshot } from "@/lib/projects/snapshots";
 import type { ChangeOrderStatus } from "@/lib/types";
 
 export async function GET(
@@ -16,12 +14,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  if (!canViewFinancials(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!canViewFinancials(ctx.profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -40,20 +35,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!canViewFinancials(profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (!canApproveChangeOrders(profile.role) && !canViewFinancials(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  // Editors who can view financials (PM/admin) can create drafts
-  if (
-    profile.role !== "administrator" &&
-    profile.role !== "project_manager" &&
-    profile.role !== "accounting"
-  ) {
+  if (!ctx.canEdit(canEditChangeOrders)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   canApproveChangeOrders,
+  canEditChangeOrders,
   canViewFinancials,
-  getCurrentProfile,
 } from "@/lib/auth";
-import { canAccessProject } from "@/lib/project-access";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { captureProjectFinancialSnapshot } from "@/lib/projects/snapshots";
 import type { ChangeOrderStatus } from "@/lib/types";
 
@@ -22,12 +22,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; coId: string }> },
 ) {
   const { id: projectId, coId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!canViewFinancials(profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (!canViewFinancials(profile.role)) {
+  if (!ctx.canEdit(canEditChangeOrders)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -81,12 +82,12 @@ export async function PATCH(
     }
     if (
       (status === "approved" || status === "rejected") &&
-      !canApproveChangeOrders(profile.role)
+      !ctx.canEdit(canApproveChangeOrders)
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     if (existing.status === "approved" && status !== "void" && status !== "approved") {
-      if (!canApproveChangeOrders(profile.role)) {
+      if (!ctx.canEdit(canApproveChangeOrders)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
@@ -108,7 +109,7 @@ export async function PATCH(
   if (
     existing.status === "approved" &&
     !("status" in body) &&
-    !canApproveChangeOrders(profile.role)
+    !ctx.canEdit(canApproveChangeOrders)
   ) {
     return NextResponse.json(
       { error: "Approved change orders are locked" },
@@ -145,9 +146,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; coId: string }> },
 ) {
   const { id: projectId, coId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canApproveChangeOrders(profile.role)) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (!ctx.canEdit(canApproveChangeOrders)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const supabase = await createClient();

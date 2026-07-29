@@ -8,9 +8,11 @@ import {
   sendInviteEmail,
 } from "@/lib/email";
 import {
+  normalizePermissionOverride,
   normalizeUserRole,
   USER_ROLE_LABELS,
   USER_ROLES,
+  type PermissionOverride,
   type UserProfile,
   type UserRole,
 } from "@/lib/types";
@@ -76,7 +78,7 @@ export async function listUsers(opts?: {
   const filter = opts?.active ?? "all";
   if (isLocalMode()) {
     let sql =
-      "select id, email, full_name, role, coalesce(active, 1) as active from user_profiles";
+      "select id, email, full_name, role, coalesce(active, 1) as active, create_projects_override from user_profiles";
     if (filter === true) sql += " where coalesce(active, 1) = 1";
     if (filter === false) sql += " where coalesce(active, 1) = 0";
     sql += " order by email";
@@ -86,6 +88,7 @@ export async function listUsers(opts?: {
       full_name: string | null;
       role: string;
       active: number;
+      create_projects_override: string | null;
     }>;
     return rows.map((r) => ({
       id: r.id,
@@ -93,13 +96,16 @@ export async function listUsers(opts?: {
       full_name: r.full_name,
       role: normalizeUserRole(r.role),
       active: Boolean(r.active),
+      create_projects_override: normalizePermissionOverride(
+        r.create_projects_override,
+      ),
     }));
   }
 
   const supabase = await createClient();
   let q = supabase
     .from("user_profiles")
-    .select("id, email, full_name, role, active")
+    .select("id, email, full_name, role, active, create_projects_override")
     .order("email");
   if (filter === true) q = q.eq("active", true);
   if (filter === false) q = q.eq("active", false);
@@ -110,6 +116,10 @@ export async function listUsers(opts?: {
     full_name: r.full_name,
     role: normalizeUserRole(r.role),
     active: r.active !== false,
+    create_projects_override: normalizePermissionOverride(
+      (r as { create_projects_override?: string | null })
+        .create_projects_override,
+    ),
   }));
 }
 
@@ -289,6 +299,7 @@ export async function updateUser(opts: {
   role?: UserRole;
   active?: boolean;
   password?: string | null;
+  createProjectsOverride?: PermissionOverride;
 }): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const targetId = opts.id;
 
@@ -340,6 +351,12 @@ export async function updateUser(opts: {
            updated_at = datetime('now')
        where id = ?`,
     ).run(email, fullName, nextRole, nextActive ? 1 : 0, targetId);
+
+    if (opts.createProjectsOverride !== undefined) {
+      db.prepare(
+        `update user_profiles set create_projects_override = ?, updated_at = datetime('now') where id = ?`,
+      ).run(normalizePermissionOverride(opts.createProjectsOverride), targetId);
+    }
 
     if (opts.password) {
       if (opts.password.length < 8) {
@@ -404,6 +421,13 @@ export async function updateUser(opts: {
       role: nextRole,
       active: nextActive,
       updated_at: new Date().toISOString(),
+      ...(opts.createProjectsOverride !== undefined
+        ? {
+            create_projects_override: normalizePermissionOverride(
+              opts.createProjectsOverride,
+            ),
+          }
+        : {}),
     })
     .eq("id", targetId);
   if (error) return { ok: false, error: error.message, status: 400 };

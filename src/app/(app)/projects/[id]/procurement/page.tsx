@@ -1,6 +1,14 @@
 import { ProcurementView } from "@/components/ProcurementView";
 import { canManageProcurement, canReceive, requireProfile } from "@/lib/auth";
 import { getPoOrderEmailCc } from "@/lib/email";
+import {
+  redactPoItemMoney,
+  redactPurchaseOrderMoney,
+} from "@/lib/money-redaction";
+import {
+  canEditProjectContent,
+  getProjectMembership,
+} from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { PurchaseOrder, PurchaseOrderItem, Vendor } from "@/lib/types";
 
@@ -11,6 +19,8 @@ export default async function ProcurementPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  const canMoney = membership.canViewMoney;
   const supabase = await createClient();
 
   const [{ data: project }, { data: orders }, { data: vendors }, { data: lines }] =
@@ -50,8 +60,8 @@ export default async function ProcurementPage({
     itemsByPo.get(item.po_id)!.push(item);
   }
 
-  const ordersWithItems = (orders ?? []).map((o) => ({
-    ...(o as PurchaseOrder & {
+  const ordersWithItems = (orders ?? []).map((o) => {
+    const base = o as PurchaseOrder & {
       vendors?: {
         id: string;
         code: string;
@@ -59,9 +69,15 @@ export default async function ProcurementPage({
         contact_name?: string | null;
         contact_email?: string | null;
       } | null;
-    }),
-    items: itemsByPo.get(o.id) ?? [],
-  }));
+    };
+    const items = (itemsByPo.get(o.id) ?? []).map((item) =>
+      canMoney ? item : redactPoItemMoney(item),
+    );
+    return {
+      ...(canMoney ? base : redactPurchaseOrderMoney(base)),
+      items,
+    };
+  });
 
   return (
     <ProcurementView
@@ -77,14 +93,26 @@ export default async function ProcurementPage({
         qty: Number(l.qty || 0),
         qty_ordered: Number(l.qty_ordered || 0),
         qty_received: Number(l.qty_received || 0),
-        msrp: Number(l.msrp || 0),
-        quote: l.quote == null ? null : Number(l.quote),
-        override_pct: l.override_pct == null ? null : Number(l.override_pct),
+        msrp: canMoney ? Number(l.msrp || 0) : 0,
+        quote: !canMoney || l.quote == null ? null : Number(l.quote),
+        override_pct:
+          !canMoney || l.override_pct == null ? null : Number(l.override_pct),
         estimated_unit_cost:
-          l.estimated_unit_cost == null ? null : Number(l.estimated_unit_cost),
+          !canMoney || l.estimated_unit_cost == null
+            ? null
+            : Number(l.estimated_unit_cost),
       }))}
-      canEdit={canManageProcurement(profile.role)}
-      canReceive={canReceive(profile.role)}
+      canEdit={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canManageProcurement(profile.role),
+      )}
+      canReceive={canEditProjectContent(
+        profile.role,
+        membership.access,
+        canReceive(profile.role),
+      )}
+      canViewMoney={canMoney}
       signerName={profile.full_name || profile.email}
       poOrderCc={getPoOrderEmailCc() || null}
     />

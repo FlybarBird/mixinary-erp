@@ -3,6 +3,8 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  PERMISSION_OVERRIDE_LABELS,
+  PERMISSION_OVERRIDES,
   USER_ROLE_LABELS,
   USER_ROLES,
   type UserProfile,
@@ -107,6 +109,7 @@ export function UserManager({
         email: form.get("email"),
         role: form.get("role"),
         password: password || null,
+        create_projects_override: form.get("create_projects_override"),
       }),
     });
     const data = await res.json();
@@ -348,6 +351,20 @@ export function UserManager({
                 minLength={8}
                 placeholder="Leave blank to keep"
               />
+            </div>
+            <div>
+              <label className="label">Create projects</label>
+              <select
+                className="field"
+                name="create_projects_override"
+                defaultValue={editing.create_projects_override ?? "inherit"}
+              >
+                {PERMISSION_OVERRIDES.map((v) => (
+                  <option key={v} value={v}>
+                    {PERMISSION_OVERRIDE_LABELS[v]}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="row" style={{ marginTop: "0.75rem" }}>

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditBilling, getCurrentProfile } from "@/lib/auth";
+import { canEditBilling, canViewFinancials } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { newId } from "@/lib/local/db";
-import { canAccessProject } from "@/lib/project-access";
 import { captureProjectFinancialSnapshot } from "@/lib/projects/snapshots";
 import type { InvoiceStatus } from "@/lib/types";
 
@@ -17,12 +17,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!canViewFinancials(profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (!canEditBilling(profile.role)) {
+  if (!ctx.canEdit(canEditBilling)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

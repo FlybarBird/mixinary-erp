@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { canEditClientDocuments, getCurrentProfile } from "@/lib/auth";
+import { canEditClientDocuments, canViewFinancials } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { getCompanySettings } from "@/lib/company-settings";
 import {
   buildClientDocumentUrl,
   mailConfigured,
   sendClientDocumentEmail,
 } from "@/lib/email";
-import { canAccessProject } from "@/lib/project-access";
 import {
   ensureDocToken,
   getDocForProject,
@@ -21,14 +21,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string; docId: string }> },
 ) {
   const { id: projectId, docId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const profile = ctx.profile;
+  if (!canViewFinancials(profile.role) || !ctx.canViewMoney) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (!canEditClientDocuments(profile.role)) {
+  if (!ctx.canEdit(canEditClientDocuments)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

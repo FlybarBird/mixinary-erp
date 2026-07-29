@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   role TEXT NOT NULL DEFAULT 'project_manager',
   password_hash TEXT NOT NULL DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
+  create_projects_override TEXT NOT NULL DEFAULT 'inherit',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -485,6 +486,7 @@ CREATE TABLE IF NOT EXISTS project_members (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
   access_role TEXT NOT NULL DEFAULT 'viewer',
+  view_money TEXT NOT NULL DEFAULT 'inherit',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (project_id, user_id)

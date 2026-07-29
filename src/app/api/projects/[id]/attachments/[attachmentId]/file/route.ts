@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 import { isLocalMode } from "@/lib/local/db";
 
 const LOCAL_FILES_DIR = path.join(process.cwd(), ".data", "project-files");
@@ -12,8 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string; attachmentId: string }> },
 ) {
   const { id: projectId, attachmentId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
 
   const supabase = await createClient();
   const { data: attachment } = await supabase

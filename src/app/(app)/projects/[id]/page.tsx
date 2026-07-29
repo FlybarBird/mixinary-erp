@@ -1,8 +1,13 @@
 import { BomEditor } from "@/components/BomEditor";
 import { canEditBom, requireProfile } from "@/lib/auth";
 import {
+  redactLineItemMoney,
+  redactPoItemMoney,
+  redactPurchaseOrderMoney,
+} from "@/lib/money-redaction";
+import {
   canEditProjectContent,
-  getProjectAccessRole,
+  getProjectMembership,
 } from "@/lib/project-access";
 import { createClient } from "@/lib/supabase/server";
 import type { LineItem, ProjectSection, Vendor } from "@/lib/types";
@@ -14,7 +19,8 @@ export default async function ProjectBomPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  const access = await getProjectAccessRole(profile.id, profile.role, id);
+  const membership = await getProjectMembership(profile.id, profile.role, id);
+  const canMoney = membership.canViewMoney;
   const supabase = await createClient();
 
   const [
@@ -67,20 +73,31 @@ export default async function ProjectBomPage({
     poItems = (data ?? []) as typeof poItems;
   }
 
+  const safeLines = (lines ?? []).map((l) =>
+    canMoney ? l : redactLineItemMoney(l),
+  ) as LineItem[];
+  const safePos = (purchaseOrders ?? []).map((po) =>
+    canMoney ? po : redactPurchaseOrderMoney(po),
+  );
+  const safePoItems = poItems.map((item) =>
+    canMoney ? item : redactPoItemMoney(item),
+  );
+
   return (
     <BomEditor
       projectId={project.id}
       defaultOverridePct={Number(project.default_override_pct)}
       initialSections={(sections ?? []) as ProjectSection[]}
-      initialLines={(lines ?? []) as LineItem[]}
+      initialLines={safeLines}
       vendors={(vendors ?? []) as Vendor[]}
-      purchaseOrders={purchaseOrders ?? []}
-      poItems={poItems}
+      purchaseOrders={safePos}
+      poItems={safePoItems}
       canEditPricing={canEditProjectContent(
         profile.role,
-        access,
+        membership.access,
         canEditBom(profile.role),
       )}
+      canViewMoney={canMoney}
     />
   );
 }

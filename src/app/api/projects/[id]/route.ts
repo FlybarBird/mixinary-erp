@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, canEditBom, canViewFinancials } from "@/lib/auth";
-import {
-  canAccessProject,
-  canEditProjectContent,
-  getProjectAccessRole,
-} from "@/lib/project-access";
+import { canEditBom, canViewFinancials } from "@/lib/auth";
+import { requireProjectApiContext, type ProjectApiContext } from "@/lib/project-guard";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import { writeAuditEvent } from "@/lib/projects/workspace";
 import type { ProjectStatus } from "@/lib/types";
@@ -18,17 +14,15 @@ const STATUSES: ProjectStatus[] = [
   "archived",
 ];
 
-async function requireProjectEditor(projectId: string) {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  if (!(await canAccessProject(profile.id, profile.role, projectId))) {
+async function requireProjectEditor(
+  projectId: string,
+): Promise<{ error: NextResponse } | { ctx: ProjectApiContext }> {
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return { error: ctx };
+  if (!ctx.canEdit(canEditBom)) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  const access = await getProjectAccessRole(profile.id, profile.role, projectId);
-  if (!canEditProjectContent(profile.role, access, canEditBom(profile.role))) {
-    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  }
-  return { profile };
+  return { ctx };
 }
 
 export async function PATCH(
@@ -37,7 +31,8 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const gate = await requireProjectEditor(id);
-  if ("error" in gate && gate.error) return gate.error;
+  if ("error" in gate) return gate.error;
+  const ctx = gate.ctx;
 
   const body = await request.json();
   const patch: Record<string, unknown> = {
@@ -124,8 +119,7 @@ export async function PATCH(
   const touchesFinancials = financialKeys.some((k) => k in body);
 
   if (touchesFinancials) {
-    const profile = gate.profile!;
-    if (!canViewFinancials(profile.role)) {
+    if (!canViewFinancials(ctx.profile.role) || !ctx.canViewMoney) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const reason = String(body.financial_reason ?? "").trim();
@@ -225,7 +219,7 @@ export async function PATCH(
           revenue_additions: data.revenue_additions,
           revenue_credits: data.revenue_credits,
         },
-        actorId: gate.profile!.id,
+        actorId: ctx.profile.id,
         reason: String(body.financial_reason ?? "").trim(),
       });
       await rebuildProjectCostLedger(supabase, id);
@@ -234,7 +228,22 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ data });
+  let responseData = data;
+  if (!ctx.canViewMoney && data) {
+    responseData = {
+      ...data,
+      material_budget: null,
+      labor_budget: null,
+      expense_budget: null,
+      subcontractor_budget: null,
+      overhead_budget: null,
+      original_revenue: null,
+      revenue_additions: 0,
+      revenue_credits: 0,
+    };
+  }
+
+  return NextResponse.json({ data: responseData });
 }
 
 export async function DELETE(
@@ -243,7 +252,7 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const gate = await requireProjectEditor(id);
-  if ("error" in gate && gate.error) return gate.error;
+  if ("error" in gate) return gate.error;
 
   const supabase = await createClient();
   const { error } = await supabase.from("projects").delete().eq("id", id);

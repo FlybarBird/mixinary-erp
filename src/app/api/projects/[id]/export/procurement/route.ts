@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { requireProjectApiContext } from "@/lib/project-guard";
 
 function esc(v: unknown): string {
   const s = v == null ? "" : String(v);
@@ -19,8 +19,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: projectId } = await params;
-  const profile = await getCurrentProfile();
-  if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await requireProjectApiContext(projectId);
+  if (ctx instanceof NextResponse) return ctx;
+  const canMoney = ctx.canViewMoney;
 
   const supabase = await createClient();
   const { data: orders } = await supabase
@@ -35,14 +36,11 @@ export async function GET(
     "Status",
     "Order Date",
     "Expected Delivery",
-    "PO Shipping",
-    "PO Tax",
-    "PO Total",
+    ...(canMoney ? ["PO Shipping", "PO Tax", "PO Total"] : []),
     "Item Description",
     "SKU",
     "Qty Ordered",
-    "Unit Price",
-    "Line Total",
+    ...(canMoney ? ["Unit Price", "Line Total"] : []),
     "Item Status",
     "Qty Received",
     "Notes",
@@ -62,14 +60,11 @@ export async function GET(
         po.status,
         po.order_date ?? "",
         po.expected_delivery_date ?? "",
-        poShipping,
-        poTax,
-        poTotal,
+        ...(canMoney ? [poShipping, poTax, poTotal] : []),
         "",
         "",
         "",
-        "",
-        "",
+        ...(canMoney ? ["", ""] : []),
         "",
         "",
         po.notes ?? "",
@@ -82,14 +77,11 @@ export async function GET(
           po.status,
           po.order_date ?? "",
           po.expected_delivery_date ?? "",
-          poShipping,
-          poTax,
-          poTotal,
+          ...(canMoney ? [poShipping, poTax, poTotal] : []),
           item.description,
           item.sku ?? "",
           item.qty_ordered,
-          item.unit_price,
-          item.line_total,
+          ...(canMoney ? [item.unit_price, item.line_total] : []),
           item.item_status,
           item.qty_received,
           item.notes ?? "",

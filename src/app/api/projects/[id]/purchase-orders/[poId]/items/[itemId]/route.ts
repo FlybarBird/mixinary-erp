@@ -7,11 +7,12 @@ import {
   rollupBomLineQuantities,
   syncBomLinePricingFromPoItem,
 } from "@/lib/projects/workspace";
-import {
-  recalcPurchaseOrderEconomics,
-  suggestPoStatus,
-} from "@/lib/projects/procurement";
+import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
+import {
+  deriveReceiveStatus,
+  syncPoStatusFromItems,
+} from "@/lib/projects/receive";
 
 const ALERT_STATUSES = new Set(["delayed", "backordered"]);
 
@@ -25,30 +26,6 @@ const RECEIVE_FIELDS = new Set([
   "expected_delivery_date",
   "expected_ship_date",
 ]);
-
-async function syncPoStatusFromItems(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  poId: string,
-) {
-  const { data: items } = await supabase
-    .from("purchase_order_items")
-    .select("item_status, qty_ordered, qty_shipped, qty_received")
-    .eq("po_id", poId);
-  if (!items) return null;
-  const { status } = suggestPoStatus(
-    items as Array<{
-      item_status: string;
-      qty_ordered: number;
-      qty_shipped: number;
-      qty_received: number;
-    }>,
-  );
-  await supabase
-    .from("purchase_orders")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("id", poId);
-  return status;
-}
 
 export async function PATCH(
   request: Request,
@@ -133,6 +110,13 @@ export async function PATCH(
 
   // Strip item shipping if clients still send it
   delete updatePayload.shipping;
+
+  // Auto-derive item status from qty_received when status not explicitly sent
+  if (body.qty_received != null && body.item_status == null) {
+    const qtyReceived = Number(body.qty_received);
+    const derived = deriveReceiveStatus(qtyReceived, newQty);
+    if (derived) updatePayload.item_status = derived;
+  }
 
   updatePayload.updated_at = new Date().toISOString();
 

@@ -664,6 +664,11 @@ export function ProcurementView({
             <option key={v.id} value={v.id}>{v.code} — {v.name}</option>
           ))}
         </select>
+        {(canEdit || canReceive) && (
+          <a className="btn" href={`/projects/${projectId}/receive`}>
+            QR Receive
+          </a>
+        )}
         {canEdit && (
           <button className="btn btn-primary" onClick={() => setShowNewPo(true)}>
             + New Draft PO
@@ -793,6 +798,14 @@ export function ProcurementView({
                         <MailIcon />
                         Email
                       </a>
+                      {(canEdit || canReceive) && po.items.length > 0 ? (
+                        <a
+                          className="btn btn-ghost"
+                          href={`/projects/${projectId}/receive/labels?po=${po.id}`}
+                        >
+                          Print QR labels
+                        </a>
+                      ) : null}
                       {canEdit && (
                         <>
                           <button className="btn btn-ghost" onClick={() => openPoEdit(po)}>

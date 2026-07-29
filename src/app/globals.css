@@ -1163,6 +1163,50 @@ input.currency-edit.field {
   margin: 0.35rem 0;
 }
 
+.menu-submenu {
+  position: relative;
+}
+
+.menu-submenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.menu-submenu-caret {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.menu-submenu[data-open="true"] > .menu-submenu-trigger {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+
+.menu-submenu-panel {
+  position: absolute;
+  top: -0.3rem;
+  right: calc(100% + 0.2rem);
+  min-width: 13.5rem;
+  padding: 0.3rem 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(34, 53, 72, 0.14);
+  z-index: 32;
+}
+
+@media (max-width: 720px) {
+  .menu-submenu-panel {
+    right: auto;
+    left: 0;
+    top: calc(100% - 0.15rem);
+    min-width: 100%;
+  }
+}
+
 .segmented {
   display: inline-flex;
   align-items: center;

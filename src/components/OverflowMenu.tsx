@@ -52,9 +52,57 @@ export function OverflowMenu({
         <div
           className="menu-panel"
           role="menu"
-          onClick={() => setOpen(false)}
-          style={wide ? { minWidth: 230 } : undefined}
+          style={wide ? { minWidth: 200 } : undefined}
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("[data-menu-submenu-trigger]")) return;
+            if (target.closest("a.menu-item, button.menu-item")) {
+              setOpen(false);
+            }
+          }}
         >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Nested flyout group for dense overflow menus. */
+export function MenuSubmenu({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div
+      className="menu-submenu"
+      data-open={open ? "true" : "false"}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="menu-item menu-submenu-trigger"
+        data-menu-submenu-trigger
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <span>{label}</span>
+        <span className="menu-submenu-caret" aria-hidden>
+          ›
+        </span>
+      </button>
+      {open ? (
+        <div className="menu-submenu-panel" role="menu">
           {children}
         </div>
       ) : null}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectMember, ProjectStatus, UserProfile } from "@/lib/types";
-import { OverflowMenu } from "@/components/OverflowMenu";
+import { MenuSubmenu, OverflowMenu } from "@/components/OverflowMenu";
 import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
 import {
   PROJECT_CSV_EXPORTS,
@@ -211,30 +211,32 @@ export function ProjectHeader({
               : `Members (${members.length})`}
           </button>
           <div className="menu-divider" />
-          <div className="menu-section">Export PDF</div>
-          {PROJECT_PDF_EXPORTS.map(({ label, href }) => (
-            <a
-              key={label}
-              href={href(project.id)}
-              download
-              role="menuitem"
-              className="menu-item menu-item-link"
-            >
-              {label}
-            </a>
-          ))}
-          <div className="menu-section">Export spreadsheet</div>
-          {PROJECT_CSV_EXPORTS.map(({ label, key }) => (
-            <a
-              key={key}
-              href={`/api/projects/${project.id}/export/${key}`}
-              download
-              role="menuitem"
-              className="menu-item menu-item-link"
-            >
-              {label}
-            </a>
-          ))}
+          <MenuSubmenu label="Export PDF">
+            {PROJECT_PDF_EXPORTS.map(({ label, href }) => (
+              <a
+                key={label}
+                href={href(project.id)}
+                download
+                role="menuitem"
+                className="menu-item menu-item-link"
+              >
+                {label}
+              </a>
+            ))}
+          </MenuSubmenu>
+          <MenuSubmenu label="Export spreadsheet">
+            {PROJECT_CSV_EXPORTS.map(({ label, key }) => (
+              <a
+                key={key}
+                href={`/api/projects/${project.id}/export/${key}`}
+                download
+                role="menuitem"
+                className="menu-item menu-item-link"
+              >
+                {label}
+              </a>
+            ))}
+          </MenuSubmenu>
           {canEdit ? (
             <>
               <div className="menu-divider" />

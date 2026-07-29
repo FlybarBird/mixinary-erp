@@ -1905,12 +1905,14 @@ input.currency-edit.field {
 }
 
 .cdoc-logo {
-  max-height: 44px;
-  max-width: 200px;
+  max-height: 48px;
+  max-width: 220px;
   object-fit: contain;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 6px;
-  padding: 0.3rem 0.55rem;
+  display: block;
+  /* Light (white-text) logos sit on the blue cover — no light chip behind them */
+  background: transparent;
+  padding: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
 }
 
 .cdoc-section {

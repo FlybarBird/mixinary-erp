@@ -1895,12 +1895,9 @@ input.currency-edit.field {
 }
 
 .cdoc-logo {
-  max-height: 44px;
-  max-width: 200px;
+  max-height: 56px;
+  max-width: 220px;
   object-fit: contain;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 6px;
-  padding: 0.3rem 0.55rem;
 }
 
 .cdoc-section {

@@ -24,6 +24,7 @@ export {
   canViewFinancials,
   canApproveChangeOrders,
   canEditBilling,
+  canEditClientDocuments,
   canManageApAndSubs,
 } from "@/lib/permissions";
 

@@ -957,6 +957,125 @@ function migrate(database: Database.Database) {
   } catch {
     /* ignore */
   }
+
+  // Client Documents add-on (mirrors 022_client_documents.sql)
+  const clientDocTables: Array<[string, string]> = [
+    [
+      "company_settings",
+      `CREATE TABLE IF NOT EXISTS company_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        client_documents_enabled INTEGER NOT NULL DEFAULT 0,
+        legal_name TEXT,
+        address TEXT,
+        contact_email TEXT,
+        contact_phone TEXT,
+        tax_id TEXT,
+        logo_path TEXT,
+        brand_color_primary TEXT NOT NULL DEFAULT '#0070f2',
+        brand_color_accent TEXT NOT NULL DEFAULT '#223548',
+        default_terms TEXT,
+        default_payment_instructions TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "client_documents",
+      `CREATE TABLE IF NOT EXISTS client_documents (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        client_id TEXT REFERENCES clients(id) ON DELETE SET NULL,
+        doc_type TEXT NOT NULL DEFAULT 'proposal_quote',
+        name TEXT NOT NULL,
+        doc_number TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        version INTEGER NOT NULL DEFAULT 1,
+        parent_document_id TEXT REFERENCES client_documents(id) ON DELETE SET NULL,
+        expires_at TEXT,
+        sent_at TEXT,
+        subtotal REAL NOT NULL DEFAULT 0,
+        discount_total REAL NOT NULL DEFAULT 0,
+        tax_total REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        amount_paid REAL NOT NULL DEFAULT 0,
+        assigned_to TEXT REFERENCES user_profiles(id) ON DELETE SET NULL,
+        settings TEXT,
+        created_by TEXT,
+        archived_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (project_id, doc_number)
+      )`,
+    ],
+    [
+      "client_document_blocks",
+      `CREATE TABLE IF NOT EXISTS client_document_blocks (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES client_documents(id) ON DELETE CASCADE,
+        block_type TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        hidden INTEGER NOT NULL DEFAULT 0,
+        content TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "client_document_tokens",
+      `CREATE TABLE IF NOT EXISTS client_document_tokens (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES client_documents(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        expires_at TEXT,
+        revoked_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "client_document_events",
+      `CREATE TABLE IF NOT EXISTS client_document_events (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES client_documents(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        actor_user_id TEXT,
+        ip TEXT,
+        user_agent TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`,
+    ],
+    [
+      "client_document_signatures",
+      `CREATE TABLE IF NOT EXISTS client_document_signatures (
+        id TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES client_documents(id) ON DELETE CASCADE,
+        signer_name TEXT NOT NULL,
+        signer_email TEXT,
+        signature_text TEXT NOT NULL,
+        signed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        ip TEXT,
+        user_agent TEXT
+      )`,
+    ],
+  ];
+  const haveClientDocs = new Set(
+    (
+      database
+        .prepare("select name from sqlite_master where type = 'table'")
+        .all() as Array<{ name: string }>
+    ).map((t) => t.name),
+  );
+  for (const [name, ddl] of clientDocTables) {
+    if (!haveClientDocs.has(name)) database.exec(ddl);
+  }
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS client_documents_project_idx ON client_documents(project_id);
+    CREATE INDEX IF NOT EXISTS client_document_blocks_document_idx ON client_document_blocks(document_id);
+    CREATE INDEX IF NOT EXISTS client_document_tokens_document_idx ON client_document_tokens(document_id);
+    CREATE INDEX IF NOT EXISTS client_document_events_document_idx ON client_document_events(document_id);
+    CREATE INDEX IF NOT EXISTS client_document_signatures_document_idx ON client_document_signatures(document_id);
+  `);
 }
 
 export function getLocalDb() {

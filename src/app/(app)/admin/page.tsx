@@ -32,6 +32,12 @@ const adminApps = [
     sub: "Roles and access",
     icon: "USR",
   },
+  {
+    href: "/admin/client-documents",
+    title: "Client Documents",
+    sub: "Add-on toggle, branding, document defaults",
+    icon: "DOC",
+  },
 ] as const;
 
 export default async function AdminHomePage() {

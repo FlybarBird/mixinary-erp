@@ -9,6 +9,9 @@ const JSON_FIELDS: Record<string, string[]> = {
   catalog_parts: ["specs"],
   catalog_part_proposals: ["raw"],
   audit_events: ["before_json", "after_json"],
+  client_documents: ["settings"],
+  client_document_blocks: ["content"],
+  client_document_events: ["metadata"],
 };
 
 const BOOL_FIELDS: Record<string, string[]> = {
@@ -22,6 +25,8 @@ const BOOL_FIELDS: Record<string, string[]> = {
   clients: ["active"],
   user_profiles: ["active"],
   projects: ["labor_burden_enabled"],
+  company_settings: ["client_documents_enabled"],
+  client_document_blocks: ["hidden"],
 };
 
 function decodeRow(table: string, row: Row | undefined): Row | null {

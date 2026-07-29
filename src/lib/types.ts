@@ -756,6 +756,186 @@ export interface TemplateLineItem {
   notes: string | null;
 }
 
+/* ---------------------------------------------------------------------------
+ * Client Documents add-on
+ * ------------------------------------------------------------------------- */
+
+export interface CompanySettings {
+  id: string;
+  client_documents_enabled: boolean;
+  legal_name: string | null;
+  address: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  tax_id: string | null;
+  logo_path: string | null;
+  brand_color_primary: string;
+  brand_color_accent: string;
+  default_terms: string | null;
+  default_payment_instructions: string | null;
+  updated_at?: string;
+}
+
+export type ClientDocumentType =
+  | "proposal"
+  | "quote"
+  | "proposal_quote"
+  | "change_order"
+  | "invoice"
+  | "payment_request"
+  | "receipt";
+
+export const CLIENT_DOCUMENT_TYPES: ClientDocumentType[] = [
+  "proposal",
+  "quote",
+  "proposal_quote",
+  "change_order",
+  "invoice",
+  "payment_request",
+  "receipt",
+];
+
+export const CLIENT_DOCUMENT_TYPE_LABELS: Record<ClientDocumentType, string> = {
+  proposal: "Proposal",
+  quote: "Quote",
+  proposal_quote: "Proposal & Quote",
+  change_order: "Change Order",
+  invoice: "Invoice",
+  payment_request: "Payment Request",
+  receipt: "Receipt",
+};
+
+/** Full status enum from the spec; Phase 1 uses the proposal/quote subset. */
+export type ClientDocumentStatus =
+  | "draft"
+  | "internal_review"
+  | "approved_to_send"
+  | "sent"
+  | "viewed"
+  | "customer_reviewing"
+  | "changes_requested"
+  | "accepted"
+  | "partially_signed"
+  | "signed"
+  | "declined"
+  | "expired"
+  | "superseded"
+  | "voided"
+  | "approved"
+  | "issued"
+  | "partially_paid"
+  | "paid"
+  | "overdue"
+  | "disputed"
+  | "refunded"
+  | "partially_refunded";
+
+export const CLIENT_DOCUMENT_STATUS_LABELS: Partial<
+  Record<ClientDocumentStatus, string>
+> = {
+  draft: "Draft",
+  internal_review: "Internal Review",
+  approved_to_send: "Approved to Send",
+  sent: "Sent",
+  viewed: "Viewed",
+  customer_reviewing: "Customer Reviewing",
+  changes_requested: "Changes Requested",
+  accepted: "Accepted",
+  partially_signed: "Partially Signed",
+  signed: "Signed",
+  declined: "Declined",
+  expired: "Expired",
+  superseded: "Superseded",
+  voided: "Voided",
+};
+
+export interface ClientDocumentSettings {
+  accent_color?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ClientDocument {
+  id: string;
+  project_id: string;
+  client_id: string | null;
+  doc_type: ClientDocumentType;
+  name: string;
+  doc_number: string;
+  status: ClientDocumentStatus;
+  version: number;
+  parent_document_id: string | null;
+  expires_at: string | null;
+  sent_at: string | null;
+  subtotal: number;
+  discount_total: number;
+  tax_total: number;
+  total: number;
+  amount_paid: number;
+  assigned_to: string | null;
+  settings: ClientDocumentSettings | null;
+  created_by: string | null;
+  archived_at: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ClientDocumentBlock {
+  id: string;
+  document_id: string;
+  block_type: string;
+  sort_order: number;
+  hidden: boolean;
+  content: Record<string, unknown> | null;
+}
+
+export interface ClientDocumentToken {
+  id: string;
+  document_id: string;
+  token: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_by: string | null;
+  created_at?: string;
+}
+
+export type ClientDocumentEventType =
+  | "created"
+  | "updated"
+  | "sent"
+  | "viewed"
+  | "option_changed"
+  | "accepted"
+  | "signed"
+  | "declined"
+  | "voided"
+  | "archived"
+  | "expired"
+  | "superseded"
+  | "link_created"
+  | "link_revoked";
+
+export interface ClientDocumentEvent {
+  id: string;
+  document_id: string;
+  event_type: ClientDocumentEventType | string;
+  actor_user_id: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ClientDocumentSignature {
+  id: string;
+  document_id: string;
+  signer_name: string;
+  signer_email: string | null;
+  signature_text: string;
+  signed_at: string;
+  ip: string | null;
+  user_agent: string | null;
+}
+
 export interface LinePricing {
   qty: number;
   msrp: number;

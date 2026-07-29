@@ -13,6 +13,7 @@ import {
   getProjectAccessRole,
   listProjectMembers,
 } from "@/lib/project-access";
+import { getCompanySettings } from "@/lib/company-settings";
 import { computeBomHeaderEconomics } from "@/lib/projects/bom-header-economics";
 import { sumBilledInvoices } from "@/lib/projects/billing-totals";
 import { sumApprovedExpenses } from "@/lib/projects/expense-totals";
@@ -49,6 +50,7 @@ export default async function ProjectLayout({
     { data: laborEntries },
     { data: expenses },
     { data: invoices },
+    companySettings,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -82,6 +84,7 @@ export default async function ProjectLayout({
       .from("project_invoices")
       .select("status, total")
       .eq("project_id", id),
+    getCompanySettings(supabase),
   ]);
 
   if (!project) notFound();
@@ -224,6 +227,7 @@ export default async function ProjectLayout({
         <ProjectWorkspaceNav
           projectId={id}
           canViewFinancials={canViewFinancials(profile.role)}
+          clientDocumentsEnabled={companySettings.client_documents_enabled}
         />
         {children}
       </div>

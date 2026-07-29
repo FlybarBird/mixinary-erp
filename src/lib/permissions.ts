@@ -99,6 +99,15 @@ export function canEditBilling(role: UserRole) {
   );
 }
 
+/** Client Documents add-on: create/edit/send customer-facing documents */
+export function canEditClientDocuments(role: UserRole) {
+  return (
+    role === "administrator" ||
+    role === "project_manager" ||
+    role === "accounting"
+  );
+}
+
 export function canManageApAndSubs(role: UserRole) {
   return (
     role === "administrator" ||

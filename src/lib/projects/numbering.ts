@@ -2,7 +2,16 @@ import { createClient } from "@/lib/supabase/server";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
-export type DocNumberPrefix = "PO" | "CO" | "INV";
+export type DocNumberPrefix =
+  | "PO"
+  | "CO"
+  | "INV"
+  // Client Documents add-on
+  | "PRO"
+  | "QTE"
+  | "PQ"
+  | "PAY"
+  | "RCT";
 
 /**
  * Project #: YYYYMM + monthly sequence → 20260701
@@ -123,7 +132,7 @@ async function allocateNextDocNumbers(
     : null;
   const start =
     maxDocSequence(
-      (existing ?? []) as Array<Record<string, unknown>>,
+      (existing ?? []) as unknown as Array<Record<string, unknown>>,
       field,
       prefix,
       parsed?.poStem ?? null,
@@ -175,6 +184,32 @@ export async function allocateNextCoNumber(
     count: 1,
   });
   return number ?? "CO-001";
+}
+
+const CLIENT_DOC_PREFIXES: Record<string, DocNumberPrefix> = {
+  proposal: "PRO",
+  quote: "QTE",
+  proposal_quote: "PQ",
+  change_order: "CO",
+  invoice: "INV",
+  payment_request: "PAY",
+  receipt: "RCT",
+};
+
+/** Next client document number, prefixed per doc type: PQ-26070101, … */
+export async function allocateNextClientDocNumber(
+  supabase: Client,
+  projectId: string,
+  docType: string,
+): Promise<string> {
+  const prefix = CLIENT_DOC_PREFIXES[docType] ?? "PQ";
+  const [number] = await allocateNextDocNumbers(supabase, projectId, {
+    table: "client_documents",
+    field: "doc_number",
+    prefix,
+    count: 1,
+  });
+  return number ?? `${prefix}-001`;
 }
 
 /** Next invoice number: INV-26070101, … */

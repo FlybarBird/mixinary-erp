@@ -14,14 +14,23 @@ const TABS = [
   { href: "/billing", label: "Billing", match: "billing", financial: true },
   { href: "/subcontracts", label: "Subs", match: "subcontracts", financial: true },
   { href: "/dashboard", label: "Dashboard", match: "dashboard", financial: true },
+  {
+    href: "/documents",
+    label: "Client Documents",
+    match: "documents",
+    financial: true,
+    addon: true,
+  },
 ] as const;
 
 export function ProjectWorkspaceNav({
   projectId,
   canViewFinancials = false,
+  clientDocumentsEnabled = false,
 }: {
   projectId: string;
   canViewFinancials?: boolean;
+  clientDocumentsEnabled?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
@@ -34,7 +43,9 @@ export function ProjectWorkspaceNav({
   }
 
   const tabs = TABS.filter(
-    (tab) => !("financial" in tab && tab.financial) || canViewFinancials,
+    (tab) =>
+      (!("financial" in tab && tab.financial) || canViewFinancials) &&
+      (!("addon" in tab && tab.addon) || clientDocumentsEnabled),
   );
 
   return (

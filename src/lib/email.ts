@@ -437,6 +437,53 @@ export function buildInviteUrl(token: string) {
   return `${appUrl()}/invite/${token}`;
 }
 
+/** Public customer link for a client document. */
+export function buildClientDocumentUrl(token: string) {
+  return `${appUrl()}/d/${token}`;
+}
+
+export function clientDocumentEmailHtml(opts: {
+  documentName: string;
+  documentTypeLabel: string;
+  companyName?: string | null;
+  message?: string | null;
+  documentUrl: string;
+  expiresAt?: string | null;
+}) {
+  const from = opts.companyName || brandName();
+  const note = opts.message
+    ? `<p style="margin:0 0 16px;white-space:pre-line">${opts.message}</p>`
+    : "";
+  const expiry = opts.expiresAt
+    ? `This link expires on ${new Date(opts.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`
+    : "The secure link stays available until access is revoked.";
+  return brandedShell({
+    title: `${opts.documentTypeLabel} from ${from}`,
+    bodyHtml: `${note}<p style="margin:0 0 16px"><strong>${from}</strong> has shared <strong>${opts.documentName}</strong> with you. Open the secure link below to review, choose options, sign, or download a PDF — on any device.</p>`,
+    ctaLabel: `Review ${opts.documentTypeLabel.toLowerCase()}`,
+    ctaUrl: opts.documentUrl,
+    footerNote: expiry,
+  });
+}
+
+export async function sendClientDocumentEmail(opts: {
+  to: string;
+  documentName: string;
+  documentTypeLabel: string;
+  companyName?: string | null;
+  message?: string | null;
+  documentUrl: string;
+  expiresAt?: string | null;
+}) {
+  return sendBrandedEmail({
+    to: opts.to,
+    subject: `${opts.documentTypeLabel}: ${opts.documentName} — ${
+      opts.companyName || brandName()
+    }`,
+    html: clientDocumentEmailHtml(opts),
+  });
+}
+
 export function buildAuthCallbackUrl() {
   return `${appUrl()}/auth/callback`;
 }

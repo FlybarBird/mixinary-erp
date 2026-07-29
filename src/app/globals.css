@@ -1112,6 +1112,16 @@ input.currency-edit.field {
   z-index: 30;
 }
 
+/* Portaled menus escape table overflow clipping */
+.menu-panel-portal {
+  position: fixed;
+  z-index: 200;
+}
+
+.bom-table td:has(.menu) {
+  overflow: visible;
+}
+
 .menu-item {
   display: block;
   width: 100%;

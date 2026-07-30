@@ -8,15 +8,19 @@ import {
   View,
 } from "react-native";
 import { fetchProject, type ProjectDetailResponse } from "../lib/api";
+import { useAuth } from "../lib/auth-context";
 import { colors } from "../theme";
 
 export function ProjectDetailScreen({
   projectId,
   onBack,
+  onOpenLabels,
 }: {
   projectId: string;
   onBack: () => void;
+  onOpenLabels: () => void;
 }) {
+  const { capabilities } = useAuth();
   const [data, setData] = useState<ProjectDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,9 +77,19 @@ export function ProjectDetailScreen({
               value={`${Number(data.project.default_override_pct ?? 0) * 100}%`}
             />
           </View>
+
+          {capabilities.receive || capabilities.manageProcurement ? (
+            <Pressable style={styles.labelsBtn} onPress={onOpenLabels}>
+              <Text style={styles.labelsBtnTitle}>Brother QR labels</Text>
+              <Text style={styles.labelsBtnSub}>
+                Print receive / item labels on QL Wi‑Fi or Bluetooth
+              </Text>
+            </Pressable>
+          ) : null}
+
           <Text style={styles.note}>
-            Next: BOM summary, receive/QR, labor, and procurement tabs will
-            attach to the existing `/api/projects/[id]/*` routes.
+            Next: BOM summary, receive/QR scan, and labor attach to existing
+            `/api/projects/[id]/*` routes.
           </Text>
         </ScrollView>
       ) : null}
@@ -131,6 +145,14 @@ const styles = StyleSheet.create({
   },
   rowLabel: { color: colors.muted, fontSize: 15 },
   rowValue: { color: colors.ink, fontWeight: "600", fontSize: 15 },
+  labelsBtn: {
+    marginTop: 16,
+    backgroundColor: colors.ink,
+    borderRadius: 12,
+    padding: 18,
+  },
+  labelsBtnTitle: { color: "#fff", fontWeight: "700", fontSize: 17 },
+  labelsBtnSub: { color: "#B7C5CD", marginTop: 4, fontSize: 13 },
   note: { marginTop: 20, color: colors.muted, lineHeight: 20, fontSize: 14 },
   error: { color: colors.danger, margin: 24 },
 });

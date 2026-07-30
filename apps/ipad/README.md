@@ -36,7 +36,24 @@ Then open in Expo Go (iPad) or press `i` for the iOS simulator on macOS.
 - `GET /api/me` profile + capability flags
 - `GET /api/projects` list (ACL-aware)
 - `GET /api/projects/[id]` detail
+- **Brother QL label printing** — receive / item QR labels via
+  `GET /api/projects/[id]/labels/pdf` → AirPrint or Brother Print SDK
+
+### Brother setup
+
+1. Prefer **QL-820NWB** (or QL-1110NWB) on the same Wi‑Fi as the iPad
+2. Load **62mm** continuous stock (DK-2205 / RollW62)
+3. In the app: Project → **Brother QR labels** → pick PO → **Print on Brother**
+4. Optional native SDK (dev build):
+   ```bash
+   npx expo install expo-brother-printer-sdk
+   # add plugin to app.json, then:
+   npx expo prebuild
+   ```
+
+Desktop warehouse PCs can keep using DYMO Connect in the web app.
 
 ## Shared domain
 
-Role checks and pricing formulas live in [`packages/domain`](../../packages/domain).
+Role checks, pricing formulas, and label row builders live in
+[`packages/domain`](../../packages/domain).

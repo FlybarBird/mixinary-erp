@@ -35,7 +35,7 @@ function statusColor(status: string) {
 export function ProjectsScreen({
   onOpenProject,
 }: {
-  onOpenProject: (id: string) => void;
+  onOpenProject: (id: string, title: string) => void;
 }) {
   const { profile, signOut, capabilities } = useAuth();
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -77,8 +77,8 @@ export function ProjectsScreen({
 
       {capabilities.receive ? (
         <Text style={styles.hint}>
-          Receiving / QR and denser editors land in later phases — this build
-          connects auth + project list/detail into the live API.
+          Brother QL label printing is available from each project. Receiving /
+          denser editors land in later phases.
         </Text>
       ) : null}
 
@@ -110,7 +110,12 @@ export function ProjectsScreen({
           renderItem={({ item }) => (
             <Pressable
               style={styles.card}
-              onPress={() => onOpenProject(item.id)}
+              onPress={() =>
+                onOpenProject(
+                  item.id,
+                  `${item.project_number} · ${item.name}`,
+                )
+              }
             >
               <View style={styles.cardTop}>
                 <Text style={styles.number}>{item.project_number}</Text>

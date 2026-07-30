@@ -10,7 +10,17 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mixinary.erp",
-      "requireFullScreen": false
+      "requireFullScreen": false,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Find paired Brother QL printers for warehouse labels.",
+        "NSBluetoothPeripheralUsageDescription": "Find paired Brother QL printers for warehouse labels.",
+        "NSLocalNetworkUsageDescription": "Discover Brother QL printers on the same Wi‑Fi network.",
+        "NSBonjourServices": [
+          "_pdl-datastream._tcp",
+          "_printer._tcp",
+          "_ipp._tcp"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +36,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-sharing"
     ]
   }
 }

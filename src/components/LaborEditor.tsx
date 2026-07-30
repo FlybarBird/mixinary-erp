@@ -18,6 +18,14 @@ import { useProjectLaborSummary } from "@/components/ProjectBomSummaryBar";
 
 type EditableLine = LaborEntry & { _key: string };
 
+type LaborBulkField = "task_description" | "notes" | "qty" | "override_pct";
+
+const LABOR_BULK_BASE: Array<{ value: LaborBulkField; label: string }> = [
+  { value: "task_description", label: "Item" },
+  { value: "notes", label: "Notes" },
+  { value: "qty", label: "Qty" },
+];
+
 const APPROVAL_BADGE: Record<ApprovalStatus, string> = {
   pending: "badge-neutral",
   approved: "badge-green",
@@ -91,8 +99,20 @@ export function LaborEditor({
     key: string;
     place: "before" | "after";
   } | null>(null);
+  const [bulkField, setBulkField] = useState<LaborBulkField | "">("");
+  const [bulkValue, setBulkValue] = useState("");
 
   const bump = useCallback(() => setRevision((r) => r + 1), []);
+
+  const bulkFields = useMemo(() => {
+    if (!canEdit) return [] as Array<{ value: LaborBulkField; label: string }>;
+    return canViewRates
+      ? [
+          ...LABOR_BULK_BASE,
+          { value: "override_pct" as const, label: "Override %" },
+        ]
+      : LABOR_BULK_BASE;
+  }, [canEdit, canViewRates]);
 
   const priced = useMemo(
     () => lines.map((l) => laborLinePricing(l, defaultOverridePct)),
@@ -144,6 +164,43 @@ export function LaborEditor({
       prev.map((l) => (l._key === key ? { ...l, ...patch } : l)),
     );
     bump();
+  }
+
+  function bulkUpdateSelected() {
+    if (!canEdit || !selected.size || !bulkField) return;
+    if (!bulkFields.some((f) => f.value === bulkField)) return;
+
+    let patch: Partial<EditableLine> | null = null;
+    switch (bulkField) {
+      case "task_description":
+        patch = { task_description: bulkValue.trim() || "General Labor" };
+        break;
+      case "notes":
+        patch = { notes: bulkValue.trim() || null };
+        break;
+      case "qty":
+        patch = { qty: Math.max(0, Number(bulkValue) || 0) };
+        break;
+      case "override_pct":
+        patch = {
+          override_pct:
+            bulkValue === "" ? null : (Number(bulkValue) || 0) / 100,
+        };
+        break;
+      default:
+        return;
+    }
+
+    const nextPatch = patch;
+    setLines((prev) =>
+      prev.map((l) =>
+        selected.has(l._key) ? { ...l, ...nextPatch } : l,
+      ),
+    );
+    bump();
+    setMessage(
+      `Updated ${bulkField === "task_description" ? "item" : bulkField.replace(/_/g, " ")} on ${selected.size} line${selected.size === 1 ? "" : "s"}`,
+    );
   }
 
   function addLine() {
@@ -350,6 +407,75 @@ export function LaborEditor({
           </a>
         </div>
       </div>
+
+      {selected.size && bulkFields.length ? (
+        <div
+          className="row"
+          style={{
+            gap: "0.5rem",
+            flexWrap: "wrap",
+            alignItems: "center",
+            padding: "0.5rem 0.65rem",
+            background: "var(--bg-soft, #f4f7fa)",
+            borderRadius: "var(--radius)",
+          }}
+        >
+          <select
+            className="field"
+            style={{ maxWidth: 180 }}
+            value={bulkField}
+            onChange={(e) => {
+              setBulkField(e.target.value as LaborBulkField | "");
+              setBulkValue("");
+            }}
+            aria-label="Bulk edit field"
+          >
+            <option value="">Bulk edit field…</option>
+            {bulkFields.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          {bulkField === "qty" || bulkField === "override_pct" ? (
+            <input
+              className="field"
+              type="number"
+              step={bulkField === "override_pct" ? "0.01" : "1"}
+              min="0"
+              style={{ maxWidth: 120 }}
+              value={bulkValue}
+              placeholder={
+                bulkField === "override_pct"
+                  ? Number((defaultOverridePct * 100).toFixed(2)).toString()
+                  : "0"
+              }
+              onChange={(e) => setBulkValue(e.target.value)}
+              aria-label={`Bulk ${bulkField}`}
+            />
+          ) : null}
+          {bulkField === "task_description" || bulkField === "notes" ? (
+            <input
+              className="field"
+              style={{ maxWidth: 260 }}
+              value={bulkValue}
+              onChange={(e) => setBulkValue(e.target.value)}
+              placeholder={
+                bulkField === "task_description" ? "Set item…" : "Set notes…"
+              }
+              aria-label={`Bulk ${bulkField}`}
+            />
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!bulkField}
+            onClick={bulkUpdateSelected}
+          >
+            Apply
+          </button>
+        </div>
+      ) : null}
 
       {message ? (
         <p

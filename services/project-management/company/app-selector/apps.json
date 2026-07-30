@@ -1,0 +1,9 @@
+{
+  "apps": [
+    { "id": "landing", "label": "Suite Home", "href": "/apps" },
+    { "id": "erp", "label": "ERP", "href": "/erp" },
+    { "id": "pm", "label": "Project Management", "href": "/project-management" },
+    { "id": "client-documents", "label": "Client Documents", "href": "/client-documents" },
+    { "id": "admin", "label": "Administration", "href": "/admin" }
+  ]
+}

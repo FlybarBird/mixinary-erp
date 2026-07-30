@@ -37,6 +37,12 @@ yarn-error.log*
 # local database / uploads
 .data/
 
+# suite services
+services/**/node_modules/
+services/project-management/.upstream/
+services/**/data/
+services/**/backups/
+
 # vercel
 .vercel
 

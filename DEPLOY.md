@@ -73,7 +73,7 @@ ERP env additions (also in `.env.example`):
 - `INTEGRATION_BASE_URL` / `INTEGRATION_WEBHOOK_SECRET`
 - `AUTHENTIK_ISSUER` / `AUTHENTIK_CLIENT_ID` / `AUTHENTIK_CLIENT_SECRET`
 
-Apply migration `023_suite_integration.sql`. Suite landing is `/apps`.
+Apply migration `023_suite_integration.sql`. Root entry remains ERP (`/` → dashboard/login); suite app switcher is available from the ERP header (`/apps` optional).
 
 ## 3. Vercel
 

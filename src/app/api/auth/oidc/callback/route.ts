@@ -130,7 +130,7 @@ export async function GET(request: Request) {
   const jar = await cookies();
   const expectedState = jar.get("mixinary_oidc_state")?.value;
   const verifier = jar.get("mixinary_oidc_verifier")?.value;
-  const next = jar.get("mixinary_oidc_next")?.value || "/apps";
+  const next = jar.get("mixinary_oidc_next")?.value || "/dashboard";
 
   if (!code || !state || !expectedState || state !== expectedState || !verifier) {
     return NextResponse.redirect(new URL("/login?error=oidc_state", url.origin));

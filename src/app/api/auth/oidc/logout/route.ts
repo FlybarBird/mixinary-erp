@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || url.origin;
 
   if (isLocalMode()) {
-    const res = NextResponse.redirect(`${appUrl}/apps`);
+    const res = NextResponse.redirect(`${appUrl}/login`);
     res.cookies.set(LOCAL_SESSION_COOKIE, "", { path: "/", maxAge: 0 });
     return res;
   }
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const cfg = suiteConfig();
     if (cfg.endSessionUrl) {
       const end = new URL(cfg.endSessionUrl);
-      end.searchParams.set("post_logout_redirect_uri", `${appUrl}/apps`);
+      end.searchParams.set("post_logout_redirect_uri", `${appUrl}/login`);
       return NextResponse.redirect(end.toString());
     }
   }

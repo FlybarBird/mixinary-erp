@@ -547,7 +547,7 @@ input.currency-edit.field {
   background: var(--bg-soft);
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 3;
   font-weight: 700;
   color: var(--muted);
   font-size: 0.68rem;
@@ -560,6 +560,33 @@ input.currency-edit.field {
   line-height: 1.15;
   vertical-align: bottom;
   hyphens: manual;
+}
+
+.bom-table tr.bulk-edit-row > td {
+  position: sticky;
+  top: var(--bom-header-h, 2.35rem);
+  z-index: 2;
+  background: #e8eef5;
+  box-shadow: inset 0 -1px 0 var(--line);
+  vertical-align: middle;
+}
+
+.bom-table tr.bulk-edit-row > td.bulk-edit-count {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.bom-table tr.bulk-edit-row input:disabled,
+.bom-table tr.bulk-edit-row select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.bom-table tr.bulk-edit-row input::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 .bom-table tr.section-row td {

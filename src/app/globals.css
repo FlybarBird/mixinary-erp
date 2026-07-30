@@ -2326,6 +2326,213 @@ input.currency-edit.field {
   transition: max-width 0.2s ease;
 }
 
+/* WYSIWYG editor canvas */
+.cdoc-wysiwyg-shell,
+.cdoc-editor-preview-shell {
+  min-height: 0;
+  padding: 1.25rem 0.75rem 2.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--surface-line, #d7e0ea);
+}
+
+.cdoc-wysiwyg-block {
+  position: relative;
+}
+
+.cdoc-wysiwyg-block[data-hidden="true"] {
+  opacity: 0.55;
+}
+
+.cdoc-wysiwyg-block[data-dragging="true"] {
+  outline: 2px dashed var(--cdoc-accent, #0070f2);
+  opacity: 0.55;
+}
+
+.cdoc-wysiwyg-block[data-selected="true"] > .cdoc-cover,
+.cdoc-wysiwyg-block[data-selected="true"] > .cdoc-section,
+.cdoc-wysiwyg-block:hover > .cdoc-cover,
+.cdoc-wysiwyg-block:hover > .cdoc-section,
+.cdoc-wysiwyg-block:focus-within > .cdoc-cover,
+.cdoc-wysiwyg-block:focus-within > .cdoc-section {
+  outline: 2px solid color-mix(in srgb, var(--cdoc-accent, #0070f2) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.cdoc-wysiwyg-tools {
+  position: absolute;
+  z-index: 5;
+  top: 0.45rem;
+  right: 0.45rem;
+  display: none;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.3rem;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(34, 53, 72, 0.12);
+}
+
+.cdoc-wysiwyg-block[data-type="cover"] .cdoc-wysiwyg-tools {
+  background: rgba(8, 18, 36, 0.88);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.cdoc-wysiwyg-block:hover .cdoc-wysiwyg-tools,
+.cdoc-wysiwyg-block:focus-within .cdoc-wysiwyg-tools,
+.cdoc-wysiwyg-block[data-selected="true"] .cdoc-wysiwyg-tools {
+  display: flex;
+}
+
+.cdoc-wysiwyg-tools button {
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.28rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.cdoc-wysiwyg-tools button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.cdoc-wysiwyg-block[data-type="cover"] .cdoc-wysiwyg-tools button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cdoc-wysiwyg-tools button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cdoc-wysiwyg-handle {
+  cursor: grab;
+  padding: 0.15rem 0.25rem;
+  font-size: 0.7rem;
+  letter-spacing: -0.08em;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.cdoc-wysiwyg-type {
+  font-size: 0.7rem;
+  font-weight: 650;
+  padding: 0 0.35rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.cdoc-wysiwyg-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.35rem;
+  border-radius: 999px;
+  background: #ffe8c2;
+  color: #8a5a00;
+}
+
+.cdoc-wysiwyg [contenteditable] {
+  outline: none;
+  border-radius: 4px;
+  min-width: 1ch;
+  white-space: pre-wrap;
+}
+
+.cdoc-wysiwyg [contenteditable]:focus {
+  outline: 1px dashed color-mix(in srgb, var(--cdoc-accent, #0070f2) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.cdoc-wysiwyg [contenteditable][data-empty="true"]:before {
+  content: attr(data-placeholder);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.cdoc-cover [contenteditable][data-empty="true"]:before {
+  color: #fff;
+  opacity: 0.55;
+}
+
+.cdoc-wysiwyg-list-edit {
+  display: block;
+  width: 100%;
+  margin: 0.35rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed color-mix(in srgb, var(--cdoc-accent, #0070f2) 40%, #d7e0ea);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--cdoc-ink, #223548);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.cdoc-wysiwyg-image-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #6b849c;
+  background: #f3f7fb;
+  border: 1px dashed #c5d4e3;
+  border-radius: 8px;
+}
+
+.cdoc-wysiwyg-image-fields {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.cdoc-wysiwyg-field {
+  width: 100%;
+  border: 1px solid #d7e0ea;
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  font: inherit;
+  font-size: 0.88rem;
+  background: #fff;
+  color: var(--cdoc-ink, #223548);
+}
+
+.cdoc-wysiwyg-pricing-panel {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 10px;
+  background: #f7fafc;
+}
+
+.cdoc-wysiwyg-sign-mock {
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.cdoc-wysiwyg-sign-mock input {
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .cdoc-wysiwyg-tools {
+    display: flex;
+    position: static;
+    margin: 0.4rem 0.75rem 0;
+    width: fit-content;
+    max-width: calc(100% - 1.5rem);
+    flex-wrap: wrap;
+  }
+
+  .cdoc-wysiwyg-block[data-type="cover"] .cdoc-wysiwyg-tools {
+    margin: 0.55rem 0.75rem 0;
+  }
+}
+
 /* ── QR receive labels ── */
 
 .qr-label-toolbar {

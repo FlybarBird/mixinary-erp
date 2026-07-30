@@ -24,6 +24,11 @@ import {
   type PricingLine,
 } from "@/lib/client-documents";
 import {
+  WysiwygBlock,
+  WysiwygDocumentFooter,
+  wysiwygDocStyle,
+} from "@/components/ClientDocumentWysiwyg";
+import {
   CLIENT_DOCUMENT_STATUS_LABELS,
   CLIENT_DOCUMENT_TYPE_LABELS,
   type ClientDocument,
@@ -68,15 +73,6 @@ function newBlockId() {
     : `blk-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function contentStr(block: ClientDocumentBlock, key: string): string {
-  return String(block.content?.[key] ?? "");
-}
-
-function contentItems(block: ClientDocumentBlock): string[] {
-  const items = block.content?.items;
-  return Array.isArray(items) ? items.map((i) => String(i ?? "")) : [];
-}
-
 export function ClientDocumentEditor({
   projectId,
   initialDocument,
@@ -111,6 +107,8 @@ export function ClientDocumentEditor({
   const [error, setError] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [pricingEditId, setPricingEditId] = useState<string | null>(null);
 
   const [undoStack, setUndoStack] = useState<ClientDocumentBlock[][]>([]);
   const [redoStack, setRedoStack] = useState<ClientDocumentBlock[][]>([]);
@@ -164,6 +162,7 @@ export function ClientDocumentEditor({
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       const target = e.target as HTMLElement;
       if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (target.isContentEditable) return;
       e.preventDefault();
       if (e.shiftKey) redoRef.current();
       else undoRef.current();
@@ -375,6 +374,7 @@ export function ClientDocumentEditor({
 
   const label = autosaveLabel(saveStatus);
   const lastCustomerEvent = events.find((e) => !e.actor_user_id);
+  const branding = useMemo(() => brandingFromSettings(settings), [settings]);
   const pricingSections = blocks
     .filter((b) => b.block_type === "pricing")
     .map((b, i) => ({
@@ -529,29 +529,31 @@ export function ClientDocumentEditor({
       ) : null}
 
       {mode === "preview" ? (
-        <div className="stack">
-          <div className="row" style={{ gap: "0.4rem" }}>
-            {(Object.keys(DEVICE_WIDTHS) as Device[]).map((d) => (
-              <button
-                key={d}
-                className={`btn ${device === d ? "btn-primary" : ""}`}
-                onClick={() => setDevice(d)}
-              >
-                {d[0]!.toUpperCase() + d.slice(1)}
-              </button>
-            ))}
-            <span className="muted" style={{ alignSelf: "center" }}>
+        <div className="cdoc-public-shell cdoc-editor-preview-shell">
+          <div className="cdoc-public-bar" style={{ flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: "0.4rem" }}>
+              {(Object.keys(DEVICE_WIDTHS) as Device[]).map((d) => (
+                <button
+                  key={d}
+                  className={`btn ${device === d ? "btn-primary" : ""}`}
+                  onClick={() => setDevice(d)}
+                >
+                  {d[0]!.toUpperCase() + d.slice(1)}
+                </button>
+              ))}
+            </div>
+            <span className="cdoc-public-status">
               Option toggles here set the customer&apos;s defaults.
             </span>
           </div>
           <div
             className="cdoc-preview-frame"
-            style={{ maxWidth: DEVICE_WIDTHS[device], width: "100%" }}
+            style={{ maxWidth: DEVICE_WIDTHS[device], width: "100%", margin: "0 auto" }}
           >
             <ClientDocumentRenderer
               doc={doc}
               blocks={blocks}
-              branding={brandingFromSettings(settings)}
+              branding={branding}
               clientName={clientName}
               signatures={signatures}
               interactive={editable}
@@ -577,41 +579,68 @@ export function ClientDocumentEditor({
             ))}
           </div>
 
-          <div>
-            {blocks.length === 0 ? (
-              <div className="panel" style={{ padding: "1.25rem" }}>
-                <p className="muted" style={{ margin: 0 }}>
-                  This document is empty — add blocks from the palette.
-                </p>
-              </div>
-            ) : null}
-            {blocks.map((block, index) => (
-              <BlockCard
-                key={block.id}
-                block={block}
-                index={index}
-                count={blocks.length}
-                editable={editable}
-                dragging={dragIndex === index}
-                onDragStart={() => setDragIndex(index)}
-                onDragEnd={() => setDragIndex(null)}
-                onDropOn={() => {
-                  if (dragIndex != null) reorderBlock(dragIndex, index);
-                  setDragIndex(null);
-                }}
-                onMove={(delta) => moveBlock(index, delta)}
-                onDuplicate={() => duplicateBlock(index)}
-                onRemove={() => removeBlock(index)}
-                onToggleHidden={() => toggleHidden(index)}
-                onContent={(patch) => updateContent(block.id, patch)}
-                onPricing={(fn) => updatePricing(block.id, fn)}
-                onOpenImport={() => setImportFor(block.id)}
-                pricingSections={pricingSections}
-                onMoveLineTo={(toBlockId, lineId) =>
-                  movePricingLineBetween(block.id, toBlockId, lineId)
-                }
-              />
-            ))}
+          <div className="cdoc-public-shell cdoc-wysiwyg-shell">
+            <div className="cdoc-public-frame">
+              {blocks.length === 0 ? (
+                <div className="panel" style={{ padding: "1.25rem" }}>
+                  <p className="muted" style={{ margin: 0 }}>
+                    This document is empty — add blocks from the palette.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="cdoc cdoc-wysiwyg"
+                  style={wysiwygDocStyle(branding)}
+                >
+                  {blocks.map((block, index) => (
+                    <WysiwygBlock
+                      key={block.id}
+                      block={block}
+                      index={index}
+                      count={blocks.length}
+                      editable={editable}
+                      selected={selectedBlockId === block.id}
+                      dragging={dragIndex === index}
+                      branding={branding}
+                      clientName={clientName}
+                      docName={doc.name}
+                      docNumber={doc.doc_number}
+                      docVersion={doc.version}
+                      expiresAt={doc.expires_at}
+                      pricingSections={pricingSections}
+                      pricingPanelOpen={pricingEditId === block.id}
+                      onSelect={() => setSelectedBlockId(block.id)}
+                      onDragStart={() => setDragIndex(index)}
+                      onDragEnd={() => setDragIndex(null)}
+                      onDropOn={() => {
+                        if (dragIndex != null) reorderBlock(dragIndex, index);
+                        setDragIndex(null);
+                      }}
+                      onMove={(delta) => moveBlock(index, delta)}
+                      onDuplicate={() => duplicateBlock(index)}
+                      onRemove={() => removeBlock(index)}
+                      onToggleHidden={() => toggleHidden(index)}
+                      onContent={(patch) => updateContent(block.id, patch)}
+                      onOpenPricing={() => setPricingEditId(block.id)}
+                      onClosePricing={() => setPricingEditId(null)}
+                      pricingEditor={
+                        <PricingBlockEditor
+                          block={block}
+                          editable={editable}
+                          onPricing={(fn) => updatePricing(block.id, fn)}
+                          onOpenImport={() => setImportFor(block.id)}
+                          pricingSections={pricingSections}
+                          onMoveLineTo={(toBlockId, lineId) =>
+                            movePricingLineBetween(block.id, toBlockId, lineId)
+                          }
+                        />
+                      }
+                    />
+                  ))}
+                  <WysiwygDocumentFooter branding={branding} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -634,110 +663,8 @@ export function ClientDocumentEditor({
 }
 
 /* --------------------------------------------------------------------------
- * Block card + per-type editors
+ * Shared form fields (used by pricing panel)
  * ------------------------------------------------------------------------ */
-
-function BlockCard({
-  block,
-  index,
-  count,
-  editable,
-  dragging,
-  onDragStart,
-  onDragEnd,
-  onDropOn,
-  onMove,
-  onDuplicate,
-  onRemove,
-  onToggleHidden,
-  onContent,
-  onPricing,
-  onOpenImport,
-  pricingSections,
-  onMoveLineTo,
-}: {
-  block: ClientDocumentBlock;
-  index: number;
-  count: number;
-  editable: boolean;
-  dragging: boolean;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onDropOn: () => void;
-  onMove: (delta: number) => void;
-  onDuplicate: () => void;
-  onRemove: () => void;
-  onToggleHidden: () => void;
-  onContent: (patch: Record<string, unknown>) => void;
-  onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
-  onOpenImport: () => void;
-  pricingSections: Array<{ id: string; title: string }>;
-  onMoveLineTo: (toBlockId: string, lineId: string) => void;
-}) {
-  const type = block.block_type as ClientDocBlockType;
-  const label = CLIENT_DOC_BLOCK_LABELS[type] ?? block.block_type;
-
-  return (
-    <div
-      className="cdoc-block-card"
-      data-hidden={block.hidden ? "true" : "false"}
-      data-dragging={dragging ? "true" : "false"}
-      onDragOver={(e) => {
-        if (editable) e.preventDefault();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDropOn();
-      }}
-    >
-      <div
-        className="cdoc-block-head"
-        draggable={editable}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-      >
-        <span className="cdoc-block-title">
-          {label}
-          {block.hidden ? " (hidden)" : ""}
-        </span>
-        {editable ? (
-          <div className="cdoc-block-tools">
-            <button onClick={() => onMove(-1)} disabled={index === 0} title="Move up">
-              ↑
-            </button>
-            <button
-              onClick={() => onMove(1)}
-              disabled={index === count - 1}
-              title="Move down"
-            >
-              ↓
-            </button>
-            <button onClick={onToggleHidden} title={block.hidden ? "Show" : "Hide"}>
-              {block.hidden ? "Show" : "Hide"}
-            </button>
-            <button onClick={onDuplicate} title="Duplicate block">
-              ⧉
-            </button>
-            <button onClick={onRemove} title="Delete block" style={{ color: "var(--danger)" }}>
-              ✕
-            </button>
-          </div>
-        ) : null}
-      </div>
-      <div className="cdoc-block-body">
-        <BlockForm
-          block={block}
-          editable={editable}
-          onContent={onContent}
-          onPricing={onPricing}
-          onOpenImport={onOpenImport}
-          pricingSections={pricingSections}
-          onMoveLineTo={onMoveLineTo}
-        />
-      </div>
-    </div>
-  );
-}
 
 function TextField({
   label,
@@ -764,170 +691,6 @@ function TextField({
       />
     </div>
   );
-}
-
-function AreaField({
-  label,
-  value,
-  onChange,
-  disabled,
-  rows = 4,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
-  rows?: number;
-  placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      <textarea
-        className="field-light"
-        rows={rows}
-        value={value}
-        placeholder={placeholder}
-        disabled={disabled}
-        spellCheck
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
-}
-
-function BlockForm({
-  block,
-  editable,
-  onContent,
-  onPricing,
-  onOpenImport,
-  pricingSections,
-  onMoveLineTo,
-}: {
-  block: ClientDocumentBlock;
-  editable: boolean;
-  onContent: (patch: Record<string, unknown>) => void;
-  onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
-  onOpenImport: () => void;
-  pricingSections: Array<{ id: string; title: string }>;
-  onMoveLineTo: (toBlockId: string, lineId: string) => void;
-}) {
-  const disabled = !editable;
-  switch (block.block_type as ClientDocBlockType) {
-    case "cover":
-      return (
-        <>
-          <TextField
-            label="Heading"
-            value={contentStr(block, "heading")}
-            onChange={(v) => onContent({ heading: v })}
-            disabled={disabled}
-          />
-          <TextField
-            label="Subheading"
-            value={contentStr(block, "subheading")}
-            onChange={(v) => onContent({ subheading: v })}
-            disabled={disabled}
-          />
-        </>
-      );
-    case "customer_info":
-      return (
-        <AreaField
-          label="Note shown with the customer's details"
-          value={contentStr(block, "note")}
-          onChange={(v) => onContent({ note: v })}
-          disabled={disabled}
-          rows={2}
-        />
-      );
-    case "image":
-      return (
-        <>
-          <TextField
-            label="Image URL"
-            value={contentStr(block, "url")}
-            onChange={(v) => onContent({ url: v })}
-            disabled={disabled}
-            placeholder="https://… or /brand/…"
-          />
-          <TextField
-            label="Caption"
-            value={contentStr(block, "caption")}
-            onChange={(v) => onContent({ caption: v })}
-            disabled={disabled}
-          />
-        </>
-      );
-    case "scope":
-    case "deliverables":
-      return (
-        <>
-          <TextField
-            label="Title"
-            value={contentStr(block, "title")}
-            onChange={(v) => onContent({ title: v })}
-            disabled={disabled}
-          />
-          <AreaField
-            label="Items (one per line)"
-            value={contentItems(block).join("\n")}
-            onChange={(v) => onContent({ items: v.split("\n") })}
-            disabled={disabled}
-            rows={5}
-          />
-        </>
-      );
-    case "pricing":
-      return (
-        <PricingBlockEditor
-          block={block}
-          editable={editable}
-          onPricing={onPricing}
-          onOpenImport={onOpenImport}
-          pricingSections={pricingSections}
-          onMoveLineTo={onMoveLineTo}
-        />
-      );
-    case "acceptance":
-      return (
-        <>
-          <TextField
-            label="Title"
-            value={contentStr(block, "title")}
-            onChange={(v) => onContent({ title: v })}
-            disabled={disabled}
-          />
-          <AreaField
-            label="Acceptance statement"
-            value={contentStr(block, "statement")}
-            onChange={(v) => onContent({ statement: v })}
-            disabled={disabled}
-            rows={2}
-          />
-        </>
-      );
-    default:
-      return (
-        <>
-          <TextField
-            label="Title"
-            value={contentStr(block, "title")}
-            onChange={(v) => onContent({ title: v })}
-            disabled={disabled}
-          />
-          <AreaField
-            label="Body"
-            value={contentStr(block, "body")}
-            onChange={(v) => onContent({ body: v })}
-            disabled={disabled}
-            rows={5}
-          />
-        </>
-      );
-  }
 }
 
 /* --------------------------------------------------------------------------

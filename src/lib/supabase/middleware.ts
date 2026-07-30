@@ -16,6 +16,7 @@ export async function updateSession(request: NextRequest) {
     isAuthRoute ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/brand") ||
+    pathname.startsWith("/vendor") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/setup") ||
     pathname.startsWith("/api/invite") ||

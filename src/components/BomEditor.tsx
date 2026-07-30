@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
 } from "react";
@@ -108,6 +109,36 @@ export function BomEditor({
     place: "before" | "after";
   } | null>(null);
   const [bulkDraft, setBulkDraft] = useState<BomBulkDraft>(EMPTY_BOM_BULK);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const headerRowRef = useRef<HTMLTableRowElement>(null);
+  const bulkRowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    const wrap = tableWrapRef.current;
+    const headerRow = headerRowRef.current;
+    const bulkRow = bulkRowRef.current;
+    if (!wrap || !headerRow) return;
+
+    function syncStickyOffsets() {
+      if (!wrap || !headerRow) return;
+      const headerH = Math.ceil(headerRow.getBoundingClientRect().height);
+      const bulkH = bulkRow
+        ? Math.ceil(bulkRow.getBoundingClientRect().height)
+        : 0;
+      wrap.style.setProperty("--bom-header-h", `${headerH}px`);
+      wrap.style.setProperty("--bom-bulk-h", `${bulkH}px`);
+    }
+
+    syncStickyOffsets();
+    const observer = new ResizeObserver(syncStickyOffsets);
+    observer.observe(headerRow);
+    if (bulkRow) observer.observe(bulkRow);
+    window.addEventListener("resize", syncStickyOffsets);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncStickyOffsets);
+    };
+  }, [canEditPricing]);
 
   const bump = useCallback(() => setRevision((r) => r + 1), []);
 
@@ -606,7 +637,7 @@ export function BomEditor({
         {message ? <span className="muted">{message}</span> : null}
       </div>
 
-      <div className="table-wrap panel-light">
+      <div className="table-wrap panel-light bom-table-wrap" ref={tableWrapRef}>
         <table className="bom-table">
           <colgroup>
             <col className="col-drag" />
@@ -634,7 +665,7 @@ export function BomEditor({
             <col className="col-fetch" />
           </colgroup>
           <thead>
-            <tr>
+            <tr ref={headerRowRef}>
               <th aria-label="Reorder" />
               <th>
                 <input
@@ -651,26 +682,30 @@ export function BomEditor({
               <th title="Item">Item</th>
               <th title="SKU">SKU</th>
               <th title="Category">Category</th>
-              <th title="Quantity">Qty</th>
-              <th title="Estimated unit cost">Est.&nbsp;cost</th>
-              <th title="MSRP">MSRP</th>
-              <th title="Quote">Quote</th>
-              <th title="Override %">%</th>
-              <th title="Unit sale">Sale</th>
-              <th title="Total sale">Total&nbsp;sale</th>
-              <th title="Quoted Material Profit">QMP</th>
+              <th title="Quantity" className="bom-th-num">Qty</th>
+              <th title="Estimated unit cost" className="bom-th-num">Est.&nbsp;cost</th>
+              <th title="MSRP" className="bom-th-num">MSRP</th>
+              <th title="Quote" className="bom-th-num">Quote</th>
+              <th title="Override %" className="bom-th-num">%</th>
+              <th title="Unit sale" className="bom-th-num">Sale</th>
+              <th title="Total sale" className="bom-th-num">Total&nbsp;sale</th>
+              <th title="Quoted Material Profit" className="bom-th-num">QMP</th>
               <th title="Vendor">Vendor</th>
               <th title="Required by date">Required&nbsp;by</th>
               <th title="Procurement status">Procurement</th>
-              <th title="Quantity ordered">Ordered</th>
-              <th title="Quantity received">Received</th>
-              <th title="Remaining to order">Remain</th>
+              <th title="Quantity ordered" className="bom-th-num">Ordered</th>
+              <th title="Quantity received" className="bom-th-num">Received</th>
+              <th title="Remaining to order" className="bom-th-num">Remain</th>
               <th title="Order status">Status</th>
               <th title="Tracking number">Tracking</th>
               <th title="Notes">Notes</th>
               <th title="MSRP fetch status">Fetch</th>
             </tr>
-            <tr className="bulk-edit-row" aria-label="Bulk edit selected lines">
+            <tr
+              className="bulk-edit-row"
+              aria-label="Bulk edit selected lines"
+              ref={bulkRowRef}
+            >
               <td />
               <td className="bulk-edit-count" title="Selected lines">
                 {selected.size ? selected.size : "—"}

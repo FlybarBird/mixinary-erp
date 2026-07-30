@@ -434,6 +434,13 @@ input.currency-edit.field {
   background: white;
 }
 
+/* BOM grid scrolls in-place so sticky column + section headers work. */
+.bom-table-wrap {
+  overflow: auto;
+  max-height: calc(100dvh - 13.5rem);
+  overscroll-behavior: contain;
+}
+
 .bom-table {
   width: max-content;
   min-width: 100%;
@@ -448,22 +455,22 @@ input.currency-edit.field {
   min-width: 0;
 }
 
-.bom-table col.col-drag { width: 22px; }
-.bom-table col.col-check { width: 28px; }
-.bom-table col.col-item { width: 180px; }
-.bom-table col.col-sku { width: 88px; }
-.bom-table col.col-cat { width: 72px; }
-.bom-table col.col-qty { width: 52px; }
-.bom-table col.col-money { width: 84px; }
-.bom-table col.col-pct { width: 48px; }
-.bom-table col.col-vendor { width: 72px; }
-.bom-table col.col-date { width: 110px; }
-.bom-table col.col-proc { width: 96px; }
-.bom-table col.col-qty-sm { width: 48px; }
-.bom-table col.col-status { width: 84px; }
-.bom-table col.col-track { width: 100px; }
-.bom-table col.col-notes { width: 110px; }
-.bom-table col.col-fetch { width: 56px; }
+.bom-table col.col-drag { width: 28px; }
+.bom-table col.col-check { width: 32px; }
+.bom-table col.col-item { width: 200px; }
+.bom-table col.col-sku { width: 96px; }
+.bom-table col.col-cat { width: 90px; }
+.bom-table col.col-qty { width: 58px; }
+.bom-table col.col-money { width: 104px; }
+.bom-table col.col-pct { width: 54px; }
+.bom-table col.col-vendor { width: 84px; }
+.bom-table col.col-date { width: 122px; }
+.bom-table col.col-proc { width: 112px; }
+.bom-table col.col-qty-sm { width: 68px; }
+.bom-table col.col-status { width: 100px; }
+.bom-table col.col-track { width: 120px; }
+.bom-table col.col-notes { width: 132px; }
+.bom-table col.col-fetch { width: 64px; }
 
 .section-select {
   display: inline-flex;
@@ -534,38 +541,39 @@ input.currency-edit.field {
 .bom-table th,
 .bom-table td {
   border-bottom: 1px solid var(--surface-line);
-  padding: 0.15rem 0.28rem;
+  padding: 0.3rem 0.5rem;
   text-align: left;
   white-space: nowrap;
   vertical-align: middle;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .bom-table th {
   background: var(--bg-soft);
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 5;
   font-weight: 700;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  padding: 0.4rem 0.3rem;
+  letter-spacing: 0.03em;
+  padding: 0.55rem 0.5rem;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
-  line-height: 1.15;
+  line-height: 1.2;
   vertical-align: bottom;
   hyphens: manual;
+  box-shadow: 0 1px 0 var(--surface-line);
 }
 
 .bom-table tr.bulk-edit-row > td {
   position: sticky;
-  top: var(--bom-header-h, 2.35rem);
-  z-index: 2;
+  top: var(--bom-header-h, 2.75rem);
+  z-index: 4;
   background: #e8eef5;
   box-shadow: inset 0 -1px 0 var(--line);
   vertical-align: middle;
@@ -589,14 +597,18 @@ input.currency-edit.field {
   opacity: 0.85;
 }
 
-.bom-table tr.section-row td {
+.bom-table tr.section-row > td {
+  position: sticky;
+  top: calc(var(--bom-header-h, 2.75rem) + var(--bom-bulk-h, 2.15rem));
+  z-index: 3;
   background: #e8f3ff;
   font-weight: 700;
   letter-spacing: 0.01em;
   color: #003d8f;
   overflow: visible;
   white-space: normal;
-  padding: 0.2rem 0.4rem;
+  padding: 0.35rem 0.55rem;
+  box-shadow: 0 1px 0 #c5daf0;
 }
 
 .bom-table tr.section-row .section-bar {
@@ -624,12 +636,12 @@ input.currency-edit.field {
   box-sizing: border-box;
   border: 1px solid transparent;
   background: transparent;
-  padding: 0.08rem 0.18rem;
-  border-radius: 0.2rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 0.25rem;
   color: inherit;
   font-size: inherit;
-  line-height: 1.2;
-  height: 1.45rem;
+  line-height: 1.25;
+  height: 1.65rem;
 }
 
 .bom-table .currency-display {
@@ -637,15 +649,15 @@ input.currency-edit.field {
   width: 100%;
   border: 1px solid transparent;
   background: transparent;
-  padding: 0.08rem 0.18rem;
-  border-radius: 0.2rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 0.25rem;
   color: inherit;
   font: inherit;
   font-variant-numeric: tabular-nums;
   text-align: right;
   cursor: text;
-  line-height: 1.2;
-  height: 1.45rem;
+  line-height: 1.25;
+  height: 1.65rem;
 }
 
 .bom-table .currency-display:hover {
@@ -672,9 +684,14 @@ input.currency-edit.field {
   font-variant-numeric: tabular-nums;
 }
 
+.bom-table th.bom-th-num {
+  text-align: right;
+}
+
 .bom-table input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+  text-align: right;
 }
 
 .bom-table input[type="number"]::-webkit-outer-spin-button,

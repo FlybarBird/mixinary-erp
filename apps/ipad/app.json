@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Mixinary ERP",
+    "slug": "mixinary-erp-ipad",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "mixinary",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mixinary.erp",
+      "requireFullScreen": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1F2A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.mixinary.erp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

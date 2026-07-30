@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getLocalDb, isLocalMode } from "@/lib/local/db";
 import { getLocalSessionUserId } from "@/lib/local/session";
+import { getBearerAccessToken } from "@/lib/supabase/request-auth";
 import { createClient } from "@/lib/supabase/server";
 import {
   normalizeUserRole,
@@ -44,9 +45,13 @@ function asProfile(row: {
   };
 }
 
+async function resolveLocalUserId(): Promise<string | null> {
+  return (await getBearerAccessToken()) ?? (await getLocalSessionUserId());
+}
+
 export async function getSessionUser() {
   if (isLocalMode()) {
-    const userId = await getLocalSessionUserId();
+    const userId = await resolveLocalUserId();
     if (!userId) return null;
     const db = getLocalDb();
     const profile = db
@@ -69,6 +74,15 @@ export async function getSessionUser() {
   }
 
   const supabase = await createClient();
+  const bearer = await getBearerAccessToken();
+  if (bearer) {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(bearer);
+    if (error || !user) return null;
+    return user;
+  }
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -77,7 +91,7 @@ export async function getSessionUser() {
 
 export async function getCurrentProfile(): Promise<UserProfile | null> {
   if (isLocalMode()) {
-    const userId = await getLocalSessionUserId();
+    const userId = await resolveLocalUserId();
     if (!userId) return null;
     const db = getLocalDb();
     const profile = db
@@ -102,9 +116,12 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
   }
 
   const supabase = await createClient();
+  const bearer = await getBearerAccessToken();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = bearer
+    ? await supabase.auth.getUser(bearer)
+    : await supabase.auth.getUser();
   if (!user) return null;
 
   const { data } = await supabase

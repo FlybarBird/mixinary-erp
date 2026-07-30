@@ -1,17 +1,12 @@
 import type { LinePricing } from "./types";
+import {
+  calculateLinePricing as domainCalculateLinePricing,
+  sumPricing as domainSumPricing,
+  formatMoney as domainFormatMoney,
+  formatSignedMoney as domainFormatSignedMoney,
+  formatPct as domainFormatPct,
+} from "@mixinary/domain";
 
-function n(value: number | null | undefined): number {
-  if (value == null || Number.isNaN(Number(value))) return 0;
-  return Number(value);
-}
-
-/**
- * Sheet-equivalent pricing:
- * unit_quote = quote ?? msrp
- * override = line_override ?? project.default_override_pct
- * unit_sale = unit_quote + (msrp * override)
- * out_of_pocket = total_sale - total_quote
- */
 export function calculateLinePricing(input: {
   qty: number | null | undefined;
   msrp: number | null | undefined;
@@ -19,75 +14,20 @@ export function calculateLinePricing(input: {
   overridePct?: number | null;
   projectDefaultOverridePct?: number | null;
 }): LinePricing {
-  const qty = n(input.qty);
-  const msrp = n(input.msrp);
-  const unitQuote =
-    input.quote == null || input.quote === undefined ? msrp : n(input.quote);
-  const overridePct =
-    input.overridePct == null || input.overridePct === undefined
-      ? n(input.projectDefaultOverridePct)
-      : n(input.overridePct);
-
-  const totalMsrp = qty * msrp;
-  const totalQuote = qty * unitQuote;
-  const unitSale = unitQuote + msrp * overridePct;
-  const totalSale = qty * unitSale;
-  const clientSavings = totalMsrp - totalSale;
-  const outOfPocket = totalSale - totalQuote;
-
-  return {
-    qty,
-    msrp,
-    unitQuote,
-    totalMsrp,
-    totalQuote,
-    overridePct,
-    unitSale,
-    totalSale,
-    clientSavings,
-    outOfPocket,
-  };
+  return domainCalculateLinePricing(input);
 }
 
 export function sumPricing(lines: LinePricing[]) {
-  return lines.reduce(
-    (acc, line) => ({
-      totalMsrp: acc.totalMsrp + line.totalMsrp,
-      totalQuote: acc.totalQuote + line.totalQuote,
-      totalSale: acc.totalSale + line.totalSale,
-      clientSavings: acc.clientSavings + line.clientSavings,
-      outOfPocket: acc.outOfPocket + line.outOfPocket,
-    }),
-    {
-      totalMsrp: 0,
-      totalQuote: 0,
-      totalSale: 0,
-      clientSavings: 0,
-      outOfPocket: 0,
-    },
-  );
+  return domainSumPricing(lines);
 }
 
 export function formatMoney(value: number | null | undefined): string {
-  const amount = n(value);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return domainFormatMoney(value);
 }
 
 /** Always prefixes + or − (including for zero). */
 export function formatSignedMoney(value: number | null | undefined): string {
-  const amount = n(value);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-    signDisplay: "always",
-  }).format(amount);
+  return domainFormatSignedMoney(value);
 }
 
 function mixChannel(from: number, to: number, t: number) {
@@ -119,8 +59,14 @@ export function outOfPocketColor(
   outOfPocket: number | null | undefined,
   totalQuote: number | null | undefined,
 ): string {
-  const oop = n(outOfPocket);
-  const quote = n(totalQuote);
+  const oop =
+    outOfPocket == null || Number.isNaN(Number(outOfPocket))
+      ? 0
+      : Number(outOfPocket);
+  const quote =
+    totalQuote == null || Number.isNaN(Number(totalQuote))
+      ? 0
+      : Number(totalQuote);
   if (oop < 0) return "#e53935";
   if (quote <= 0) return "#78909c";
   // 125% of quote total ⇒ sale = 1.25 * quote ⇒ oop = 0.25 * quote
@@ -135,8 +81,14 @@ export function outOfPocketStyle(
   outOfPocket: number | null | undefined,
   totalQuote: number | null | undefined,
 ): { color: string; fontWeight: number } {
-  const oop = n(outOfPocket);
-  const quote = n(totalQuote);
+  const oop =
+    outOfPocket == null || Number.isNaN(Number(outOfPocket))
+      ? 0
+      : Number(outOfPocket);
+  const quote =
+    totalQuote == null || Number.isNaN(Number(totalQuote))
+      ? 0
+      : Number(totalQuote);
   const color = outOfPocketColor(oop, quote);
   const atGreen = quote > 0 && oop >= quote * 0.25;
   return {
@@ -146,5 +98,5 @@ export function outOfPocketStyle(
 }
 
 export function formatPct(value: number | null | undefined): string {
-  return `${(n(value) * 100).toFixed(2)}%`;
+  return domainFormatPct(value);
 }

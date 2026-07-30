@@ -25,8 +25,24 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/d/") ||
     pathname === "/favicon.ico";
 
+  const isApi = pathname.startsWith("/api/");
+  const hasBearer = Boolean(
+    request.headers.get("authorization")?.match(/^Bearer\s+\S+/i),
+  );
+
   if (localMode) {
-    const userId = request.cookies.get(LOCAL_SESSION_COOKIE)?.value;
+    const userId =
+      request.cookies.get(LOCAL_SESSION_COOKIE)?.value ||
+      (hasBearer
+        ? request.headers
+            .get("authorization")!
+            .replace(/^Bearer\s+/i, "")
+            .trim()
+        : "");
+    // API routes return JSON 401 from handlers — never redirect to HTML login.
+    if (isApi) {
+      return NextResponse.next({ request });
+    }
     // Never bounce /login away based on cookie alone — the cookie can be
     // stale after a local DB reset and that creates a redirect loop.
     if (!userId && !isPublic && pathname !== "/") {
@@ -66,7 +82,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && !isPublic && pathname !== "/") {
+  // Native clients authenticate with Bearer JWTs; page routes still use cookies.
+  // Never redirect API calls to HTML /login — route handlers return JSON 401.
+  if (!user && !hasBearer && !isPublic && pathname !== "/") {
+    if (isApi) {
+      return supabaseResponse;
+    }
     const redirect = request.nextUrl.clone();
     redirect.pathname = "/login";
     redirect.searchParams.set("next", pathname);

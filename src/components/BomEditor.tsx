@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type DragEvent,
 } from "react";
@@ -108,6 +109,36 @@ export function BomEditor({
     place: "before" | "after";
   } | null>(null);
   const [bulkDraft, setBulkDraft] = useState<BomBulkDraft>(EMPTY_BOM_BULK);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const headerRowRef = useRef<HTMLTableRowElement>(null);
+  const bulkRowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    const wrap = tableWrapRef.current;
+    const headerRow = headerRowRef.current;
+    const bulkRow = bulkRowRef.current;
+    if (!wrap || !headerRow) return;
+
+    function syncStickyOffsets() {
+      if (!wrap || !headerRow) return;
+      const headerH = Math.ceil(headerRow.getBoundingClientRect().height);
+      const bulkH = bulkRow
+        ? Math.ceil(bulkRow.getBoundingClientRect().height)
+        : 0;
+      wrap.style.setProperty("--bom-header-h", `${headerH}px`);
+      wrap.style.setProperty("--bom-bulk-h", `${bulkH}px`);
+    }
+
+    syncStickyOffsets();
+    const observer = new ResizeObserver(syncStickyOffsets);
+    observer.observe(headerRow);
+    if (bulkRow) observer.observe(bulkRow);
+    window.addEventListener("resize", syncStickyOffsets);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncStickyOffsets);
+    };
+  }, [canEditPricing]);
 
   const bump = useCallback(() => setRevision((r) => r + 1), []);
 
@@ -606,7 +637,7 @@ export function BomEditor({
         {message ? <span className="muted">{message}</span> : null}
       </div>
 
-      <div className="table-wrap panel-light">
+      <div className="table-wrap panel-light bom-table-wrap" ref={tableWrapRef}>
         <table className="bom-table">
           <colgroup>
             <col className="col-drag" />
@@ -634,7 +665,7 @@ export function BomEditor({
             <col className="col-fetch" />
           </colgroup>
           <thead>
-            <tr>
+            <tr ref={headerRowRef}>
               <th aria-label="Reorder" />
               <th>
                 <input
@@ -670,7 +701,11 @@ export function BomEditor({
               <th title="Notes">Notes</th>
               <th title="MSRP fetch status">Fetch</th>
             </tr>
-            <tr className="bulk-edit-row" aria-label="Bulk edit selected lines">
+            <tr
+              className="bulk-edit-row"
+              aria-label="Bulk edit selected lines"
+              ref={bulkRowRef}
+            >
               <td />
               <td className="bulk-edit-count" title="Selected lines">
                 {selected.size ? selected.size : "—"}

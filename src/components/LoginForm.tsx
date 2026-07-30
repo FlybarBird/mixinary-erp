@@ -56,8 +56,15 @@ export function LoginForm({ tagline }: { tagline: string }) {
     }
   }, [reduceMotion]);
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Prefer DOM values — iOS Safari / 1Password often fill the inputs
+    // without firing React onChange, so controlled state can lag behind.
+    const fd = new FormData(e.currentTarget);
+    const submittedEmail = String(fd.get("username") ?? email).trim();
+    const submittedPassword = String(fd.get("password") ?? password);
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
     setLoading(true);
     setError(null);
     setInfo(null);
@@ -74,7 +81,10 @@ export function LoginForm({ tagline }: { tagline: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: submittedEmail,
+          password: submittedPassword,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -90,7 +100,7 @@ export function LoginForm({ tagline }: { tagline: string }) {
 
     if (mode === "magic") {
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
+        email: submittedEmail,
         options: { emailRedirectTo: `${appUrl()}/auth/callback` },
       });
       setLoading(false);
@@ -105,7 +115,7 @@ export function LoginForm({ tagline }: { tagline: string }) {
     const check = await fetch("/api/auth/login", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email: submittedEmail }),
     });
     const checkData = await check.json();
     if (!check.ok) {
@@ -115,8 +125,8 @@ export function LoginForm({ tagline }: { tagline: string }) {
     }
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+      email: submittedEmail,
+      password: submittedPassword,
     });
     setLoading(false);
     if (signInError) {
@@ -208,19 +218,33 @@ export function LoginForm({ tagline }: { tagline: string }) {
             <h1 className="page-title login-title">Sign in</h1>
             <p className="page-sub login-tagline">{tagline}</p>
           </div>
-          <form className="stack" onSubmit={onSubmit}>
+          <form
+            className="stack"
+            method="post"
+            action="/login"
+            autoComplete="on"
+            onSubmit={onSubmit}
+          >
             <div>
               <label className="label" htmlFor="email">
                 Email
               </label>
               <input
                 id="email"
+                name="username"
                 className="field"
                 type="email"
-                autoComplete="email"
+                inputMode="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onInput={(e) =>
+                  setEmail((e.target as HTMLInputElement).value)
+                }
               />
             </div>
             {mode === "password" ? (
@@ -230,12 +254,16 @@ export function LoginForm({ tagline }: { tagline: string }) {
                 </label>
                 <input
                   id="password"
+                  name="password"
                   className="field"
                   type="password"
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onInput={(e) =>
+                    setPassword((e.target as HTMLInputElement).value)
+                  }
                 />
               </div>
             ) : null}

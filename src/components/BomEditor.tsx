@@ -651,20 +651,20 @@ export function BomEditor({
               <th title="Item">Item</th>
               <th title="SKU">SKU</th>
               <th title="Category">Category</th>
-              <th title="Quantity">Qty</th>
-              <th title="Estimated unit cost">Est.&nbsp;cost</th>
-              <th title="MSRP">MSRP</th>
-              <th title="Quote">Quote</th>
-              <th title="Override %">%</th>
-              <th title="Unit sale">Sale</th>
-              <th title="Total sale">Total&nbsp;sale</th>
-              <th title="Quoted Material Profit">QMP</th>
+              <th title="Quantity" className="bom-th-num">Qty</th>
+              <th title="Estimated unit cost" className="bom-th-num">Est.&nbsp;cost</th>
+              <th title="MSRP" className="bom-th-num">MSRP</th>
+              <th title="Quote" className="bom-th-num">Quote</th>
+              <th title="Override %" className="bom-th-num">%</th>
+              <th title="Unit sale" className="bom-th-num">Sale</th>
+              <th title="Total sale" className="bom-th-num">Total&nbsp;sale</th>
+              <th title="Quoted Material Profit" className="bom-th-num">QMP</th>
               <th title="Vendor">Vendor</th>
               <th title="Required by date">Required&nbsp;by</th>
               <th title="Procurement status">Procurement</th>
-              <th title="Quantity ordered">Ordered</th>
-              <th title="Quantity received">Received</th>
-              <th title="Remaining to order">Remain</th>
+              <th title="Quantity ordered" className="bom-th-num">Ordered</th>
+              <th title="Quantity received" className="bom-th-num">Received</th>
+              <th title="Remaining to order" className="bom-th-num">Remain</th>
               <th title="Order status">Status</th>
               <th title="Tracking number">Tracking</th>
               <th title="Notes">Notes</th>

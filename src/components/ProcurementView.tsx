@@ -799,12 +799,20 @@ export function ProcurementView({
                         Email
                       </a>
                       {(canEdit || canReceive) && po.items.length > 0 ? (
-                        <a
-                          className="btn btn-ghost"
-                          href={`/projects/${projectId}/receive/labels?po=${po.id}`}
-                        >
-                          Print QR labels
-                        </a>
+                        <>
+                          <a
+                            className="btn btn-ghost"
+                            href={`/projects/${projectId}/receive/labels?po=${po.id}&mode=receive`}
+                          >
+                            Print receive labels
+                          </a>
+                          <a
+                            className="btn btn-ghost"
+                            href={`/projects/${projectId}/receive/labels?po=${po.id}&mode=item`}
+                          >
+                            Print item labels
+                          </a>
+                        </>
                       ) : null}
                       {canEdit && (
                         <>

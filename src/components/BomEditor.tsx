@@ -31,35 +31,31 @@ import { useDebouncedAutosave } from "@/lib/hooks/useDebouncedAutosave";
 
 type EditableLine = LineItem & { _key: string };
 
-type BomBulkField =
-  | "description"
-  | "sku"
-  | "category"
-  | "qty"
-  | "override_pct"
-  | "vendor_id"
-  | "required_by_date"
-  | "order_status"
-  | "tracking"
-  | "notes"
-  | "section_id";
+type BomBulkDraft = {
+  description: string;
+  sku: string;
+  category: string;
+  qty: string;
+  override_pct: string;
+  vendor_id: string;
+  required_by_date: string;
+  order_status: OrderStatus | "";
+  tracking: string;
+  notes: string;
+};
 
-const BOM_BULK_ALWAYS: Array<{ value: BomBulkField; label: string }> = [
-  { value: "order_status", label: "Order status" },
-  { value: "tracking", label: "Tracking" },
-  { value: "notes", label: "Notes" },
-];
-
-const BOM_BULK_PRICING: Array<{ value: BomBulkField; label: string }> = [
-  { value: "description", label: "Description" },
-  { value: "sku", label: "SKU" },
-  { value: "category", label: "Category" },
-  { value: "qty", label: "Qty" },
-  { value: "override_pct", label: "Override %" },
-  { value: "vendor_id", label: "Vendor" },
-  { value: "required_by_date", label: "Required by" },
-  { value: "section_id", label: "Section" },
-];
+const EMPTY_BOM_BULK: BomBulkDraft = {
+  description: "",
+  sku: "",
+  category: "",
+  qty: "",
+  override_pct: "",
+  vendor_id: "",
+  required_by_date: "",
+  order_status: "",
+  tracking: "",
+  notes: "",
+};
 
 type HeaderPo = {
   id: string;
@@ -111,18 +107,12 @@ export function BomEditor({
     key: string;
     place: "before" | "after";
   } | null>(null);
-  const [bulkField, setBulkField] = useState<BomBulkField | "">("");
-  const [bulkValue, setBulkValue] = useState("");
+  const [bulkDraft, setBulkDraft] = useState<BomBulkDraft>(EMPTY_BOM_BULK);
 
   const bump = useCallback(() => setRevision((r) => r + 1), []);
 
-  const bulkFields = useMemo(
-    () =>
-      canEditPricing
-        ? [...BOM_BULK_PRICING, ...BOM_BULK_ALWAYS]
-        : BOM_BULK_ALWAYS,
-    [canEditPricing],
-  );
+  const bulkEnabled = selected.size > 0;
+  const pricingBulkEnabled = bulkEnabled && canEditPricing;
 
   const priced = useMemo(
     () =>
@@ -191,65 +181,14 @@ export function BomEditor({
     bump();
   }
 
-  function bulkUpdateSelected() {
-    if (!selected.size || !bulkField) return;
-    if (!bulkFields.some((f) => f.value === bulkField)) return;
-
-    let patch: Partial<LineItem> | null = null;
-    switch (bulkField) {
-      case "description":
-        patch = { description: bulkValue.trim() || "New item" };
-        break;
-      case "sku":
-        patch = { sku: bulkValue.trim() || null };
-        break;
-      case "category":
-        patch = { category: bulkValue.trim() || null };
-        break;
-      case "qty": {
-        const qty = Math.max(0, Number(bulkValue) || 0);
-        patch = { qty };
-        break;
-      }
-      case "override_pct":
-        patch = {
-          override_pct:
-            bulkValue === "" ? null : (Number(bulkValue) || 0) / 100,
-        };
-        break;
-      case "vendor_id":
-        patch = { vendor_id: bulkValue || null };
-        break;
-      case "required_by_date":
-        patch = { required_by_date: bulkValue || null };
-        break;
-      case "order_status":
-        if (!["none", "ordered", "shipped"].includes(bulkValue)) return;
-        patch = { order_status: bulkValue as OrderStatus };
-        break;
-      case "tracking":
-        patch = { tracking: bulkValue.trim() || null };
-        break;
-      case "notes":
-        patch = { notes: bulkValue.trim() || null };
-        break;
-      case "section_id":
-        patch = { section_id: bulkValue || null };
-        break;
-      default:
-        return;
-    }
-
-    const nextPatch = patch;
+  function applyBulkCell(patch: Partial<LineItem>) {
+    if (!selected.size) return;
     setLines((prev) =>
       prev.map((line) =>
-        selected.has(line.id) ? { ...line, ...nextPatch } : line,
+        selected.has(line.id) ? { ...line, ...patch } : line,
       ),
     );
     bump();
-    setMessage(
-      `Updated ${bulkField.replace(/_/g, " ")} on ${selected.size} line${selected.size === 1 ? "" : "s"}`,
-    );
   }
 
   function toggleSelectAll() {
@@ -667,140 +606,6 @@ export function BomEditor({
         {message ? <span className="muted">{message}</span> : null}
       </div>
 
-      {selected.size && bulkFields.length ? (
-        <div
-          className="row"
-          style={{
-            gap: "0.5rem",
-            flexWrap: "wrap",
-            alignItems: "center",
-            padding: "0.5rem 0.65rem",
-            background: "var(--bg-soft, #f4f7fa)",
-            borderRadius: "var(--radius)",
-          }}
-        >
-          <span className="muted" style={{ fontSize: "0.85rem" }}>
-            {selected.size} selected
-          </span>
-          <select
-            className="field"
-            style={{ maxWidth: 180 }}
-            value={bulkField}
-            onChange={(e) => {
-              const next = e.target.value as BomBulkField | "";
-              setBulkField(next);
-              setBulkValue(next === "order_status" ? "none" : "");
-            }}
-            aria-label="Bulk edit field"
-          >
-            <option value="">Bulk edit field…</option>
-            {bulkFields.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          {bulkField === "vendor_id" ? (
-            <select
-              className="field"
-              style={{ maxWidth: 200 }}
-              value={bulkValue}
-              onChange={(e) => setBulkValue(e.target.value)}
-              aria-label="Bulk vendor"
-            >
-              <option value="">—</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.code} — {v.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          {bulkField === "order_status" ? (
-            <select
-              className="field"
-              style={{ maxWidth: 160 }}
-              value={bulkValue || "none"}
-              onChange={(e) => setBulkValue(e.target.value)}
-              aria-label="Bulk order status"
-            >
-              <option value="none">—</option>
-              <option value="ordered">Ordered</option>
-              <option value="shipped">Shipped</option>
-            </select>
-          ) : null}
-          {bulkField === "section_id" ? (
-            <select
-              className="field"
-              style={{ maxWidth: 200 }}
-              value={bulkValue}
-              onChange={(e) => setBulkValue(e.target.value)}
-              aria-label="Bulk section"
-            >
-              <option value="">Unsectioned</option>
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          {bulkField === "required_by_date" ? (
-            <input
-              className="field"
-              type="date"
-              style={{ maxWidth: 180 }}
-              value={bulkValue}
-              onChange={(e) => setBulkValue(e.target.value)}
-              aria-label="Bulk required-by date"
-            />
-          ) : null}
-          {bulkField === "qty" || bulkField === "override_pct" ? (
-            <input
-              className="field"
-              type="number"
-              step={bulkField === "override_pct" ? "0.01" : "1"}
-              min="0"
-              style={{ maxWidth: 120 }}
-              value={bulkValue}
-              placeholder={
-                bulkField === "override_pct"
-                  ? (defaultOverridePct * 100).toFixed(2)
-                  : "0"
-              }
-              onChange={(e) => setBulkValue(e.target.value)}
-              aria-label={`Bulk ${bulkField}`}
-            />
-          ) : null}
-          {bulkField === "description" ||
-          bulkField === "sku" ||
-          bulkField === "category" ||
-          bulkField === "tracking" ||
-          bulkField === "notes" ? (
-            <input
-              className="field"
-              style={{ maxWidth: 260 }}
-              value={bulkValue}
-              onChange={(e) => setBulkValue(e.target.value)}
-              placeholder={`Set ${bulkField.replace(/_/g, " ")}…`}
-              aria-label={`Bulk ${bulkField}`}
-            />
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!bulkField}
-            onClick={bulkUpdateSelected}
-          >
-            Apply
-          </button>
-        </div>
-      ) : selected.size ? (
-        <div className="muted" style={{ fontSize: "0.85rem" }}>
-          {selected.size} selected
-        </div>
-      ) : null}
-
       <div className="table-wrap panel-light">
         <table className="bom-table">
           <colgroup>
@@ -864,6 +669,168 @@ export function BomEditor({
               <th title="Tracking number">Tracking</th>
               <th title="Notes">Notes</th>
               <th title="MSRP fetch status">Fetch</th>
+            </tr>
+            <tr className="bulk-edit-row" aria-label="Bulk edit selected lines">
+              <td />
+              <td className="bulk-edit-count" title="Selected lines">
+                {selected.size ? selected.size : "—"}
+              </td>
+              <td>
+                <input
+                  value={bulkDraft.description}
+                  disabled={!pricingBulkEnabled}
+                  placeholder={
+                    bulkEnabled ? "Set description…" : "Select lines…"
+                  }
+                  onChange={(e) => {
+                    const description = e.target.value;
+                    setBulkDraft((d) => ({ ...d, description }));
+                    applyBulkCell({ description });
+                  }}
+                />
+              </td>
+              <td>
+                <input
+                  value={bulkDraft.sku}
+                  disabled={!pricingBulkEnabled}
+                  placeholder={pricingBulkEnabled ? "SKU" : ""}
+                  onChange={(e) => {
+                    const sku = e.target.value;
+                    setBulkDraft((d) => ({ ...d, sku }));
+                    applyBulkCell({ sku: sku || null });
+                  }}
+                />
+              </td>
+              <td>
+                <input
+                  value={bulkDraft.category}
+                  disabled={!pricingBulkEnabled}
+                  placeholder={pricingBulkEnabled ? "Category" : ""}
+                  onChange={(e) => {
+                    const category = e.target.value;
+                    setBulkDraft((d) => ({ ...d, category }));
+                    applyBulkCell({ category: category || null });
+                  }}
+                />
+              </td>
+              <td>
+                <input
+                  type="number"
+                  value={bulkDraft.qty}
+                  disabled={!pricingBulkEnabled}
+                  placeholder={pricingBulkEnabled ? "Qty" : ""}
+                  onChange={(e) => {
+                    const qty = e.target.value;
+                    setBulkDraft((d) => ({ ...d, qty }));
+                    applyBulkCell({ qty: Math.max(0, Number(qty) || 0) });
+                  }}
+                />
+              </td>
+              <td className="muted" />
+              <td className="muted" />
+              <td className="muted" />
+              <td>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={bulkDraft.override_pct}
+                  disabled={!pricingBulkEnabled}
+                  placeholder={
+                    pricingBulkEnabled
+                      ? (defaultOverridePct * 100).toFixed(2)
+                      : ""
+                  }
+                  onChange={(e) => {
+                    const override_pct = e.target.value;
+                    setBulkDraft((d) => ({ ...d, override_pct }));
+                    applyBulkCell({
+                      override_pct:
+                        override_pct === ""
+                          ? null
+                          : (Number(override_pct) || 0) / 100,
+                    });
+                  }}
+                />
+              </td>
+              <td className="muted" />
+              <td className="muted" />
+              <td className="muted" />
+              <td>
+                <select
+                  value={bulkDraft.vendor_id}
+                  disabled={!pricingBulkEnabled}
+                  onChange={(e) => {
+                    const vendor_id = e.target.value;
+                    setBulkDraft((d) => ({ ...d, vendor_id }));
+                    applyBulkCell({ vendor_id: vendor_id || null });
+                  }}
+                >
+                  <option value="">—</option>
+                  {vendors.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.code}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <input
+                  type="date"
+                  value={bulkDraft.required_by_date}
+                  disabled={!pricingBulkEnabled}
+                  onChange={(e) => {
+                    const required_by_date = e.target.value;
+                    setBulkDraft((d) => ({ ...d, required_by_date }));
+                    applyBulkCell({
+                      required_by_date: required_by_date || null,
+                    });
+                  }}
+                />
+              </td>
+              <td className="muted" />
+              <td className="muted" />
+              <td className="muted" />
+              <td className="muted" />
+              <td>
+                <select
+                  value={bulkDraft.order_status || "none"}
+                  disabled={!bulkEnabled}
+                  onChange={(e) => {
+                    const order_status = e.target.value as OrderStatus;
+                    setBulkDraft((d) => ({ ...d, order_status }));
+                    applyBulkCell({ order_status });
+                  }}
+                >
+                  <option value="none">—</option>
+                  <option value="ordered">Ordered</option>
+                  <option value="shipped">Shipped</option>
+                </select>
+              </td>
+              <td>
+                <input
+                  value={bulkDraft.tracking}
+                  disabled={!bulkEnabled}
+                  placeholder={bulkEnabled ? "Tracking" : ""}
+                  onChange={(e) => {
+                    const tracking = e.target.value;
+                    setBulkDraft((d) => ({ ...d, tracking }));
+                    applyBulkCell({ tracking: tracking || null });
+                  }}
+                />
+              </td>
+              <td>
+                <input
+                  value={bulkDraft.notes}
+                  disabled={!bulkEnabled}
+                  placeholder={bulkEnabled ? "Notes" : ""}
+                  onChange={(e) => {
+                    const notes = e.target.value;
+                    setBulkDraft((d) => ({ ...d, notes }));
+                    applyBulkCell({ notes: notes || null });
+                  }}
+                />
+              </td>
+              <td className="muted" />
             </tr>
           </thead>
           <tbody>

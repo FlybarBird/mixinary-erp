@@ -39,11 +39,11 @@ export default async function SuiteLandingPage() {
               </form>
             </>
           ) : suiteOidcEnabled() ? (
-            <a className="btn" href="/api/auth/oidc/login?next=/apps">
+            <a className="btn" href="/api/auth/oidc/login?next=/dashboard">
               Sign in
             </a>
           ) : (
-            <Link className="btn" href="/login?next=/apps">
+            <Link className="btn" href="/login?next=/dashboard">
               Sign in
             </Link>
           )}

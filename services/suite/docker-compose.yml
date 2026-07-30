@@ -1,0 +1,124 @@
+# Suite sidecars: Authentik + Integration + Shared Files
+# Separate from Plane (mixinary-pm) and ERP. Do not share DB credentials with ERP.
+name: mixinary-suite
+
+networks:
+  mixinary_suite_net:
+    name: mixinary_suite_net
+    driver: bridge
+
+services:
+  mixinary-suite-authentik-pg:
+    image: postgres:16-alpine
+    container_name: mixinary-suite-authentik-pg
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUTHENTIK_PG_USER:-authentik}
+      POSTGRES_PASSWORD: ${AUTHENTIK_PG_PASSWORD:?set AUTHENTIK_PG_PASSWORD}
+      POSTGRES_DB: ${AUTHENTIK_PG_DB:-authentik}
+    volumes:
+      - mixinary_suite_authentik_pg:/var/lib/postgresql/data
+
+  mixinary-suite-authentik-redis:
+    image: valkey/valkey:7.2.11-alpine
+    container_name: mixinary-suite-authentik-redis
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+
+  mixinary-suite-authentik-server:
+    image: ghcr.io/goauthentik/server:2024.12.3
+    container_name: mixinary-suite-authentik-server
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_REDIS__HOST: mixinary-suite-authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: mixinary-suite-authentik-pg
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASSWORD:?set AUTHENTIK_PG_PASSWORD}
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_PG_DB:-authentik}
+    ports:
+      - "${AUTHENTIK_PORT:-9000}:9000"
+    depends_on: [mixinary-suite-authentik-pg, mixinary-suite-authentik-redis]
+
+  mixinary-suite-authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.12.3
+    container_name: mixinary-suite-authentik-worker
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_REDIS__HOST: mixinary-suite-authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: mixinary-suite-authentik-pg
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASSWORD:?set AUTHENTIK_PG_PASSWORD}
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_PG_DB:-authentik}
+    depends_on: [mixinary-suite-authentik-pg, mixinary-suite-authentik-redis]
+
+  mixinary-suite-integration-db:
+    image: postgres:16-alpine
+    container_name: mixinary-suite-integration-db
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${INTEGRATION_PG_USER:-mixinary_integ}
+      POSTGRES_PASSWORD: ${INTEGRATION_PG_PASSWORD:?set INTEGRATION_PG_PASSWORD}
+      POSTGRES_DB: ${INTEGRATION_PG_DB:-mixinary_integ}
+    volumes:
+      - mixinary_suite_integ_pg:/var/lib/postgresql/data
+      - ../integration/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+
+  mixinary-suite-integration:
+    build: ../integration
+    container_name: mixinary-suite-integration
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    environment:
+      PORT: 8091
+      DATABASE_URL: postgresql://${INTEGRATION_PG_USER:-mixinary_integ}:${INTEGRATION_PG_PASSWORD}@mixinary-suite-integration-db:5432/${INTEGRATION_PG_DB:-mixinary_integ}
+      ERP_BASE_URL: ${ERP_BASE_URL:-https://example.com}
+      PLANE_API_BASE_URL: ${PLANE_API_BASE_URL:-http://host.docker.internal:8088}
+      PLANE_API_TOKEN: ${PLANE_API_TOKEN:-}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?set WEBHOOK_SIGNING_SECRET}
+      IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-72}
+      AUTHENTIK_URL: ${AUTHENTIK_URL:-http://mixinary-suite-authentik-server:9000}
+    ports:
+      - "${INTEGRATION_PORT:-8091}:8091"
+    depends_on: [mixinary-suite-integration-db]
+
+  mixinary-suite-shared-files-db:
+    image: postgres:16-alpine
+    container_name: mixinary-suite-shared-files-db
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${FILES_PG_USER:-mixinary_files}
+      POSTGRES_PASSWORD: ${FILES_PG_PASSWORD:?set FILES_PG_PASSWORD}
+      POSTGRES_DB: ${FILES_PG_DB:-mixinary_files}
+    volumes:
+      - mixinary_suite_files_pg:/var/lib/postgresql/data
+
+  mixinary-suite-shared-files:
+    build: ../shared-files
+    container_name: mixinary-suite-shared-files
+    networks: [mixinary_suite_net]
+    restart: unless-stopped
+    environment:
+      PORT: 8092
+      DATABASE_URL: postgresql://${FILES_PG_USER:-mixinary_files}:${FILES_PG_PASSWORD}@mixinary-suite-shared-files-db:5432/${FILES_PG_DB:-mixinary_files}
+      FILES_DATA_DIR: /data
+      SIGNING_SECRET: ${FILES_SIGNING_SECRET:?set FILES_SIGNING_SECRET}
+    ports:
+      - "${SHARED_FILES_PORT:-8092}:8092"
+    volumes:
+      - mixinary_suite_files_data:/data
+    depends_on: [mixinary-suite-shared-files-db]
+
+volumes:
+  mixinary_suite_authentik_pg:
+  mixinary_suite_integ_pg:
+  mixinary_suite_files_pg:
+  mixinary_suite_files_data:

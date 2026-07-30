@@ -1,0 +1,25 @@
+
+# Copy to .github/workflows/build.yml after extracting to FlybarBird/project-management
+name: build-mixinary-pm
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm test
+        working-directory: .
+  build:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./ci/build-images.sh
+      - name: Scan note
+        run: echo "Run dependency + image scans; generate SBOM; require staging approval before prod."

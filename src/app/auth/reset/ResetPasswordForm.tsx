@@ -46,6 +46,7 @@ export function ResetPasswordForm() {
             </label>
             <input
               id="password"
+              name="password"
               className="field"
               type="password"
               autoComplete="new-password"
@@ -60,6 +61,7 @@ export function ResetPasswordForm() {
             </label>
             <input
               id="confirm"
+              name="confirm"
               className="field"
               type="password"
               autoComplete="new-password"

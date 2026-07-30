@@ -91,6 +91,7 @@ export function SetupForm() {
             </label>
             <input
               id="full_name"
+              name="name"
               className="field"
               autoComplete="name"
               value={fullName}
@@ -104,9 +105,14 @@ export function SetupForm() {
             </label>
             <input
               id="email"
+              name="username"
               className="field"
               type="email"
-              autoComplete="email"
+              inputMode="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -118,6 +124,7 @@ export function SetupForm() {
             </label>
             <input
               id="password"
+              name="password"
               className="field"
               type="password"
               autoComplete="new-password"
@@ -133,6 +140,7 @@ export function SetupForm() {
             </label>
             <input
               id="confirm"
+              name="confirm"
               className="field"
               type="password"
               autoComplete="new-password"

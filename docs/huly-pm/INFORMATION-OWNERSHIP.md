@@ -16,7 +16,7 @@
 | Comments | Project Management |
 | Cycles and modules | Project Management |
 | Execution milestones | Project Management |
-| Worklogs | Project Management until ERP approval |
+| Worklogs | Project Management (Huly) until ERP approval |
 | Approved labor cost | ERP |
 
 Neither application edits the other's authoritative fields.

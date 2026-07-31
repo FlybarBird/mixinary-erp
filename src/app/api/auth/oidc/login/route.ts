@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const next = url.searchParams.get("next") || "/dashboard";
+  const next = url.searchParams.get("next") || "/apps";
   const cfg = suiteConfig();
 
   const verifier = b64url(randomBytes(32));

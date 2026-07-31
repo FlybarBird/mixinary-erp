@@ -315,7 +315,7 @@ export function LoginForm({ tagline }: { tagline: string }) {
             ) : null}
             <a
               className="btn login-secondary"
-              href={`/api/auth/oidc/login?next=${encodeURIComponent(params.get("next") || "/dashboard")}`}
+              href={`/api/auth/oidc/login?next=${encodeURIComponent(params.get("next") || "/apps")}`}
             >
               Continue with suite SSO
             </a>

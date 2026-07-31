@@ -18,7 +18,6 @@ Web-based multi-user ERP for Mixinary AVL installs. Replaces the master project-
 - Supabase (Auth, Postgres, RLS, Storage) **or** local SQLite (`MIXINARY_LOCAL_MODE`)
 - OpenAI for structured extraction
 - Optional SMTP (`nodemailer`) **or Resend** for invites and project notifications
-- Suite Project Management: Plane CE fork packaging under `services/project-management/` (see [docs/plane-pm/README.md](./docs/plane-pm/README.md))
 
 ## Brand
 

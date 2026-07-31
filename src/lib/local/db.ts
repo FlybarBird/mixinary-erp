@@ -1076,63 +1076,6 @@ function migrate(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS client_document_events_document_idx ON client_document_events(document_id);
     CREATE INDEX IF NOT EXISTS client_document_signatures_document_idx ON client_document_signatures(document_id);
   `);
-
-  const suiteProfileCols = database
-    .prepare("pragma table_info(user_profiles)")
-    .all() as Array<{ name: string }>;
-  if (
-    suiteProfileCols.length &&
-    !suiteProfileCols.some((c) => c.name === "idp_subject")
-  ) {
-    database.exec("alter table user_profiles add column idp_subject text");
-  }
-  if (
-    suiteProfileCols.length &&
-    !suiteProfileCols.some((c) => c.name === "pm_access")
-  ) {
-    database.exec(
-      "alter table user_profiles add column pm_access integer not null default 0",
-    );
-  }
-
-  const suiteTables = new Set(
-    (
-      database
-        .prepare("select name from sqlite_master where type = 'table'")
-        .all() as Array<{ name: string }>
-    ).map((t) => t.name),
-  );
-  if (!suiteTables.has("integration_outbox")) {
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS integration_outbox (
-        id TEXT PRIMARY KEY,
-        event_type TEXT NOT NULL,
-        idempotency_key TEXT NOT NULL UNIQUE,
-        payload TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        attempts INTEGER NOT NULL DEFAULT 0,
-        last_error TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        processed_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS integration_outbox_status_idx
-        ON integration_outbox(status, created_at);
-    `);
-  }
-  if (!suiteTables.has("erp_plane_project_links")) {
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS erp_plane_project_links (
-        id TEXT PRIMARY KEY,
-        erp_project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
-        plane_project_id TEXT,
-        integration_status TEXT NOT NULL DEFAULT 'pending',
-        last_sync_at TEXT,
-        last_sync_error TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-  }
 }
 
 export function getLocalDb() {

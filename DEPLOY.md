@@ -62,19 +62,6 @@ In Supabase Dashboard → **Authentication → Providers**:
 
 Login UI offers password, email link, Google, and Microsoft. After first OAuth login, default role is `project_manager` unless invite metadata specifies otherwise; administrators can change roles in Admin → Users.
 
-## 2b. Suite Project Management (optional)
-
-Plane CE fork packaging, Authentik, integration, and shared files live under
-`services/` — see [docs/plane-pm/README.md](./docs/plane-pm/README.md).
-
-ERP env additions (also in `.env.example`):
-
-- `NEXT_PUBLIC_PM_BASE_PATH=/project-management`
-- `INTEGRATION_BASE_URL` / `INTEGRATION_WEBHOOK_SECRET`
-- `AUTHENTIK_ISSUER` / `AUTHENTIK_CLIENT_ID` / `AUTHENTIK_CLIENT_SECRET`
-
-Apply migration `023_suite_integration.sql`. Suite landing is `/apps`.
-
 ## 3. Vercel
 
 1. Import this Git repo into Vercel.

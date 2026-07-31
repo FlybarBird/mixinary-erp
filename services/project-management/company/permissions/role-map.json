@@ -1,7 +1,0 @@
-{
-  "administrator": "admin",
-  "project_manager": "member",
-  "technician": "member",
-  "viewer": "guest",
-  "default": "guest"
-}

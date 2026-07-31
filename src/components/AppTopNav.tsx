@@ -3,17 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/format";
 import { canViewFinancials } from "@/lib/permissions";
-import { AppSelector } from "@/components/suite/AppSelector";
-import { getSuiteApps } from "@/lib/suite/apps";
 
 const primaryLinks = [
   { href: "/dashboard", label: "My Home" },
-  { href: "/projects", label: "Projects" },
-  { href: "/client-documents", label: "Client Documents" },
+  { href: "/projects", label: "Project Management" },
   { href: "/reports/portfolio", label: "Portfolio", financial: true },
   { href: "/parts", label: "Parts" },
   { href: "/clients", label: "Clients" },
@@ -33,6 +31,7 @@ function initials(profile: UserProfile) {
 
 export function AppTopNav({ profile }: { profile: UserProfile }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isAdmin = profile.role === "administrator";
   const showFinancials = canViewFinancials(profile.role);
   const adminActive = pathname === "/admin" || pathname.startsWith("/admin/");
@@ -48,11 +47,16 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
   }, []);
 
   async function signOut() {
-    // Prefer suite OIDC logout (ends IdP session when configured).
-    window.location.assign("/api/auth/oidc/logout");
+    if (process.env.NEXT_PUBLIC_MIXINARY_LOCAL_MODE === "true") {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      window.location.assign("/login");
+      return;
+    }
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
   }
-
-  const suiteApps = getSuiteApps();
 
   return (
     <header className="shell">
@@ -70,7 +74,6 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
           </Link>
 
           <div className="shell-actions">
-            <AppSelector apps={suiteApps} currentId="erp" />
             <div className="shell-user-meta">
               <div className="shell-user-name">
                 {profile.full_name || profile.email}

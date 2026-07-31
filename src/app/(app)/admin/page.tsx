@@ -38,12 +38,6 @@ const adminApps = [
     sub: "Add-on toggle, branding, document defaults",
     icon: "DOC",
   },
-  {
-    href: "/admin/suite",
-    title: "Suite",
-    sub: "OIDC, Project Management access, integrations",
-    icon: "SUITE",
-  },
 ] as const;
 
 export default async function AdminHomePage() {

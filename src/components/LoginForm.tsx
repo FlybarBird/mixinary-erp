@@ -313,12 +313,6 @@ export function LoginForm({ tagline }: { tagline: string }) {
                 Forgot password
               </button>
             ) : null}
-            <a
-              className="btn login-secondary"
-              href={`/api/auth/oidc/login?next=${encodeURIComponent(params.get("next") || "/apps")}`}
-            >
-              Continue with suite SSO
-            </a>
             {!localMode ? (
               <>
                 <button

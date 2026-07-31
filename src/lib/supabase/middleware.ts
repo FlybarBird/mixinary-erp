@@ -20,11 +20,9 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/setup") ||
     pathname.startsWith("/api/invite") ||
-    pathname.startsWith("/api/integration/") ||
     pathname.startsWith("/invite") ||
     pathname.startsWith("/d/") ||
     pathname.startsWith("/api/d/") ||
-    pathname === "/apps" ||
     pathname === "/favicon.ico";
 
   if (localMode) {

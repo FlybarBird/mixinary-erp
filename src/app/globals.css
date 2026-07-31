@@ -2737,3 +2737,147 @@ input.currency-edit.field {
     break-after: auto;
   }
 }
+
+/* —— Suite shell / app selector —— */
+.suite-app-selector {
+  position: relative;
+}
+.suite-app-selector-btn {
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+}
+.suite-app-selector-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 16rem;
+  z-index: 50;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 0.35rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.suite-app-selector-item {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+.suite-app-selector-item:hover,
+.suite-app-selector-item.active {
+  background: var(--accent-soft);
+}
+.suite-app-selector-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.suite-app-selector-desc {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.suite-landing {
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(11, 61, 46, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(196, 163, 90, 0.16), transparent 50%),
+    linear-gradient(180deg, #f3f6f4 0%, #e7eee9 100%);
+  color: #143028;
+  padding: 1.25rem clamp(1rem, 3vw, 2.5rem) 2.5rem;
+}
+.suite-landing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.suite-landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.suite-landing-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #3d5c50;
+}
+.suite-landing-title {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1;
+  margin: 0.15rem 0 0;
+  font-weight: 700;
+}
+.suite-landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.suite-landing-user {
+  font-size: 0.9rem;
+  color: #3d5c50;
+}
+.suite-landing-main {
+  margin-top: clamp(2rem, 8vh, 4.5rem);
+  max-width: 64rem;
+}
+.suite-landing-lead {
+  font-size: 1.1rem;
+  max-width: 36rem;
+  color: #2f4a40;
+  margin: 0 0 1.5rem;
+}
+.suite-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.85rem;
+}
+.suite-app-card {
+  display: block;
+  padding: 1.1rem 1.15rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(20, 48, 40, 0.12);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+.suite-app-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(11, 61, 46, 0.35);
+}
+.suite-app-card-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.suite-app-card-sub {
+  margin-top: 0.35rem;
+  color: #4a675a;
+  font-size: 0.9rem;
+}
+
+.pm-link-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.pm-link-status {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

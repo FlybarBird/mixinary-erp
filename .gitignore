@@ -43,3 +43,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# suite services
+services/**/node_modules/
+services/project-management/.upstream/
+services/project-management/.selfhost-upstream/
+services/**/data/
+services/**/backups/

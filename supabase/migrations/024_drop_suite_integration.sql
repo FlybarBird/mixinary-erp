@@ -1,13 +1,7 @@
--- Drop Plane-era suite integration objects if they were applied via 023.
--- Safe on fresh databases that never ran 023.
+-- Drop legacy Plane-era suite objects if present (from original 023).
+-- Current 023 uses erp_pm_project_links; this migration only cleans old names.
 
 drop table if exists public.erp_plane_project_links cascade;
-drop table if exists public.integration_outbox cascade;
 
-drop index if exists public.user_profiles_idp_subject_uidx;
-
-alter table public.user_profiles
-  drop column if exists idp_subject;
-
-alter table public.user_profiles
-  drop column if exists pm_access;
+-- Do not drop integration_outbox / idp columns here — they are reintroduced by 023
+-- for Huly suite wiring. Only remove obsolete Plane-named link table.

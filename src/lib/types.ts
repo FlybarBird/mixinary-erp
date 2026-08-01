@@ -503,6 +503,8 @@ export interface PurchaseOrderItem {
   qty_shipped: number;
   qty_received: number;
   item_status: PoItemStatus;
+  /** When true, item_status follows parent PO status changes. Manual overrides set false. */
+  inherits_po_status?: boolean | null;
   carrier_id: string | null;
   tracking_number: string | null;
   tracking_url: string | null;

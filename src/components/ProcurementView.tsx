@@ -333,8 +333,6 @@ export function ProcurementView({
   // PO edit side panel
   const [editingPo, setEditingPo] = useState<OrderRow | null>(null);
   const [editFields, setEditFields] = useState<Partial<PurchaseOrder>>({});
-  const [cascadeItems, setCascadeItems] = useState(false);
-  const [cascadeItemStatus, setCascadeItemStatus] = useState<PoItemStatus>("ordered");
   const [saving, setSaving] = useState(false);
 
   // New draft PO panel
@@ -421,22 +419,19 @@ export function ProcurementView({
       shipping: Number(po.shipping || 0),
       tax: Number(po.tax || 0),
     });
-    setCascadeItems(false);
   };
 
   const savePo = useCallback(async () => {
     if (!editingPo) return;
     setSaving(true);
     try {
+      // Status changes cascade automatically to items with inherits_po_status.
       const res = await fetch(
         `/api/projects/${projectId}/purchase-orders/${editingPo.id}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...editFields,
-            ...(cascadeItems ? { cascadeItemStatus: true, item_status: cascadeItemStatus } : {}),
-          }),
+          body: JSON.stringify(editFields),
         },
       );
       if (!res.ok) {
@@ -461,15 +456,7 @@ export function ProcurementView({
     } finally {
       setSaving(false);
     }
-  }, [
-    editingPo,
-    editFields,
-    cascadeItems,
-    cascadeItemStatus,
-    projectId,
-    router,
-    reloadOrders,
-  ]);
+  }, [editingPo, editFields, projectId, router, reloadOrders]);
 
   const deletePo = useCallback(async (poId: string) => {
     if (!confirm("Delete this purchase order?")) return;
@@ -916,23 +903,64 @@ export function ProcurementView({
 
                                   <td style={{ textAlign: "center" }}>
                                     {canTouchLine ? (
-                                      <select
-                                        className="field"
-                                        style={{ fontSize: "0.75rem", padding: "0.15rem" }}
-                                        value={item.item_status}
-                                        disabled={saving}
-                                        onChange={(e) =>
-                                          void patchItem(po.id, item.id, {
-                                            item_status: e.target.value as PoItemStatus,
-                                          })
-                                        }
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          alignItems: "center",
+                                          gap: "0.2rem",
+                                        }}
                                       >
-                                        {PO_ITEM_STATUSES.map((s) => (
-                                          <option key={s} value={s}>{formatStatusLabel(s)}</option>
-                                        ))}
-                                      </select>
+                                        <select
+                                          className="field"
+                                          style={{ fontSize: "0.75rem", padding: "0.15rem" }}
+                                          value={item.item_status}
+                                          disabled={saving}
+                                          title={
+                                            item.inherits_po_status !== false
+                                              ? "Inherits PO status — changing this overrides"
+                                              : "Custom status (not inheriting PO)"
+                                          }
+                                          onChange={(e) =>
+                                            void patchItem(po.id, item.id, {
+                                              item_status: e.target.value as PoItemStatus,
+                                              inherits_po_status: false,
+                                            })
+                                          }
+                                        >
+                                          {PO_ITEM_STATUSES.map((s) => (
+                                            <option key={s} value={s}>{formatStatusLabel(s)}</option>
+                                          ))}
+                                        </select>
+                                        <label
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "0.25rem",
+                                            fontSize: "0.65rem",
+                                            color: "var(--muted)",
+                                            cursor: "pointer",
+                                          }}
+                                          title="When checked, this line follows the PO status"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={item.inherits_po_status !== false}
+                                            disabled={saving}
+                                            onChange={(e) =>
+                                              void patchItem(po.id, item.id, {
+                                                inherits_po_status: e.target.checked,
+                                              })
+                                            }
+                                          />
+                                          Inherit
+                                        </label>
+                                      </div>
                                     ) : (
-                                      <span style={{ fontSize: "0.75rem" }}>{formatStatusLabel(item.item_status)}</span>
+                                      <span style={{ fontSize: "0.75rem" }}>
+                                        {formatStatusLabel(item.item_status)}
+                                        {item.inherits_po_status === false ? " · override" : ""}
+                                      </span>
                                     )}
                                   </td>
 
@@ -1053,29 +1081,11 @@ export function ProcurementView({
                 </select>
               </label>
 
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <input
-                  type="checkbox"
-                  checked={cascadeItems}
-                  onChange={(e) => setCascadeItems(e.target.checked)}
-                />
-                <span style={{ fontSize: "0.85rem" }}>Cascade status to all items</span>
-              </label>
-
-              {cascadeItems && (
-                <label>
-                  <div className="label">Item Status to Apply</div>
-                  <select
-                    className="field"
-                    value={cascadeItemStatus}
-                    onChange={(e) => setCascadeItemStatus(e.target.value as PoItemStatus)}
-                  >
-                    {PO_ITEM_STATUSES.map((s) => (
-                      <option key={s} value={s}>{formatStatusLabel(s)}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
+              <p className="page-sub" style={{ margin: 0, fontSize: "0.8rem" }}>
+                Changing PO status updates line items that inherit PO status.
+                Override a line’s status (or uncheck Inherit) to keep an item
+                exception such as backordered.
+              </p>
 
               <label>
                 <div className="label">Expected Delivery</div>

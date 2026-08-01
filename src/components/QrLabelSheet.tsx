@@ -12,8 +12,15 @@ import {
   type DymoPrinter,
 } from "@/lib/dymo/client";
 import { buildDymoLabelXml } from "@/lib/dymo/label-xml";
+import {
+  BROTHER_LABEL,
+  buildLabelPrintRows,
+  type LabelMode,
+  type LabelPrinterBrand,
+} from "@/lib/labels/rows";
+import type { LabelPrinterBrand as SettingsBrand } from "@/lib/types";
 
-export type LabelMode = "receive" | "item";
+export type { LabelMode };
 
 export type LabelItem = {
   id: string;
@@ -21,18 +28,6 @@ export type LabelItem = {
   sku: string | null;
   qty_ordered: number;
 };
-
-type PrintRow = {
-  key: string;
-  itemId: string;
-  description: string;
-  sku: string | null;
-  qtyOrdered: number;
-  pieceIndex: number | null;
-  pieceTotal: number | null;
-};
-
-const MAX_LABELS = 200;
 
 type Props = {
   projectId: string;
@@ -42,6 +37,8 @@ type Props = {
   jobName: string;
   mode: LabelMode;
   items: LabelItem[];
+  /** Company default from Admin → Label printing. */
+  labelPrinter?: SettingsBrand | LabelPrinterBrand;
 };
 
 export function QrLabelSheet({
@@ -52,7 +49,12 @@ export function QrLabelSheet({
   jobName,
   mode,
   items,
+  labelPrinter = "dymo",
 }: Props) {
+  const printerBrand: LabelPrinterBrand =
+    labelPrinter === "brother" ? "brother" : "dymo";
+  const isBrother = printerBrand === "brother";
+
   const [dataUrls, setDataUrls] = useState<Record<string, string>>({});
   const [origin] = useState(() =>
     typeof window !== "undefined" ? window.location.origin : "",
@@ -64,46 +66,10 @@ export function QrLabelSheet({
   const [printing, setPrinting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const { rows, truncated } = useMemo(() => {
-    const next: PrintRow[] = [];
-    let cut = false;
-    for (const item of items) {
-      if (mode === "receive") {
-        if (next.length >= MAX_LABELS) {
-          cut = true;
-          break;
-        }
-        next.push({
-          key: item.id,
-          itemId: item.id,
-          description: item.description,
-          sku: item.sku,
-          qtyOrdered: item.qty_ordered,
-          pieceIndex: null,
-          pieceTotal: null,
-        });
-        continue;
-      }
-      const total = Math.max(1, Math.floor(Number(item.qty_ordered) || 0));
-      for (let i = 1; i <= total; i++) {
-        if (next.length >= MAX_LABELS) {
-          cut = true;
-          break;
-        }
-        next.push({
-          key: `${item.id}-${i}`,
-          itemId: item.id,
-          description: item.description,
-          sku: item.sku,
-          qtyOrdered: item.qty_ordered,
-          pieceIndex: i,
-          pieceTotal: total,
-        });
-      }
-      if (cut) break;
-    }
-    return { rows: next, truncated: cut };
-  }, [items, mode]);
+  const { rows, truncated } = useMemo(
+    () => buildLabelPrintRows(items, mode),
+    [items, mode],
+  );
 
   const itemIds = useMemo(
     () => Array.from(new Set(rows.map((r) => r.itemId))),
@@ -132,6 +98,7 @@ export function QrLabelSheet({
   }, [itemIds, origin, projectId]);
 
   useEffect(() => {
+    if (isBrother) return;
     let cancelled = false;
     async function probe() {
       try {
@@ -168,11 +135,13 @@ export function QrLabelSheet({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isBrother]);
 
   function modeHref(next: LabelMode) {
     return `/projects/${projectId}/receive/labels?po=${poId}&mode=${next}`;
   }
+
+  const brotherPdfHref = `/api/projects/${projectId}/labels/pdf?po=${poId}&mode=${mode}`;
 
   async function printWithDymo() {
     setPrinting(true);
@@ -239,8 +208,20 @@ export function QrLabelSheet({
     }
   }
 
+  function openBrotherPdf() {
+    setStatus(null);
+    window.open(brotherPdfHref, "_blank", "noopener,noreferrer");
+    setStatus(
+      "Opened Brother QL PDF — print from the browser dialog (AirPrint / Brother).",
+    );
+  }
+
   return (
-    <div className="qr-label-sheet" data-mode={mode}>
+    <div
+      className="qr-label-sheet"
+      data-mode={mode}
+      data-printer={printerBrand}
+    >
       <div className="qr-label-toolbar no-print">
         <Link className="btn" href={`/projects/${projectId}/procurement`}>
           ← Procurement
@@ -259,23 +240,36 @@ export function QrLabelSheet({
             Item labels
           </Link>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={printing || !rows.length || !Object.keys(dataUrls).length}
-          onClick={() => void printWithDymo()}
-        >
-          {printing ? "Printing…" : "Print to DYMO"}
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={!rows.length}
-          onClick={() => window.print()}
-          title="Fallback when DYMO Connect is unavailable"
-        >
-          Print via browser…
-        </button>
+        {isBrother ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!rows.length}
+            onClick={openBrotherPdf}
+          >
+            Print Brother PDF…
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={printing || !rows.length || !Object.keys(dataUrls).length}
+              onClick={() => void printWithDymo()}
+            >
+              {printing ? "Printing…" : "Print to DYMO"}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!rows.length}
+              onClick={() => window.print()}
+              title="Fallback when DYMO Connect is unavailable"
+            >
+              Print via browser…
+            </button>
+          </>
+        )}
         <span className="qr-label-toolbar-meta">
           {poNumber} · {mode === "item" ? "Item" : "Receive"} · {rows.length}{" "}
           label{rows.length !== 1 ? "s" : ""} · {jobName}
@@ -283,44 +277,60 @@ export function QrLabelSheet({
       </div>
 
       <div className="qr-label-dymo-bar no-print">
-        <label className="qr-label-printer">
-          <span>LabelWriter</span>
-          <select
-            className="field-light"
-            value={printerName}
-            disabled={!printers.length}
-            onChange={(e) => {
-              setPrinterName(e.target.value);
-              if (e.target.value) storePrinterName(e.target.value);
-            }}
-          >
-            {!printers.length ? (
-              <option value="">No printer detected</option>
-            ) : (
-              printers.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name}
-                  {p.isConnected ? "" : " (offline)"}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
-        <span
-          className="qr-label-dymo-status"
-          data-ready={dymoReady ? "true" : "false"}
-        >
-          {dymoMessage}
+        <span className="qr-label-printer">
+          Printer
+          <strong style={{ marginLeft: "0.35rem" }}>
+            {isBrother ? "Brother QL" : "DYMO LabelWriter"}
+          </strong>
         </span>
+        {!isBrother ? (
+          <label className="qr-label-printer">
+            <span>LabelWriter</span>
+            <select
+              className="field-light"
+              value={printerName}
+              disabled={!printers.length}
+              onChange={(e) => {
+                setPrinterName(e.target.value);
+                if (e.target.value) storePrinterName(e.target.value);
+              }}
+            >
+              {!printers.length ? (
+                <option value="">No printer detected</option>
+              ) : (
+                printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                    {p.isConnected ? "" : " (offline)"}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+        ) : null}
+        {!isBrother ? (
+          <span
+            className="qr-label-dymo-status"
+            data-ready={dymoReady ? "true" : "false"}
+          >
+            {dymoMessage}
+          </span>
+        ) : (
+          <span className="qr-label-dymo-status" data-ready="true">
+            PDF for {BROTHER_LABEL.recommendedModels.join(" / ")}
+          </span>
+        )}
         <span className="muted" style={{ fontSize: "0.8rem" }}>
-          Stock: DYMO 1-4/5″ × 3-1/10″ (1.8″ × 3.1″). Requires DYMO Connect.
+          {isBrother
+            ? `Stock: Brother ${BROTHER_LABEL.widthMm}mm × ${BROTHER_LABEL.heightMm}mm cut. Change brand in Admin → Label printing.`
+            : "Stock: DYMO 1-4/5″ × 3-1/10″ (1.8″ × 3.1″). Change brand in Admin → Label printing."}
         </span>
       </div>
 
       {truncated ? (
         <p className="qr-label-warning no-print">
-          Showing the first {MAX_LABELS} labels only — reduce quantities or
-          print in batches.
+          Showing the first {rows.length} labels only (cap reached) — reduce
+          quantities or print in batches.
         </p>
       ) : null}
       {status ? (

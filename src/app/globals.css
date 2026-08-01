@@ -2624,7 +2624,7 @@ tr.status-row--on-site.drag-over-after > td {
   }
 }
 
-/* ── QR receive / item labels (DYMO 3.1" × 1.8") ── */
+/* ── QR receive / item labels (DYMO 3.1" × 1.8" or Brother 62×46mm) ── */
 
 .qr-label-toolbar {
   display: flex;
@@ -2690,6 +2690,11 @@ tr.status-row--on-site.drag-over-after > td {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 0.85rem;
+}
+
+.qr-label-sheet[data-printer="brother"] .qr-label-card {
+  max-width: 2.44in;
+  aspect-ratio: 62 / 46;
 }
 
 .qr-label-card {
@@ -2771,6 +2776,15 @@ tr.status-row--on-site.drag-over-after > td {
     margin: 0;
   }
 
+  .qr-label-sheet[data-printer="brother"] {
+    /* Prefer Brother PDF print path; browser fallback uses 62×46mm. */
+  }
+
+  @page brother-label {
+    size: 62mm 46mm;
+    margin: 0;
+  }
+
   .no-print,
   .shell,
   .project-workspace-nav,
@@ -2791,6 +2805,12 @@ tr.status-row--on-site.drag-over-after > td {
 
   .qr-label-grid {
     display: block;
+  }
+
+  .qr-label-sheet[data-printer="brother"] .qr-label-card {
+    width: 62mm;
+    height: 46mm;
+    page: brother-label;
   }
 
   .qr-label-card {

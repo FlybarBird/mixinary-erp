@@ -39,6 +39,12 @@ const adminApps = [
     icon: "DOC",
   },
   {
+    href: "/admin/label-printing",
+    title: "Label printing",
+    sub: "DYMO vs Brother QL for warehouse QR labels",
+    icon: "LBL",
+  },
+  {
     href: "/admin/suite",
     title: "Suite",
     sub: "OIDC, Project Management access, integrations",

@@ -2,6 +2,7 @@ import { ProcurementView } from "@/components/ProcurementView";
 import { canManageProcurement, canReceive, requireProfile } from "@/lib/auth";
 import { getPoOrderEmailCc } from "@/lib/email";
 import { createClient } from "@/lib/supabase/server";
+import { listAccessiblePoIds } from "@/lib/projects/po-move";
 import type { PurchaseOrder, PurchaseOrderItem, Vendor } from "@/lib/types";
 
 export default async function ProcurementPage({
@@ -13,18 +14,22 @@ export default async function ProcurementPage({
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  const [{ data: project }, { data: orders }, { data: vendors }, { data: lines }] =
+  const poIds = await listAccessiblePoIds(supabase, id);
+
+  const [{ data: project }, { data: orders }, { data: vendors }, { data: lines }, { data: links }] =
     await Promise.all([
       supabase
         .from("projects")
         .select("id, default_override_pct")
         .eq("id", id)
         .maybeSingle(),
-      supabase
-        .from("purchase_orders")
-        .select("*, vendors(id, code, name, contact_name, contact_email)")
-        .eq("project_id", id)
-        .order("po_number"),
+      poIds.length
+        ? supabase
+            .from("purchase_orders")
+            .select("*, vendors(id, code, name, contact_name, contact_email)")
+            .in("id", poIds)
+            .order("po_number")
+        : Promise.resolve({ data: [] as PurchaseOrder[] }),
       supabase.from("vendors").select("*").order("code"),
       supabase
         .from("line_items")
@@ -32,9 +37,14 @@ export default async function ProcurementPage({
           "id, description, vendor_id, procurement_status, qty, qty_ordered, qty_received, msrp, quote, override_pct, estimated_unit_cost",
         )
         .eq("project_id", id),
+      poIds.length
+        ? supabase
+            .from("purchase_order_project_links")
+            .select("po_id, project_id, is_owner")
+            .in("po_id", poIds)
+        : Promise.resolve({ data: [] as Array<{ po_id: string; project_id: string; is_owner: boolean }> }),
     ]);
 
-  const poIds = (orders ?? []).map((o) => o.id);
   let allItems: PurchaseOrderItem[] = [];
   if (poIds.length > 0) {
     const { data: items } = await supabase
@@ -50,8 +60,17 @@ export default async function ProcurementPage({
     itemsByPo.get(item.po_id)!.push(item);
   }
 
-  const ordersWithItems = (orders ?? []).map((o) => ({
-    ...(o as PurchaseOrder & {
+  const linksByPo = new Map<string, Array<{ project_id: string; is_owner: boolean }>>();
+  for (const link of links ?? []) {
+    if (!linksByPo.has(link.po_id)) linksByPo.set(link.po_id, []);
+    linksByPo.get(link.po_id)!.push({
+      project_id: link.project_id,
+      is_owner: Boolean(link.is_owner),
+    });
+  }
+
+  const ordersWithItems = (orders ?? []).map((o) => {
+    const po = o as PurchaseOrder & {
       vendors?: {
         id: string;
         code: string;
@@ -59,9 +78,19 @@ export default async function ProcurementPage({
         contact_name?: string | null;
         contact_email?: string | null;
       } | null;
-    }),
-    items: itemsByPo.get(o.id) ?? [],
-  }));
+    };
+    const poLinks = linksByPo.get(po.id) ?? [];
+    const isOwner = po.project_id === id;
+    return {
+      ...po,
+      items: itemsByPo.get(po.id) ?? [],
+      is_owner: isOwner,
+      is_shared:
+        !isOwner ||
+        poLinks.some((l) => !l.is_owner && l.project_id !== po.project_id),
+      linked_project_ids: poLinks.map((l) => l.project_id),
+    };
+  });
 
   return (
     <ProcurementView
@@ -85,8 +114,8 @@ export default async function ProcurementPage({
       }))}
       canEdit={canManageProcurement(profile.role)}
       canReceive={canReceive(profile.role)}
-      signerName={profile.full_name || profile.email}
-      poOrderCc={getPoOrderEmailCc() || null}
+      signerName={profile.full_name}
+      poOrderCc={await getPoOrderEmailCc()}
     />
   );
 }

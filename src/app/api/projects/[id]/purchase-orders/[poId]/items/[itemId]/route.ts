@@ -16,6 +16,7 @@ import {
   deriveReceiveStatus,
   syncPoStatusFromItems,
 } from "@/lib/projects/receive";
+import { projectCanAccessPo } from "@/lib/projects/po-move";
 
 const ALERT_STATUSES = new Set(["delayed", "backordered"]);
 
@@ -76,7 +77,7 @@ export async function PATCH(
     .eq("id", poId)
     .maybeSingle();
 
-  if (!parentPo || parentPo.project_id !== projectId) {
+  if (!parentPo || !(await projectCanAccessPo(supabase, projectId, poId))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

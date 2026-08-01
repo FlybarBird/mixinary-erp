@@ -1145,6 +1145,50 @@ function migrate(database: Database.Database) {
       "alter table purchase_order_items add column inherits_po_status integer not null default 1",
     );
   }
+
+  const linkTables = new Set(
+    (
+      database
+        .prepare("select name from sqlite_master where type='table'")
+        .all() as Array<{ name: string }>
+    ).map((r) => r.name),
+  );
+  if (!linkTables.has("purchase_order_project_links")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS purchase_order_project_links (
+        id TEXT PRIMARY KEY,
+        po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        is_owner INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (po_id, project_id)
+      );
+      CREATE INDEX IF NOT EXISTS purchase_order_project_links_project_idx
+        ON purchase_order_project_links(project_id);
+      CREATE INDEX IF NOT EXISTS purchase_order_project_links_po_idx
+        ON purchase_order_project_links(po_id);
+    `);
+  }
+
+  const ownerBackfill = database
+    .prepare(
+      `select po.id, po.project_id
+       from purchase_orders po
+       left join purchase_order_project_links l
+         on l.po_id = po.id and l.project_id = po.project_id
+       where l.id is null`,
+    )
+    .all() as Array<{ id: string; project_id: string }>;
+  if (ownerBackfill.length > 0) {
+    const insertLink = database.prepare(
+      `insert or ignore into purchase_order_project_links
+         (id, po_id, project_id, is_owner)
+       values (?, ?, ?, 1)`,
+    );
+    for (const row of ownerBackfill) {
+      insertLink.run(randomUUID(), row.id, row.project_id);
+    }
+  }
 }
 
 export function getLocalDb() {

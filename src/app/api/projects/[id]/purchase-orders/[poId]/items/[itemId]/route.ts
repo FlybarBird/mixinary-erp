@@ -7,7 +7,10 @@ import {
   rollupBomLineQuantities,
   syncBomLinePricingFromPoItem,
 } from "@/lib/projects/workspace";
-import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
+import {
+  mapPoStatusToItemStatus,
+  recalcPurchaseOrderEconomics,
+} from "@/lib/projects/procurement";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
 import {
   deriveReceiveStatus,
@@ -115,7 +118,40 @@ export async function PATCH(
   if (body.qty_received != null && body.item_status == null) {
     const qtyReceived = Number(body.qty_received);
     const derived = deriveReceiveStatus(qtyReceived, newQty);
-    if (derived) updatePayload.item_status = derived;
+    if (derived) {
+      updatePayload.item_status = derived;
+      // Receive-driven status is an item-specific override.
+      if (body.inherits_po_status === undefined) {
+        updatePayload.inherits_po_status = false;
+      }
+    }
+  }
+
+  // Manual status change breaks inheritance unless client re-enables it.
+  if (
+    body.item_status != null &&
+    body.inherits_po_status === undefined &&
+    String(body.item_status) !== String(prevStatus)
+  ) {
+    updatePayload.inherits_po_status = false;
+  }
+
+  // Re-enabling inheritance: sync item status from parent PO.
+  if (body.inherits_po_status === true || body.inherits_po_status === 1) {
+    const { data: parent } = await supabase
+      .from("purchase_orders")
+      .select("status")
+      .eq("id", poId)
+      .maybeSingle();
+    const mapped = parent?.status
+      ? mapPoStatusToItemStatus(String(parent.status))
+      : null;
+    if (mapped && body.item_status == null) {
+      updatePayload.item_status = mapped;
+    }
+    updatePayload.inherits_po_status = true;
+  } else if (body.inherits_po_status === false || body.inherits_po_status === 0) {
+    updatePayload.inherits_po_status = false;
   }
 
   updatePayload.updated_at = new Date().toISOString();

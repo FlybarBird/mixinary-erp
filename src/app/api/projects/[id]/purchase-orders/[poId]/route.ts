@@ -7,6 +7,7 @@ import {
   writeAuditEvent,
 } from "@/lib/projects/workspace";
 import {
+  mapPoStatusToItemStatus,
   recalcPurchaseOrderEconomics,
   suggestPoStatus,
 } from "@/lib/projects/procurement";
@@ -24,9 +25,12 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const { cascadeItemStatus, item_status, ...fields } = body as {
+  const { cascadeItemStatus, item_status, cascadeAllItems, ...fields } = body as {
+    /** @deprecated Prefer automatic inherit cascade; kept for force-apply to all items */
     cascadeItemStatus?: boolean;
     item_status?: string;
+    /** Force-update every item (ignores inherits_po_status). */
+    cascadeAllItems?: boolean;
     status?: string;
     [key: string]: unknown;
   };
@@ -44,14 +48,6 @@ export async function PATCH(
 
   const prevStatus = existing.status;
 
-  // Cascade item status if requested
-  if (cascadeItemStatus && item_status) {
-    await supabase
-      .from("purchase_order_items")
-      .update({ item_status })
-      .eq("po_id", poId);
-  }
-
   // Recompute status from items if no explicit status provided
   let newStatus = fields.status as string | undefined;
   if (!newStatus) {
@@ -65,6 +61,34 @@ export async function PATCH(
       );
       newStatus = status;
     }
+  }
+
+  // Cascade PO → inheriting items when status changes (or force cascade requested).
+  let cascadedItems = false;
+  const mappedItemStatus =
+    (cascadeItemStatus && item_status
+      ? item_status
+      : newStatus
+        ? mapPoStatusToItemStatus(String(newStatus))
+        : null) ?? null;
+  const shouldCascade =
+    Boolean(mappedItemStatus) &&
+    (Boolean(cascadeItemStatus || cascadeAllItems) ||
+      (Boolean(newStatus) && newStatus !== prevStatus));
+
+  if (shouldCascade && mappedItemStatus) {
+    let cascadeQuery = supabase
+      .from("purchase_order_items")
+      .update({
+        item_status: mappedItemStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("po_id", poId);
+    if (!cascadeItemStatus && !cascadeAllItems) {
+      cascadeQuery = cascadeQuery.eq("inherits_po_status", true);
+    }
+    const { error: cascadeError } = await cascadeQuery;
+    if (!cascadeError) cascadedItems = true;
   }
 
   const updatePayload: Record<string, unknown> = { ...fields };
@@ -137,7 +161,7 @@ export async function PATCH(
 
   // If cascade changed item statuses, roll up BOM qty/status fields only.
   let bomLines = null;
-  if (cascadeItemStatus && item_status) {
+  if (cascadedItems) {
     bomLines = await rollupBomLinesForPo(supabase, poId);
   }
 

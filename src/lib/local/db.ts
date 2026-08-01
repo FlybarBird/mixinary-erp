@@ -965,6 +965,7 @@ function migrate(database: Database.Database) {
       `CREATE TABLE IF NOT EXISTS company_settings (
         id TEXT PRIMARY KEY DEFAULT 'default',
         client_documents_enabled INTEGER NOT NULL DEFAULT 0,
+        label_printer TEXT NOT NULL DEFAULT 'dymo',
         legal_name TEXT,
         address TEXT,
         contact_email TEXT,
@@ -1188,6 +1189,18 @@ function migrate(database: Database.Database) {
     for (const row of ownerBackfill) {
       insertLink.run(randomUUID(), row.id, row.project_id);
     }
+  }
+
+  const companyCols = database
+    .prepare("pragma table_info(company_settings)")
+    .all() as Array<{ name: string }>;
+  if (
+    companyCols.length &&
+    !companyCols.some((c) => c.name === "label_printer")
+  ) {
+    database.exec(
+      "alter table company_settings add column label_printer text not null default 'dymo'",
+    );
   }
 }
 

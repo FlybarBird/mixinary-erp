@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { normalizeLabelPrinterBrand } from "@/lib/labels/rows";
 import type { CompanySettings } from "@/lib/types";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
@@ -8,6 +9,7 @@ export const COMPANY_SETTINGS_ID = "default";
 const DEFAULTS: CompanySettings = {
   id: COMPANY_SETTINGS_ID,
   client_documents_enabled: false,
+  label_printer: "dymo",
   legal_name: null,
   address: null,
   contact_email: null,
@@ -25,6 +27,7 @@ function normalize(row: Record<string, unknown> | null): CompanySettings {
   return {
     id: String(row.id ?? COMPANY_SETTINGS_ID),
     client_documents_enabled: Boolean(row.client_documents_enabled),
+    label_printer: normalizeLabelPrinterBrand(row.label_printer),
     legal_name: (row.legal_name as string | null) ?? null,
     address: (row.address as string | null) ?? null,
     contact_email: (row.contact_email as string | null) ?? null,

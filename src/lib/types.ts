@@ -776,9 +776,13 @@ export interface TemplateLineItem {
  * Client Documents add-on
  * ------------------------------------------------------------------------- */
 
+export type LabelPrinterBrand = "dymo" | "brother";
+
 export interface CompanySettings {
   id: string;
   client_documents_enabled: boolean;
+  /** Warehouse QR label printer brand used by receive/item label printing. */
+  label_printer: LabelPrinterBrand;
   legal_name: string | null;
   address: string | null;
   contact_email: string | null;

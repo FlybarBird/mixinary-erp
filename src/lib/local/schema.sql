@@ -643,6 +643,7 @@ CREATE TABLE IF NOT EXISTS project_subcontract_bills (
 CREATE TABLE IF NOT EXISTS company_settings (
   id TEXT PRIMARY KEY DEFAULT 'default',
   client_documents_enabled INTEGER NOT NULL DEFAULT 0,
+  label_printer TEXT NOT NULL DEFAULT 'dymo',
   legal_name TEXT,
   address TEXT,
   contact_email TEXT,

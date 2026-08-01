@@ -15,7 +15,14 @@ import {
 } from "@/lib/pricing";
 import { useProjectBomSummary } from "@/components/ProjectBomSummaryBar";
 import { CurrencyInput } from "@/components/CurrencyInput";
-import type { PurchaseOrder, PurchaseOrderItem, PoStatus, PoItemStatus, Vendor } from "@/lib/types";
+import type {
+  PurchaseOrder,
+  PurchaseOrderItem,
+  PurchaseOrderProjectLink,
+  PoStatus,
+  PoItemStatus,
+  Vendor,
+} from "@/lib/types";
 
 type BomLineSummary = {
   id: string;
@@ -40,7 +47,19 @@ type OrderRow = PurchaseOrder & {
     contact_name?: string | null;
     contact_email?: string | null;
   } | null;
+  is_owner?: boolean;
+  is_shared?: boolean;
 };
+
+type SplitDialog = {
+  sourcePoId: string;
+  targetPoId: string;
+  itemId: string;
+  maxQty: number;
+  description: string;
+};
+
+type ShareCandidate = { id: string; project_number: string; name: string };
 
 type Props = {
   projectId: string;
@@ -184,6 +203,25 @@ function buildPoOrderEmail(
   const href = `mailto:${to ?? ""}?${parts.join("&")}`;
 
   return { to, cc, subject, body, href };
+}
+
+function DragHandleIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <circle cx="9" cy="6" r="1.5" />
+      <circle cx="15" cy="6" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" />
+      <circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="18" r="1.5" />
+      <circle cx="15" cy="18" r="1.5" />
+    </svg>
+  );
 }
 
 function MailIcon() {
@@ -341,6 +379,16 @@ export function ProcurementView({
   const [newPoDate, setNewPoDate] = useState("");
   const [creatingPo, setCreatingPo] = useState(false);
   const [savingItemIds, setSavingItemIds] = useState<Set<string>>(new Set());
+  const [dragOverPoId, setDragOverPoId] = useState<string | null>(null);
+  const [splitDialog, setSplitDialog] = useState<SplitDialog | null>(null);
+  const [splitQty, setSplitQty] = useState("");
+  const [moving, setMoving] = useState(false);
+  const [renumberValue, setRenumberValue] = useState("");
+  const [renumbering, setRenumbering] = useState(false);
+  const [poLinks, setPoLinks] = useState<PurchaseOrderProjectLink[]>([]);
+  const [shareCandidates, setShareCandidates] = useState<ShareCandidate[]>([]);
+  const [shareProjectId, setShareProjectId] = useState("");
+  const [sharingBusy, setSharingBusy] = useState(false);
 
   const notOrderedCount = bomLineState.filter(
     (l) => l.procurement_status === "not_ordered" || l.procurement_status === "partially_ordered",
@@ -409,7 +457,37 @@ export function ProcurementView({
       return next;
     });
 
-  const openPoEdit = (po: (typeof orders)[0]) => {
+  const lineAllocations = useMemo(() => {
+    const map = new Map<string, { total: number; byPo: Map<string, number> }>();
+    for (const po of orders) {
+      for (const item of po.items) {
+        if (!item.line_item_id) continue;
+        const qty = Number(item.qty_ordered || 0);
+        if (!map.has(item.line_item_id)) {
+          map.set(item.line_item_id, { total: 0, byPo: new Map() });
+        }
+        const entry = map.get(item.line_item_id)!;
+        entry.total += qty;
+        entry.byPo.set(po.id, (entry.byPo.get(po.id) || 0) + qty);
+      }
+    }
+    return map;
+  }, [orders]);
+
+  const loadPoLinks = useCallback(
+    async (poId: string) => {
+      const res = await fetch(
+        `/api/projects/${projectId}/purchase-orders/${poId}/links`,
+      );
+      if (!res.ok) return;
+      const json = await res.json();
+      setPoLinks((json.data ?? []) as PurchaseOrderProjectLink[]);
+      setShareCandidates((json.shareCandidates ?? []) as ShareCandidate[]);
+    },
+    [projectId],
+  );
+
+  const openPoEdit = (po: OrderRow) => {
     setEditingPo(po);
     setEditFields({
       status: po.status,
@@ -419,7 +497,183 @@ export function ProcurementView({
       shipping: Number(po.shipping || 0),
       tax: Number(po.tax || 0),
     });
+    setRenumberValue(po.po_number);
+    setShareProjectId("");
+    void loadPoLinks(po.id);
   };
+
+  const moveItem = useCallback(
+    async (args: {
+      sourcePoId: string;
+      targetPoId: string;
+      itemId: string;
+      qty?: number | null;
+    }) => {
+      setMoving(true);
+      try {
+        const res = await fetch(
+          `/api/projects/${projectId}/purchase-orders/${args.sourcePoId}/items/${args.itemId}/move`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              target_po_id: args.targetPoId,
+              qty: args.qty,
+            }),
+          },
+        );
+        if (!res.ok) {
+          const err = await res.json();
+          alert(err.error ?? "Failed to move item");
+          return;
+        }
+        await reloadOrders();
+        router.refresh();
+      } finally {
+        setMoving(false);
+        setSplitDialog(null);
+        setDragOverPoId(null);
+      }
+    },
+    [projectId, reloadOrders, router],
+  );
+
+  const beginDrop = useCallback(
+    (targetPoId: string, payload: {
+      sourcePoId: string;
+      itemId: string;
+      qtyOrdered: number;
+      description: string;
+    }) => {
+      if (!canEdit) return;
+      if (payload.sourcePoId === targetPoId) return;
+      if (payload.qtyOrdered > 1) {
+        setSplitDialog({
+          sourcePoId: payload.sourcePoId,
+          targetPoId,
+          itemId: payload.itemId,
+          maxQty: payload.qtyOrdered,
+          description: payload.description,
+        });
+        setSplitQty(String(payload.qtyOrdered));
+        return;
+      }
+      void moveItem({
+        sourcePoId: payload.sourcePoId,
+        targetPoId,
+        itemId: payload.itemId,
+      });
+    },
+    [canEdit, moveItem],
+  );
+
+  const renumberPo = useCallback(async () => {
+    if (!editingPo) return;
+    const next = renumberValue.trim();
+    if (!next || next === editingPo.po_number) return;
+    const previewRes = await fetch(
+      `/api/projects/${projectId}/purchase-orders/${editingPo.id}/renumber`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ po_number: next, preview: true }),
+      },
+    );
+    if (!previewRes.ok) {
+      const err = await previewRes.json();
+      alert(err.error ?? "Preview failed");
+      return;
+    }
+    const preview = await previewRes.json();
+    if (preview.data?.clash) {
+      alert(`PO number ${next} is already in use`);
+      return;
+    }
+    if (
+      !confirm(
+        `Renumber ${preview.data.before} → ${preview.data.after}? References and history are preserved.`,
+      )
+    ) {
+      return;
+    }
+    setRenumbering(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/purchase-orders/${editingPo.id}/renumber`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ po_number: next }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error ?? "Renumber failed");
+        return;
+      }
+      const { data } = await res.json();
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === editingPo.id ? { ...o, po_number: data.after } : o,
+        ),
+      );
+      setEditingPo((prev) =>
+        prev ? { ...prev, po_number: data.after } : prev,
+      );
+      router.refresh();
+    } finally {
+      setRenumbering(false);
+    }
+  }, [editingPo, renumberValue, projectId, router]);
+
+  const sharePo = useCallback(async () => {
+    if (!editingPo || !shareProjectId) return;
+    setSharingBusy(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/purchase-orders/${editingPo.id}/links`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: shareProjectId }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error ?? "Share failed");
+        return;
+      }
+      setShareProjectId("");
+      await loadPoLinks(editingPo.id);
+      await reloadOrders();
+    } finally {
+      setSharingBusy(false);
+    }
+  }, [editingPo, shareProjectId, projectId, loadPoLinks, reloadOrders]);
+
+  const unsharePo = useCallback(
+    async (linkedProjectId: string) => {
+      if (!editingPo) return;
+      if (!confirm("Remove this project’s access to the shared PO?")) return;
+      setSharingBusy(true);
+      try {
+        const res = await fetch(
+          `/api/projects/${projectId}/purchase-orders/${editingPo.id}/links?project_id=${encodeURIComponent(linkedProjectId)}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) {
+          const err = await res.json();
+          alert(err.error ?? "Unshare failed");
+          return;
+        }
+        await loadPoLinks(editingPo.id);
+        await reloadOrders();
+      } finally {
+        setSharingBusy(false);
+      }
+    },
+    [editingPo, projectId, loadPoLinks, reloadOrders],
+  );
 
   const savePo = useCallback(async () => {
     if (!editingPo) return;
@@ -688,14 +942,45 @@ export function ProcurementView({
               <div style={{ padding: "0.5rem 0.75rem" }}>
                 {vOrders.map((po) => {
                   const poEcon = livePoEconomics(po, bomById, defaultOverridePct);
+                  const dropActive = dragOverPoId === po.id;
                   return (
                   <div
                     key={po.id}
+                    onDragOver={(e) => {
+                      if (!canEdit) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      setDragOverPoId(po.id);
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                      setDragOverPoId((cur) => (cur === po.id ? null : cur));
+                    }}
+                    onDrop={(e) => {
+                      if (!canEdit) return;
+                      e.preventDefault();
+                      try {
+                        const raw = e.dataTransfer.getData("application/x-po-item");
+                        if (!raw) return;
+                        const payload = JSON.parse(raw) as {
+                          sourcePoId: string;
+                          itemId: string;
+                          qtyOrdered: number;
+                          description: string;
+                        };
+                        beginDrop(po.id, payload);
+                      } catch {
+                        // ignore malformed drag payloads
+                      }
+                    }}
                     style={{
                       marginBottom: "1rem",
-                      border: "1px solid var(--line)",
+                      border: dropActive
+                        ? "2px solid var(--accent)"
+                        : "1px solid var(--line)",
                       borderRadius: "var(--radius-sm)",
                       overflow: "hidden",
+                      background: dropActive ? "var(--accent-soft)" : undefined,
                     }}
                   >
                     {/* PO header row */}
@@ -710,6 +995,26 @@ export function ProcurementView({
                       }}
                     >
                       <strong style={{ minWidth: 80 }}>{po.po_number}</strong>
+                      {po.is_shared ? (
+                        <span
+                          className="badge"
+                          style={{
+                            background: "var(--bg)",
+                            border: "1px solid var(--line)",
+                            borderRadius: "var(--radius-sm)",
+                            padding: "0.1rem 0.45rem",
+                            fontSize: "0.7rem",
+                            color: "var(--muted)",
+                          }}
+                          title={
+                            po.is_owner === false
+                              ? "Shared from another project"
+                              : "Shared with other projects"
+                          }
+                        >
+                          {po.is_owner === false ? "Shared in" : "Shared"}
+                        </span>
+                      ) : null}
                       <span
                         className="badge"
                         style={{
@@ -806,13 +1111,15 @@ export function ProcurementView({
                           <button className="btn btn-ghost" onClick={() => openPoEdit(po)}>
                             Edit
                           </button>
-                          <button
-                            className="btn btn-ghost"
-                            style={{ color: "var(--danger)" }}
-                            onClick={() => deletePo(po.id)}
-                          >
-                            Delete
-                          </button>
+                          {po.is_owner !== false && (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ color: "var(--danger)" }}
+                              onClick={() => deletePo(po.id)}
+                            >
+                              Delete
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -823,6 +1130,7 @@ export function ProcurementView({
                         <table className="bom-table data-table" style={{ fontSize: "0.8rem" }}>
                           <thead>
                             <tr>
+                              {canEdit ? <th style={{ width: 28 }} aria-label="Move" /> : null}
                               <th style={{ textAlign: "left", padding: "0.3rem 0.5rem" }}>Description</th>
                               <th>SKU</th>
                               <th>Qty Ord</th>
@@ -860,15 +1168,63 @@ export function ProcurementView({
                               const displayMargin = liveLine.margin_pct;
                               const saving = savingItemIds.has(item.id);
                               const canTouchLine = canEdit || canReceive;
+                              const alloc = item.line_item_id
+                                ? lineAllocations.get(item.line_item_id)
+                                : undefined;
+                              const allocNote =
+                                alloc && alloc.byPo.size > 1
+                                  ? `${qtyOrdered} here · ${alloc.total} across ${alloc.byPo.size} POs`
+                                  : null;
 
                               return (
                                 <tr
                                   key={item.id}
-                                  style={{ opacity: saving ? 0.65 : 1 }}
+                                  style={{ opacity: saving || moving ? 0.65 : 1 }}
                                 >
+                                  {canEdit ? (
+                                    <td style={{ textAlign: "center", cursor: "grab", color: "var(--muted)" }}>
+                                      <span
+                                        draggable
+                                        title="Drag to another PO (set qty in dialog to split)"
+                                        onDragStart={(e) => {
+                                          e.dataTransfer.setData(
+                                            "application/x-po-item",
+                                            JSON.stringify({
+                                              sourcePoId: po.id,
+                                              itemId: item.id,
+                                              qtyOrdered,
+                                              description: item.description,
+                                            }),
+                                          );
+                                          e.dataTransfer.effectAllowed = "move";
+                                        }}
+                                        style={{
+                                          display: "inline-flex",
+                                          padding: "0.2rem",
+                                          userSelect: "none",
+                                        }}
+                                      >
+                                        <DragHandleIcon />
+                                      </span>
+                                    </td>
+                                  ) : null}
                                   <td style={{ padding: "0.3rem 0.5rem" }}>{item.description}</td>
                                   <td style={{ textAlign: "center" }}>{item.sku || "—"}</td>
-                                  <td style={{ textAlign: "center" }}>{qtyOrdered}</td>
+                                  <td style={{ textAlign: "center" }}>
+                                    <div>{qtyOrdered}</div>
+                                    {allocNote ? (
+                                      <div
+                                        style={{
+                                          fontSize: "0.65rem",
+                                          color: "var(--muted)",
+                                          lineHeight: 1.2,
+                                        }}
+                                        title="Quantity allocated across purchase orders"
+                                      >
+                                        {allocNote}
+                                      </div>
+                                    ) : null}
+                                  </td>
                                   <td style={{ textAlign: "right" }}>
                                     <CurrencyInput
                                       value={Number(item.unit_price || 0)}
@@ -1067,6 +1423,30 @@ export function ProcurementView({
             </div>
             <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
               <label>
+                <div className="label">PO number</div>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    className="field"
+                    value={renumberValue}
+                    onChange={(e) => setRenumberValue(e.target.value)}
+                    disabled={renumbering}
+                  />
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={
+                      renumbering ||
+                      !renumberValue.trim() ||
+                      renumberValue.trim() === editingPo.po_number
+                    }
+                    onClick={() => void renumberPo()}
+                  >
+                    {renumbering ? "…" : "Renumber"}
+                  </button>
+                </div>
+              </label>
+
+              <label>
                 <div className="label">Status</div>
                 <select
                   className="field"
@@ -1086,6 +1466,75 @@ export function ProcurementView({
                 Override a line’s status (or uncheck Inherit) to keep an item
                 exception such as backordered.
               </p>
+
+              {editingPo.is_owner !== false ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <div className="label">Shared with projects</div>
+                  {poLinks.filter((l) => !l.is_owner).length === 0 ? (
+                    <p className="page-sub" style={{ margin: 0, fontSize: "0.8rem" }}>
+                      Not shared. Linked projects can view and edit this PO.
+                    </p>
+                  ) : (
+                    <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.85rem" }}>
+                      {poLinks
+                        .filter((l) => !l.is_owner)
+                        .map((l) => (
+                          <li
+                            key={l.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              marginBottom: "0.25rem",
+                            }}
+                          >
+                            <span>
+                              {l.project
+                                ? `${l.project.project_number} — ${l.project.name}`
+                                : l.project_id}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ color: "var(--danger)", fontSize: "0.75rem" }}
+                              disabled={sharingBusy}
+                              onClick={() => void unsharePo(l.project_id)}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <select
+                      className="field"
+                      value={shareProjectId}
+                      onChange={(e) => setShareProjectId(e.target.value)}
+                      disabled={sharingBusy}
+                    >
+                      <option value="">Share with project…</option>
+                      {shareCandidates.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.project_number} — {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={!shareProjectId || sharingBusy}
+                      onClick={() => void sharePo()}
+                    >
+                      Share
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="page-sub" style={{ margin: 0, fontSize: "0.8rem" }}>
+                  This PO is owned by another project. Edits apply everywhere it is shared.
+                </p>
+              )}
 
               <label>
                 <div className="label">Expected Delivery</div>
@@ -1203,6 +1652,78 @@ export function ProcurementView({
                   {creatingPo ? "Creating…" : "Create"}
                 </button>
                 <button className="btn" onClick={() => setShowNewPo(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {splitDialog && (
+        <>
+          <div
+            className="side-panel-backdrop"
+            onClick={() => !moving && setSplitDialog(null)}
+          />
+          <div className="side-panel">
+            <div style={{ padding: "1rem", borderBottom: "1px solid var(--line)" }}>
+              <strong>Move / split quantity</strong>
+              <button
+                className="btn btn-ghost"
+                style={{ float: "right" }}
+                disabled={moving}
+                onClick={() => setSplitDialog(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <p className="page-sub" style={{ margin: 0, fontSize: "0.85rem" }}>
+                {splitDialog.description}
+              </p>
+              <p className="page-sub" style={{ margin: 0, fontSize: "0.8rem" }}>
+                Enter how many units to move to the target PO. Use the full
+                quantity to move the whole line.
+              </p>
+              <label>
+                <div className="label">Quantity to move (max {splitDialog.maxQty})</div>
+                <input
+                  type="number"
+                  className="field"
+                  min={1}
+                  max={splitDialog.maxQty}
+                  step="any"
+                  value={splitQty}
+                  onChange={(e) => setSplitQty(e.target.value)}
+                  disabled={moving}
+                />
+              </label>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  className="btn btn-primary"
+                  disabled={moving}
+                  onClick={() => {
+                    const qty = Number(splitQty);
+                    if (!(qty > 0) || qty > splitDialog.maxQty) {
+                      alert("Enter a valid quantity");
+                      return;
+                    }
+                    void moveItem({
+                      sourcePoId: splitDialog.sourcePoId,
+                      targetPoId: splitDialog.targetPoId,
+                      itemId: splitDialog.itemId,
+                      qty: qty >= splitDialog.maxQty ? null : qty,
+                    });
+                  }}
+                >
+                  {moving ? "Moving…" : "Move"}
+                </button>
+                <button
+                  className="btn"
+                  disabled={moving}
+                  onClick={() => setSplitDialog(null)}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>

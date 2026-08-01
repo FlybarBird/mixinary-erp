@@ -12,6 +12,7 @@ import {
   suggestPoStatus,
 } from "@/lib/projects/procurement";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
+import { projectCanAccessPo } from "@/lib/projects/po-move";
 
 export async function PATCH(
   request: Request,
@@ -37,11 +38,14 @@ export async function PATCH(
 
   const supabase = await createClient();
 
+  if (!(await projectCanAccessPo(supabase, projectId, poId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const { data: existing } = await supabase
     .from("purchase_orders")
     .select("*, items:purchase_order_items(*)")
     .eq("id", poId)
-    .eq("project_id", projectId)
     .maybeSingle();
 
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -133,7 +137,6 @@ export async function PATCH(
     .from("purchase_orders")
     .update(updatePayload)
     .eq("id", poId)
-    .eq("project_id", projectId)
     .select()
     .maybeSingle();
 
@@ -149,7 +152,7 @@ export async function PATCH(
 
   if (newStatus && newStatus !== prevStatus) {
     await writeAuditEvent(supabase, {
-      projectId,
+      projectId: existing.project_id,
       entityType: "purchase_order",
       entityId: poId,
       action: "status_change",
@@ -198,6 +201,19 @@ export async function DELETE(
   }
 
   const supabase = await createClient();
+
+  const { data: existing } = await supabase
+    .from("purchase_orders")
+    .select("id, project_id")
+    .eq("id", poId)
+    .maybeSingle();
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (existing.project_id !== projectId) {
+    return NextResponse.json(
+      { error: "Only the owning project can delete this PO" },
+      { status: 403 },
+    );
+  }
 
   // Collect linked BOM lines before delete, then roll up after items are gone.
   const { data: items } = await supabase

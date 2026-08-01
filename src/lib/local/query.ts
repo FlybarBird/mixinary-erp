@@ -27,6 +27,8 @@ const BOOL_FIELDS: Record<string, string[]> = {
   projects: ["labor_burden_enabled"],
   company_settings: ["client_documents_enabled"],
   client_document_blocks: ["hidden"],
+  purchase_order_items: ["inherits_po_status"],
+  purchase_order_project_links: ["is_owner"],
 };
 
 function decodeRow(table: string, row: Row | undefined): Row | null {

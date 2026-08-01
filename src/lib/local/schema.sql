@@ -311,6 +311,15 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   UNIQUE (project_id, po_number)
 );
 
+CREATE TABLE IF NOT EXISTS purchase_order_project_links (
+  id TEXT PRIMARY KEY,
+  po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  is_owner INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (po_id, project_id)
+);
+
 CREATE TABLE IF NOT EXISTS purchase_order_items (
   id TEXT PRIMARY KEY,
   po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
@@ -725,6 +734,8 @@ CREATE INDEX IF NOT EXISTS client_document_signatures_document_idx ON client_doc
 
 CREATE INDEX IF NOT EXISTS purchase_orders_project_idx ON purchase_orders(project_id);
 CREATE INDEX IF NOT EXISTS purchase_order_items_po_idx ON purchase_order_items(po_id);
+CREATE INDEX IF NOT EXISTS purchase_order_project_links_project_idx ON purchase_order_project_links(project_id);
+CREATE INDEX IF NOT EXISTS purchase_order_project_links_po_idx ON purchase_order_project_links(po_id);
 CREATE INDEX IF NOT EXISTS labor_entries_project_idx ON labor_entries(project_id);
 CREATE INDEX IF NOT EXISTS project_expenses_project_idx ON project_expenses(project_id);
 CREATE INDEX IF NOT EXISTS project_cost_ledger_project_idx ON project_cost_ledger(project_id);

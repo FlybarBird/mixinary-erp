@@ -2770,14 +2770,21 @@ tr.status-row--on-site.drag-over-after > td {
   margin-top: 0.1rem;
 }
 
+/* Label browser-print — activated via body.printing-qr-labels from QrLabelSheet.
+   IMPORTANT: labels live under .main > .stack > .qr-label-sheet, so never hide
+   .main's direct child wholesale (that blanked the print page). */
 @media print {
+  body.printing-qr-labels {
+    background: #fff !important;
+  }
+
+  body.printing-qr-labels .qr-label-sheet[data-printer="dymo"] {
+    /* DYMO 1.8×3.1 stock */
+  }
+
   @page {
     size: 3.1in 1.8in;
     margin: 0;
-  }
-
-  .qr-label-sheet[data-printer="brother"] {
-    /* Prefer Brother PDF print path; browser fallback uses 62×46mm. */
   }
 
   @page brother-label {
@@ -2785,35 +2792,53 @@ tr.status-row--on-site.drag-over-after > td {
     margin: 0;
   }
 
-  .no-print,
-  .shell,
-  .project-workspace-nav,
-  .shell-tabs,
-  .main > :not(.qr-label-sheet) {
+  body.printing-qr-labels html,
+  body.printing-qr-labels,
+  body.printing-qr-labels .app-shell,
+  body.printing-qr-labels .main,
+  body.printing-qr-labels .stack {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.printing-qr-labels .no-print,
+  body.printing-qr-labels .shell,
+  body.printing-qr-labels .shell-tabs,
+  body.printing-qr-labels .project-workspace-nav,
+  body.printing-qr-labels .project-bom-summary,
+  body.printing-qr-labels .app-shell > :not(.main),
+  body.printing-qr-labels .stack > :not(.qr-label-sheet) {
     display: none !important;
   }
 
-  .main {
+  body.printing-qr-labels .main {
     padding: 0 !important;
+    margin: 0 !important;
     overflow: visible !important;
   }
 
-  .qr-label-sheet {
+  body.printing-qr-labels .qr-label-sheet {
+    display: block !important;
+    visibility: visible !important;
     margin: 0;
     padding: 0;
   }
 
-  .qr-label-grid {
+  body.printing-qr-labels .qr-label-grid {
     display: block;
   }
 
-  .qr-label-sheet[data-printer="brother"] .qr-label-card {
+  body.printing-qr-labels
+    .qr-label-sheet[data-printer="brother"]
+    .qr-label-card {
     width: 62mm;
     height: 46mm;
     page: brother-label;
   }
 
-  .qr-label-card {
+  body.printing-qr-labels .qr-label-card {
     width: 3.1in;
     height: 1.8in;
     max-width: none;
@@ -2824,11 +2849,18 @@ tr.status-row--on-site.drag-over-after > td {
     page-break-after: always;
     break-after: page;
     box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  .qr-label-card:last-child {
+  body.printing-qr-labels .qr-label-card:last-child {
     page-break-after: auto;
     break-after: auto;
+  }
+
+  body.printing-qr-labels .qr-label-card img {
+    display: block !important;
+    visibility: visible !important;
   }
 }
 

@@ -322,3 +322,28 @@ export const PO_ITEM_STATUSES: PoItemStatus[] = [
 export function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+/**
+ * Map a PO-level status to the item status that inheriting lines should receive.
+ * Aggregate / non-cascading PO statuses return null (no item update).
+ */
+export function mapPoStatusToItemStatus(poStatus: string): PoItemStatus | null {
+  switch (poStatus) {
+    case "draft":
+    case "ready_to_order":
+      return "not_ordered";
+    case "ordered":
+      return "ordered";
+    case "confirmed":
+      return "confirmed";
+    case "shipped":
+      return "shipped";
+    case "received":
+      return "received";
+    case "cancelled":
+      return "cancelled";
+    default:
+      // partially_*, on_hold, closed — do not overwrite per-item nuance
+      return null;
+  }
+}

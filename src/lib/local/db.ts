@@ -1133,6 +1133,18 @@ function migrate(database: Database.Database) {
       );
     `);
   }
+
+  const poItemInheritCols = database
+    .prepare("pragma table_info(purchase_order_items)")
+    .all() as Array<{ name: string }>;
+  if (
+    poItemInheritCols.length &&
+    !poItemInheritCols.some((c) => c.name === "inherits_po_status")
+  ) {
+    database.exec(
+      "alter table purchase_order_items add column inherits_po_status integer not null default 1",
+    );
+  }
 }
 
 export function getLocalDb() {

@@ -333,6 +333,7 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
   qty_shipped REAL NOT NULL DEFAULT 0,
   qty_received REAL NOT NULL DEFAULT 0,
   item_status TEXT NOT NULL DEFAULT 'not_ordered',
+  inherits_po_status INTEGER NOT NULL DEFAULT 1,
   carrier_id TEXT REFERENCES carriers(id),
   tracking_number TEXT,
   tracking_url TEXT,

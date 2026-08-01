@@ -7,10 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/pricing.test.ts src/lib/suite/apps.test.ts src/lib/projects/procurement.test.ts src/lib/projects/po-move.test.ts && npm --prefix services/project-management test && npm --prefix services/integration test && npm --prefix services/shared-files test",
-    "seed:local": "node scripts/seed-local.mjs"
+    "test": "node --import tsx --test src/lib/pricing.test.ts packages/domain/src/pricing.test.ts packages/domain/src/labels.test.ts src/lib/suite/apps.test.ts src/lib/projects/procurement.test.ts src/lib/projects/po-move.test.ts && npm --prefix services/project-management test && npm --prefix services/integration test && npm --prefix services/shared-files test",
+    "seed:local": "node scripts/seed-local.mjs",
+    "ipad": "npm --prefix apps/ipad start"
   },
   "dependencies": {
+    "@mixinary/domain": "file:packages/domain",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
     "bcryptjs": "^3.0.3",

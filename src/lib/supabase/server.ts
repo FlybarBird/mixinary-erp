@@ -4,15 +4,42 @@ import { cookies } from "next/headers";
 import { isLocalMode } from "@/lib/local/db";
 import { createLocalClient } from "@/lib/local/query";
 import { getLocalSessionUserId } from "@/lib/local/session";
+import { getBearerAccessToken } from "@/lib/supabase/request-auth";
 
 export async function createClient() {
   if (isLocalMode()) {
-    const userId = await getLocalSessionUserId();
+    // Native / API clients may send Bearer <userId> in local mode.
+    const bearer = await getBearerAccessToken();
+    const userId = bearer ?? (await getLocalSessionUserId());
     return createLocalClient(userId) as unknown as Awaited<
       ReturnType<typeof createSupabaseServer>
     >;
   }
+
+  const bearer = await getBearerAccessToken();
+  if (bearer) {
+    return createSupabaseBearerClient(bearer);
+  }
   return createSupabaseServer();
+}
+
+/** User-scoped Supabase client for native apps (JWT access token). */
+function createSupabaseBearerClient(accessToken: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error("Missing Supabase configuration");
+  }
+  return createSupabaseClient(url, key, {
+    global: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
 }
 
 async function createSupabaseServer() {

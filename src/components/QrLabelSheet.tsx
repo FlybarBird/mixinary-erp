@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import {
+  buildLabelPrintRows,
+  buildReceiveQrUrl,
+  BROTHER_LABEL,
+  MAX_LABELS,
+  type LabelMode,
+} from "@mixinary/domain";
+import {
   initDymo,
   listLabelWriters,
   printLabels,
@@ -13,7 +20,7 @@ import {
 } from "@/lib/dymo/client";
 import { buildDymoLabelXml } from "@/lib/dymo/label-xml";
 
-export type LabelMode = "receive" | "item";
+export type { LabelMode };
 
 export type LabelItem = {
   id: string;
@@ -21,18 +28,6 @@ export type LabelItem = {
   sku: string | null;
   qty_ordered: number;
 };
-
-type PrintRow = {
-  key: string;
-  itemId: string;
-  description: string;
-  sku: string | null;
-  qtyOrdered: number;
-  pieceIndex: number | null;
-  pieceTotal: number | null;
-};
-
-const MAX_LABELS = 200;
 
 type Props = {
   projectId: string;
@@ -64,46 +59,10 @@ export function QrLabelSheet({
   const [printing, setPrinting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const { rows, truncated } = useMemo(() => {
-    const next: PrintRow[] = [];
-    let cut = false;
-    for (const item of items) {
-      if (mode === "receive") {
-        if (next.length >= MAX_LABELS) {
-          cut = true;
-          break;
-        }
-        next.push({
-          key: item.id,
-          itemId: item.id,
-          description: item.description,
-          sku: item.sku,
-          qtyOrdered: item.qty_ordered,
-          pieceIndex: null,
-          pieceTotal: null,
-        });
-        continue;
-      }
-      const total = Math.max(1, Math.floor(Number(item.qty_ordered) || 0));
-      for (let i = 1; i <= total; i++) {
-        if (next.length >= MAX_LABELS) {
-          cut = true;
-          break;
-        }
-        next.push({
-          key: `${item.id}-${i}`,
-          itemId: item.id,
-          description: item.description,
-          sku: item.sku,
-          qtyOrdered: item.qty_ordered,
-          pieceIndex: i,
-          pieceTotal: total,
-        });
-      }
-      if (cut) break;
-    }
-    return { rows: next, truncated: cut };
-  }, [items, mode]);
+  const { rows, truncated } = useMemo(
+    () => buildLabelPrintRows(items, mode),
+    [items, mode],
+  );
 
   const itemIds = useMemo(
     () => Array.from(new Set(rows.map((r) => r.itemId))),
@@ -116,7 +75,11 @@ export function QrLabelSheet({
     async function run() {
       const next: Record<string, string> = {};
       for (const id of itemIds) {
-        const url = `${origin}/projects/${projectId}/receive?item=${id}`;
+        const url = buildReceiveQrUrl({
+          origin,
+          projectId,
+          itemId: id,
+        });
         next[id] = await QRCode.toDataURL(url, {
           margin: 1,
           width: 280,
@@ -172,6 +135,19 @@ export function QrLabelSheet({
 
   function modeHref(next: LabelMode) {
     return `/projects/${projectId}/receive/labels?po=${poId}&mode=${next}`;
+  }
+
+  function printViaBrowser() {
+    const root = document.documentElement;
+    root.classList.add("printing-labels");
+    const cleanup = () => {
+      root.classList.remove("printing-labels");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    // Some browsers fire afterprint unreliably — also clear on a timer.
+    window.setTimeout(cleanup, 60_000);
+    window.print();
   }
 
   async function printWithDymo() {
@@ -271,7 +247,7 @@ export function QrLabelSheet({
           type="button"
           className="btn"
           disabled={!rows.length}
-          onClick={() => window.print()}
+          onClick={() => printViaBrowser()}
           title="Fallback when DYMO Connect is unavailable"
         >
           Print via browser…
@@ -313,7 +289,17 @@ export function QrLabelSheet({
           {dymoMessage}
         </span>
         <span className="muted" style={{ fontSize: "0.8rem" }}>
-          Stock: DYMO 1-4/5″ × 3-1/10″ (1.8″ × 3.1″). Requires DYMO Connect.
+          Desktop: DYMO 1.8″ × 3.1″ via DYMO Connect. iPad app uses Brother QL
+          {" "}
+          {BROTHER_LABEL.widthMm}mm ({BROTHER_LABEL.recommendedModels.join(" / ")})
+          {" "}
+          — PDF also at{" "}
+          <Link
+            href={`/api/projects/${projectId}/labels/pdf?po=${poId}&mode=${mode}`}
+          >
+            Brother PDF
+          </Link>
+          .
         </span>
       </div>
 

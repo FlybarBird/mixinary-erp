@@ -31,6 +31,60 @@ async function requireProjectEditor(projectId: string) {
   return { profile };
 }
 
+/** Project detail for native / API clients. */
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await canAccessProject(profile.id, profile.role, id))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const supabase = await createClient();
+  const access = await getProjectAccessRole(profile.id, profile.role, id);
+  const { data, error } = await supabase
+    .from("projects")
+    .select(
+      `id, project_number, name, status, client_id, project_manager_id,
+       default_override_pct, material_budget, labor_budget, expense_budget,
+       subcontractor_budget, overhead_budget, original_revenue, revenue_additions,
+       revenue_credits, start_date, target_completion_date, percent_complete,
+       labor_burden_enabled, default_burden_pct, notes, updated_at,
+       clients(id, name)`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const client = Array.isArray(data.clients) ? data.clients[0] : data.clients;
+  const { clients: _clients, ...project } = data;
+
+  return NextResponse.json({
+    project: {
+      ...project,
+      client_name: (client as { name?: string } | null)?.name ?? null,
+    },
+    access_role: access,
+    can_edit: canEditProjectContent(
+      profile.role,
+      access,
+      canEditBom(profile.role),
+    ),
+    can_view_financials: canViewFinancials(profile.role),
+  });
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },

@@ -24,6 +24,12 @@ Web-based multi-user ERP for Mixinary AVL installs. Replaces the master project-
 
 Mixinary logos from the shared Logo Package live in `public/brand/`.
 
+## Native iPad client
+
+Expo app in [`apps/ipad`](./apps/ipad) authenticates with Supabase and calls this
+API using Bearer JWTs. Shared domain logic lives in [`packages/domain`](./packages/domain).
+See [docs/ipad-native.md](./docs/ipad-native.md).
+
 ## Quick start
 
 See [DEPLOY.md](./DEPLOY.md) for Supabase + Vercel, SMTP branding, SSO, and project ACLs.
@@ -41,3 +47,5 @@ Empty databases open **`/setup`** to create the first administrator. Manage user
 - `npm run dev` — local app
 - `npm run build` — production build
 - `npm test` — pricing formula unit tests
+- `npm run ipad` — start Expo iPad client (`apps/ipad`)
+- `npm run seed:local` — seed local SQLite (if used)

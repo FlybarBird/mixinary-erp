@@ -1,9 +1,68 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, canManageProjects } from "@/lib/auth";
-import { addProjectMember } from "@/lib/project-access";
+import { addProjectMember, listAccessibleProjectIds } from "@/lib/project-access";
 import { allocateNextProjectNumber } from "@/lib/projects/numbering";
 import { enqueueErpOutbox } from "@/lib/integration/outbox";
+import type { ProjectStatus } from "@/lib/types";
+
+/** List projects accessible to the current user (cookie or Bearer JWT). */
+export async function GET(request: Request) {
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const statusFilter = searchParams.get("status");
+  const showArchived = statusFilter === "archived";
+  const showAll = statusFilter === "all";
+
+  const supabase = await createClient();
+  const accessible = await listAccessibleProjectIds(profile.id, profile.role);
+
+  let projectsQuery = supabase
+    .from("projects")
+    .select(
+      "id, project_number, name, status, default_override_pct, client_id, clients(id, name)",
+    )
+    .order("project_number", { ascending: false });
+
+  if (accessible !== "all") {
+    if (accessible.length === 0) {
+      projectsQuery = projectsQuery.eq("id", "__none__");
+    } else {
+      projectsQuery = projectsQuery.in("id", accessible);
+    }
+  }
+
+  if (showArchived) {
+    projectsQuery = projectsQuery.eq("status", "archived");
+  } else if (!showAll) {
+    projectsQuery = projectsQuery.neq("status", "archived");
+  }
+
+  const { data: projects, error } = await projectsQuery;
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({
+    projects: (projects ?? []).map((p) => {
+      const client = Array.isArray(p.clients) ? p.clients[0] : p.clients;
+      return {
+        id: p.id,
+        project_number: p.project_number,
+        name: p.name,
+        status: p.status as ProjectStatus,
+        default_override_pct: p.default_override_pct,
+        client_id: p.client_id,
+        client_name: (client as { name?: string } | null)?.name ?? null,
+      };
+    }),
+    can_manage: canManageProjects(profile.role),
+  });
+}
 
 export async function POST(request: Request) {
   const profile = await getCurrentProfile();

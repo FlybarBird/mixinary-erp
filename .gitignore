@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/apps/**/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -33,6 +34,7 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+!apps/ipad/.env.example
 
 # local database / uploads
 .data/
@@ -43,6 +45,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# expo
+apps/ipad/.expo/
+apps/ipad/dist/
+apps/ipad/ios/
+apps/ipad/android/
 
 # suite services
 services/**/node_modules/

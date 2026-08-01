@@ -2771,17 +2771,43 @@ tr.status-row--on-site.drag-over-after > td {
     margin: 0;
   }
 
-  .no-print,
-  .shell,
-  .project-workspace-nav,
-  .shell-tabs,
-  .main > :not(.qr-label-sheet) {
+  .no-print {
     display: none !important;
   }
 
-  .main {
+  /*
+   * Labels live inside the project layout (.stack), not as a direct .main child.
+   * The old `.main > :not(.qr-label-sheet)` rule hid the whole layout → blank page.
+   */
+  html.printing-labels .shell,
+  html.printing-labels .notifications-dock,
+  html.printing-labels .ai-dock,
+  body:has(.qr-label-sheet) .shell,
+  body:has(.qr-label-sheet) .notifications-dock,
+  body:has(.qr-label-sheet) .ai-dock,
+  html.printing-labels .project-workspace-nav,
+  html.printing-labels .project-bom-summary,
+  body:has(.qr-label-sheet) .project-workspace-nav,
+  body:has(.qr-label-sheet) .project-bom-summary,
+  html.printing-labels .main .stack > :not(.qr-label-sheet),
+  body:has(.qr-label-sheet) .main .stack > :not(.qr-label-sheet) {
+    display: none !important;
+  }
+
+  html.printing-labels .app-shell,
+  html.printing-labels .main,
+  html.printing-labels .main .stack,
+  body:has(.qr-label-sheet) .app-shell,
+  body:has(.qr-label-sheet) .main,
+  body:has(.qr-label-sheet) .main .stack {
+    display: block !important;
     padding: 0 !important;
+    margin: 0 !important;
     overflow: visible !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    background: #fff !important;
   }
 
   .qr-label-sheet {
@@ -2804,6 +2830,13 @@ tr.status-row--on-site.drag-over-after > td {
     page-break-after: always;
     break-after: page;
     box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .qr-label-card img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .qr-label-card:last-child {

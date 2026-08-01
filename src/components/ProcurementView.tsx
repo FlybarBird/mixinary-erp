@@ -1259,63 +1259,94 @@ export function ProcurementView({
 
                                   <td style={{ textAlign: "center" }}>
                                     {canTouchLine ? (
-                                      <div
+                                      (() => {
+                                        const inheriting =
+                                          item.inherits_po_status !== false;
+                                        const statusLabel = formatStatusLabel(
+                                          item.item_status,
+                                        );
+                                        return (
+                                          <select
+                                            className="field"
+                                            style={{
+                                              fontSize: "0.75rem",
+                                              padding: "0.15rem 0.35rem",
+                                              minWidth: "7.5rem",
+                                              color: inheriting
+                                                ? "var(--muted)"
+                                                : "var(--ink)",
+                                              fontWeight: inheriting ? 400 : 700,
+                                              background: inheriting
+                                                ? "transparent"
+                                                : "var(--accent-soft)",
+                                              borderColor: inheriting
+                                                ? "var(--line)"
+                                                : "var(--accent)",
+                                            }}
+                                            value={
+                                              inheriting
+                                                ? "__inherit__"
+                                                : item.item_status
+                                            }
+                                            disabled={saving}
+                                            aria-label={
+                                              inheriting
+                                                ? `Status ${statusLabel}, inheriting from PO`
+                                                : `Status ${statusLabel}, override`
+                                            }
+                                            title={
+                                              inheriting
+                                                ? "Inheriting PO status — pick a status to override"
+                                                : "Custom status — choose Inherit to follow the PO again"
+                                            }
+                                            onChange={(e) => {
+                                              const next = e.target.value;
+                                              if (next === "__inherit__") {
+                                                if (!inheriting) {
+                                                  void patchItem(po.id, item.id, {
+                                                    inherits_po_status: true,
+                                                  });
+                                                }
+                                                return;
+                                              }
+                                              void patchItem(po.id, item.id, {
+                                                item_status: next as PoItemStatus,
+                                                inherits_po_status: false,
+                                              });
+                                            }}
+                                          >
+                                            <optgroup label="From PO">
+                                              <option value="__inherit__">
+                                                {inheriting
+                                                  ? statusLabel
+                                                  : "Inherit"}
+                                              </option>
+                                            </optgroup>
+                                            <optgroup label="Override">
+                                              {PO_ITEM_STATUSES.map((s) => (
+                                                <option key={s} value={s}>
+                                                  {formatStatusLabel(s)}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          </select>
+                                        );
+                                      })()
+                                    ) : (
+                                      <span
                                         style={{
-                                          display: "flex",
-                                          flexDirection: "column",
-                                          alignItems: "center",
-                                          gap: "0.2rem",
+                                          fontSize: "0.75rem",
+                                          color:
+                                            item.inherits_po_status !== false
+                                              ? "var(--muted)"
+                                              : "var(--ink)",
+                                          fontWeight:
+                                            item.inherits_po_status !== false
+                                              ? 400
+                                              : 700,
                                         }}
                                       >
-                                        <select
-                                          className="field"
-                                          style={{ fontSize: "0.75rem", padding: "0.15rem" }}
-                                          value={item.item_status}
-                                          disabled={saving}
-                                          title={
-                                            item.inherits_po_status !== false
-                                              ? "Inherits PO status — changing this overrides"
-                                              : "Custom status (not inheriting PO)"
-                                          }
-                                          onChange={(e) =>
-                                            void patchItem(po.id, item.id, {
-                                              item_status: e.target.value as PoItemStatus,
-                                              inherits_po_status: false,
-                                            })
-                                          }
-                                        >
-                                          {PO_ITEM_STATUSES.map((s) => (
-                                            <option key={s} value={s}>{formatStatusLabel(s)}</option>
-                                          ))}
-                                        </select>
-                                        <label
-                                          style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "0.25rem",
-                                            fontSize: "0.65rem",
-                                            color: "var(--muted)",
-                                            cursor: "pointer",
-                                          }}
-                                          title="When checked, this line follows the PO status"
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={item.inherits_po_status !== false}
-                                            disabled={saving}
-                                            onChange={(e) =>
-                                              void patchItem(po.id, item.id, {
-                                                inherits_po_status: e.target.checked,
-                                              })
-                                            }
-                                          />
-                                          Inherit
-                                        </label>
-                                      </div>
-                                    ) : (
-                                      <span style={{ fontSize: "0.75rem" }}>
                                         {formatStatusLabel(item.item_status)}
-                                        {item.inherits_po_status === false ? " · override" : ""}
                                       </span>
                                     )}
                                   </td>
@@ -1462,9 +1493,9 @@ export function ProcurementView({
               </label>
 
               <p className="page-sub" style={{ margin: 0, fontSize: "0.8rem" }}>
-                Changing PO status updates line items that inherit PO status.
-                Override a line’s status (or uncheck Inherit) to keep an item
-                exception such as backordered.
+                Changing PO status updates line items that inherit PO status
+                (shown in grey). Pick a status on a line to override, or choose
+                Inherit in the status dropdown to follow the PO again.
               </p>
 
               {editingPo.is_owner !== false ? (

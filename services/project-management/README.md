@@ -1,46 +1,31 @@
-# Mixinary Project Management (Plane CE fork packaging)
+# Mixinary Project Management (Huly packaging)
 
-This directory is the company packaging layer for our Plane Community Edition fork.
+Company packaging for self-hosted **Huly** as the suite Project Management app.
 
-**Upstream pin:** Plane CE `v1.3.1` (`makeplane/plane`)
-
-**Intended standalone repository:** `FlybarBird/project-management`
-
-Until that repo is created in GitHub, this tree lives in `mixinary-erp` under
-`services/project-management/` and must be extracted without copying proprietary
-ERP application code.
+| Item | Value |
+|------|--------|
+| Upstream source | [`hcengineering/platform`](https://github.com/hcengineering/platform) |
+| Deploy recipe | Adapted from [`hcengineering/huly-selfhost`](https://github.com/hcengineering/huly-selfhost) |
+| Pinned version | see `HULY_VERSION` |
+| License | Eclipse Public License 2.0 (EPL-2.0) |
+| Intended repo | `FlybarBird/project-management` |
 
 ## Remotes (after extraction)
 
 ```bash
 git remote add origin git@github.com:FlybarBird/project-management.git
-git remote add upstream https://github.com/makeplane/plane.git
+git remote add upstream https://github.com/hcengineering/platform.git
+git remote add selfhost-upstream https://github.com/hcengineering/huly-selfhost.git
 ```
 
-## Branches
-
-| Branch | Purpose |
-|--------|---------|
-| `main` | Production-ready company version |
-| `develop` | Current integration work |
-| `upstream-sync` | Testing official Plane updates |
-| `feature/*` | Individual changes |
-
-## Deploy tags
-
-`erp-pm-<company-semver>-plane-<upstream-tag>`
-
-Example: `erp-pm-1.0.0-plane-v1.3.1`
-
-## Bootstrap upstream source (not vendored in ERP git)
+## Quick start
 
 ```bash
+cp .env.example .env   # set secrets
 ./scripts/bootstrap-upstream.sh
+docker compose -f docker-compose.yml --env-file .env up -d
 ```
 
-This clones Plane at the pinned tag into `.upstream/` (gitignored) and applies
-company overlays from `overlays/` and `company/`.
+Public path (Cloudflare): `/project-management` → nginx on `LISTEN_HTTP_PORT` (default 8087).
 
-## License
-
-Plane CE is AGPL-3.0. See `docs/AGPL-COMPLIANCE.md`.
+ERP root remains Mixinary ERP; do not redirect PM users to bare `/`.

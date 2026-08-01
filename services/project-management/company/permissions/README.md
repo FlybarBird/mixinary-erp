@@ -1,5 +1,2 @@
 
-# Company-specific permissions
-
-Map ERP roles → Plane workspace/project roles via integration provisioning.
-Do not fork Plane's core ACL tables; apply membership via Plane APIs.
+Map ERP roles → Huly workspace roles via provisioning APIs (no core ACL rewrite).

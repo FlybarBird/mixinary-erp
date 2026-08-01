@@ -1,7 +1,6 @@
 # Extract to FlybarBird/project-management
 
 1. Create empty repo `FlybarBird/project-management`.
-2. Copy this directory contents to the new repo root (not the ERP `src/`).
-3. Run `./scripts/bootstrap-upstream.sh` and commit company overlays + compose.
-4. Add remotes `origin` / `upstream` as documented in README.
-5. Remove this tree from `mixinary-erp` after extraction (keep only API clients).
+2. Copy this directory to the new repo root (not ERP `src/`).
+3. Add remotes per README.
+4. Keep proprietary ERP code out of the fork; integrate via APIs only.

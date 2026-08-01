@@ -34,7 +34,7 @@ export function getSuiteApps(): SuiteApp[] {
       id: "pm",
       label: "Project Management",
       href: pmBase,
-      description: "Tasks, cycles, and execution (Plane fork)",
+      description: "Tasks, cycles, and execution (Huly)",
       external: true,
     },
     {

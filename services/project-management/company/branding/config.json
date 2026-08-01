@@ -2,7 +2,5 @@
   "productName": "Mixinary Project Management",
   "shortName": "Project Management",
   "logoPath": "/project-management/assets/mixinary-mark.png",
-  "primaryColor": "#0B3D2E",
-  "accentColor": "#C4A35A",
-  "supportEmail": "support@flybarpro.com"
+  "title": "Mixinary Project Management"
 }

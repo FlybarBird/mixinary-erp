@@ -1,6 +1,6 @@
 
 import { query } from "./db.js";
-import { createPlaneProject, addPlaneProjectMembers } from "./plane-client.js";
+import { createHulyProject, addHulyProjectMembers } from "./huly-client.js";
 
 async function audit(action, entityType, entityId, detail) {
   await query(
@@ -18,14 +18,14 @@ export async function handleProjectCreated(payload) {
     name,
     templateSlug = "mixinary-avl-install",
     members = [],
-    workspaceSlug = process.env.PLANE_WORKSPACE_SLUG || "mixinary",
+    workspaceSlug = process.env.HULY_WORKSPACE_SLUG || "mixinary",
   } = payload;
 
   const existing = await query(
     `select * from project_map where erp_project_id = $1`,
     [erpProjectId],
   );
-  if (existing.rows[0]?.plane_project_id) {
+  if (existing.rows[0]?.huly_project_id) {
     return { ok: true, duplicate: true, mapping: existing.rows[0] };
   }
 
@@ -39,24 +39,24 @@ export async function handleProjectCreated(payload) {
   }
 
   try {
-    const planeProject = await createPlaneProject({ name, templateSlug, workspaceSlug });
+    const hulyProject = await createHulyProject({ name, templateSlug, workspaceSlug });
     if (members.length) {
-      await addPlaneProjectMembers(planeProject.id, members);
+      await addHulyProjectMembers(hulyProject.id, members);
     }
     const updated = await query(
       `update project_map
-       set plane_project_id = $2,
-           plane_workspace_slug = $3,
+       set huly_project_id = $2,
+           huly_workspace_slug = $3,
            integration_status = 'linked',
            last_sync_at = NOW(),
            last_sync_error = null,
            updated_at = NOW()
        where erp_project_id = $1
        returning *`,
-      [erpProjectId, String(planeProject.id), workspaceSlug],
+      [erpProjectId, String(hulyProject.id), workspaceSlug],
     );
-    await audit("project.linked", "project", erpProjectId, { planeProjectId: planeProject.id });
-    return { ok: true, mapping: updated.rows[0], planeProject };
+    await audit("project.linked", "project", erpProjectId, { hulyProjectId: hulyProject.id });
+    return { ok: true, mapping: updated.rows[0], hulyProject };
   } catch (err) {
     await query(
       `update project_map
@@ -73,26 +73,26 @@ export async function handleUserProvision(payload) {
     erpUserId,
     idpSubject,
     verifiedEmail,
-    planeRole = "member",
-    planeAccessStatus = "enabled",
-    planeUserId = null,
+    pmRole = "member",
+    pmAccessStatus = "enabled",
+    hulyUserId = null,
   } = payload;
 
   const res = await query(
-    `insert into identity_map (erp_user_id, idp_subject, verified_email, plane_role, plane_access_status, plane_user_id, last_sync_at)
+    `insert into identity_map (erp_user_id, idp_subject, verified_email, pm_role, pm_access_status, huly_user_id, last_sync_at)
      values ($1,$2,$3,$4,$5,$6,NOW())
      on conflict (erp_user_id) do update set
        idp_subject = excluded.idp_subject,
        verified_email = excluded.verified_email,
-       plane_role = excluded.plane_role,
-       plane_access_status = excluded.plane_access_status,
-       plane_user_id = coalesce(excluded.plane_user_id, identity_map.plane_user_id),
+       pm_role = excluded.pm_role,
+       pm_access_status = excluded.pm_access_status,
+       huly_user_id = coalesce(excluded.huly_user_id, identity_map.huly_user_id),
        last_sync_at = NOW(),
        updated_at = NOW()
      returning *`,
-    [erpUserId, idpSubject, verifiedEmail, planeRole, planeAccessStatus, planeUserId],
+    [erpUserId, idpSubject, verifiedEmail, pmRole, pmAccessStatus, hulyUserId],
   );
-  await audit("user.provisioned", "user", erpUserId, { idpSubject, planeAccessStatus });
+  await audit("user.provisioned", "user", erpUserId, { idpSubject, pmAccessStatus });
   return { ok: true, mapping: res.rows[0] };
 }
 
@@ -100,7 +100,7 @@ export async function handleUserDisable(payload) {
   const { erpUserId } = payload;
   const res = await query(
     `update identity_map
-     set plane_access_status = 'disabled', last_sync_at = NOW(), updated_at = NOW()
+     set pm_access_status = 'disabled', last_sync_at = NOW(), updated_at = NOW()
      where erp_user_id = $1
      returning *`,
     [erpUserId],
@@ -116,8 +116,8 @@ export async function handleWorklog(payload) {
   const body = JSON.stringify({
     erpProjectId: payload.erpProjectId,
     erpUserId: payload.erpUserId,
-    planeWorkItemId: payload.planeWorkItemId,
-    planeWorklogId: payload.planeWorklogId,
+    hulyWorkItemId: payload.hulyWorkItemId,
+    hulyWorklogId: payload.hulyWorklogId,
     hours: payload.hours,
     workDate: payload.workDate,
     description: payload.description ?? "",
@@ -125,8 +125,8 @@ export async function handleWorklog(payload) {
   });
   const crypto = await import("./crypto.js");
   const sig = crypto.signPayload(secret, body);
-  if (!erpBase || process.env.PLANE_DRY_RUN === "1") {
-    await audit("worklog.dry_run", "worklog", payload.planeWorklogId, JSON.parse(body));
+  if (!erpBase || process.env.HULY_DRY_RUN === "1") {
+    await audit("worklog.dry_run", "worklog", payload.hulyWorklogId, JSON.parse(body));
     return { ok: true, dryRun: true };
   }
   const res = await fetch(`${erpBase}/api/integration/worklogs`, {
@@ -140,7 +140,7 @@ export async function handleWorklog(payload) {
   if (!res.ok) {
     throw new Error(`ERP worklog ingest failed: ${res.status}`);
   }
-  await audit("worklog.forwarded", "worklog", payload.planeWorklogId, { erpProjectId: payload.erpProjectId });
+  await audit("worklog.forwarded", "worklog", payload.hulyWorklogId, { erpProjectId: payload.erpProjectId });
   return { ok: true };
 }
 

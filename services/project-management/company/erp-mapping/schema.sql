@@ -1,10 +1,8 @@
 
--- Isolated ERP relationship mapping (Plane-side module)
--- Applied as a company migration overlay; not part of upstream Plane models rewrite.
-
+-- Isolated ERP relationship mapping (Huly-side company module)
 CREATE TABLE IF NOT EXISTS mixinary_erp_project_map (
   id UUID PRIMARY KEY,
-  plane_project_id UUID NOT NULL UNIQUE,
+  huly_project_id TEXT NOT NULL UNIQUE,
   erp_company_id TEXT,
   erp_project_id TEXT NOT NULL,
   erp_project_number TEXT,
@@ -16,6 +14,3 @@ CREATE TABLE IF NOT EXISTS mixinary_erp_project_map (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT mixinary_erp_project_map_erp_unique UNIQUE (erp_project_id)
 );
-
-CREATE INDEX IF NOT EXISTS mixinary_erp_project_map_status_idx
-  ON mixinary_erp_project_map (integration_status);

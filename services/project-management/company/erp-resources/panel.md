@@ -1,20 +1,8 @@
 
 # ERP Resources panel
 
-Shown on each linked Plane project. Secure links only (no iframe):
+Secure links from each linked Huly project:
 
-- ERP project overview
-- BOM
-- Labor
-- Procurement
-- Tracking
-- Expenses
-- Dashboard
-- Client Documents
-- Shared project files
+- ERP overview, BOM, Labor, Procurement, Tracking, Expenses, Dashboard, Client Documents, Shared files
 
-Optional operational summaries (materials not ordered, late deliveries, next
-required-by, customer, location) via integration API.
-
-Never show profit, margin, pay rates, vendor costs, or confidential accounting
-unless the user has explicit ERP permission and data is fetched live from ERP.
+No profit/margin/pay rates/vendor costs unless explicit ERP permission + live ERP fetch.

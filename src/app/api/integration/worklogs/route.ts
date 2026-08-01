@@ -4,7 +4,7 @@ import { verifyIntegrationSignature } from "@/lib/integration/client";
 import { getLocalDb, isLocalMode, newId } from "@/lib/local/db";
 
 /**
- * Ingest Plane worklogs as unapproved ERP labor.
+ * Ingest Huly worklogs as unapproved ERP labor.
  * Never accepts pay rates / burden from Project Management.
  */
 export async function POST(request: Request) {
@@ -17,21 +17,21 @@ export async function POST(request: Request) {
   const body = JSON.parse(raw || "{}") as {
     erpProjectId?: string;
     erpUserId?: string | null;
-    planeWorkItemId?: string;
-    planeWorklogId?: string;
+    hulyWorkItemId?: string;
+    hulyWorklogId?: string;
     hours?: number;
     workDate?: string;
     description?: string;
   };
 
-  if (!body.erpProjectId || !body.planeWorklogId || body.hours == null) {
+  if (!body.erpProjectId || !body.hulyWorklogId || body.hours == null) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   const hours = Number(body.hours) || 0;
   const workDate = body.workDate || new Date().toISOString().slice(0, 10);
-  const task = body.description || `Plane worklog ${body.planeWorklogId}`;
-  const externalKey = `plane-worklog:${body.planeWorklogId}`;
+  const task = body.description || `Huly worklog ${body.hulyWorklogId}`;
+  const externalKey = `huly-worklog:${body.hulyWorklogId}`;
 
   if (isLocalMode()) {
     const db = getLocalDb();
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     ).run(
       id,
       body.erpProjectId,
-      "Plane worklog",
+      "Huly worklog",
       body.erpUserId ?? null,
       "project_management",
       task,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     .from("labor_entries")
     .insert({
       project_id: body.erpProjectId,
-      worker_name: "Plane worklog",
+      worker_name: "Huly worklog",
       user_id: body.erpUserId ?? null,
       work_category: "project_management",
       task_description: task,

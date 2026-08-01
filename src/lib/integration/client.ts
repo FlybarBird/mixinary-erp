@@ -58,7 +58,7 @@ export async function getProjectMapping(erpProjectId: string) {
     if (!res.ok) return null;
     const json = (await res.json()) as {
       mapping: {
-        plane_project_id: string | null;
+        huly_project_id: string | null;
         integration_status: string;
         erp_project_number?: string | null;
       } | null;

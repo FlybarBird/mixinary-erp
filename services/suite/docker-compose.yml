@@ -80,8 +80,8 @@ services:
       PORT: 8091
       DATABASE_URL: postgresql://${INTEGRATION_PG_USER:-mixinary_integ}:${INTEGRATION_PG_PASSWORD}@mixinary-suite-integration-db:5432/${INTEGRATION_PG_DB:-mixinary_integ}
       ERP_BASE_URL: ${ERP_BASE_URL:-https://example.com}
-      PLANE_API_BASE_URL: ${PLANE_API_BASE_URL:-http://host.docker.internal:8088}
-      PLANE_API_TOKEN: ${PLANE_API_TOKEN:-}
+      HULY_API_BASE_URL: ${HULY_API_BASE_URL:-http://host.docker.internal:8087}
+      HULY_API_TOKEN: ${HULY_API_TOKEN:-}
       WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?set WEBHOOK_SIGNING_SECRET}
       IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-72}
       AUTHENTIK_URL: ${AUTHENTIK_URL:-http://mixinary-suite-authentik-server:9000}

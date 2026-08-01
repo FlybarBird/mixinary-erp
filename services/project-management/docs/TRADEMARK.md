@@ -1,8 +1,6 @@
-# Plane trademark review
+# Huly trademark / attribution
 
-Before production rebranding:
-
-- [ ] Review Plane trademark / brand guidelines
-- [ ] Decide whether company branding replaces Plane marks in UI
+- [ ] Review Huly / Hardcore Engineering trademark guidance
+- [ ] Decide company branding vs Huly marks in UI title
 - [ ] Keep required attribution where mandated
 - [ ] Legal sign-off recorded with deploy tag

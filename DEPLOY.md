@@ -64,8 +64,8 @@ Login UI offers password, email link, Google, and Microsoft. After first OAuth l
 
 ## 2b. Suite Project Management (optional)
 
-Plane CE fork packaging, Authentik, integration, and shared files live under
-`services/` — see [docs/plane-pm/README.md](./docs/plane-pm/README.md).
+Huly packaging, Authentik, integration, and shared files live under
+`services/` — see [docs/huly-pm/README.md](./docs/huly-pm/README.md).
 
 ERP env additions (also in `.env.example`):
 
@@ -73,7 +73,7 @@ ERP env additions (also in `.env.example`):
 - `INTEGRATION_BASE_URL` / `INTEGRATION_WEBHOOK_SECRET`
 - `AUTHENTIK_ISSUER` / `AUTHENTIK_CLIENT_ID` / `AUTHENTIK_CLIENT_SECRET`
 
-Apply migration `023_suite_integration.sql`. Root entry remains ERP (`/` → dashboard/login); suite app switcher is available from the ERP header (`/apps` optional).
+Apply migration `023_suite_integration.sql (and 024 legacy Plane cleanup)`. Root entry remains ERP (`/` → dashboard/login); suite app switcher is available from the ERP header (`/apps` optional).
 
 ## 3. Vercel
 

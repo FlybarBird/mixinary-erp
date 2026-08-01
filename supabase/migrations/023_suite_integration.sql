@@ -26,10 +26,10 @@ create table if not exists public.integration_outbox (
 create index if not exists integration_outbox_status_idx
   on public.integration_outbox (status, created_at);
 
-create table if not exists public.erp_plane_project_links (
+create table if not exists public.erp_pm_project_links (
   id uuid primary key default gen_random_uuid(),
   erp_project_id uuid not null references public.projects(id) on delete cascade,
-  plane_project_id text,
+  huly_project_id text,
   integration_status text not null default 'pending',
   last_sync_at timestamptz,
   last_sync_error text,
@@ -39,4 +39,4 @@ create table if not exists public.erp_plane_project_links (
 );
 
 alter table public.integration_outbox enable row level security;
-alter table public.erp_plane_project_links enable row level security;
+alter table public.erp_pm_project_links enable row level security;

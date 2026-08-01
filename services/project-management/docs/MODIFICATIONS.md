@@ -2,12 +2,6 @@
 
 | Date | Module | Summary |
 |------|--------|---------|
-| 2026-07-30 | packaging | Initial fork packaging from Plane v1.3.1 |
-| 2026-07-30 | overlays/base-path | `/project-management` base path support |
-| 2026-07-30 | company/branding | Mixinary branding hooks |
-| 2026-07-30 | company/app-selector | Suite app selector injection |
-| 2026-07-30 | company/erp-mapping | ERP project mapping module |
-| 2026-07-30 | company/erp-resources | ERP Resources panel |
-| 2026-07-30 | company/oidc | Authentik OIDC client config |
-| 2026-07-30 | company/templates | Company project templates hooks |
-| 2026-07-30 | company/permissions | Company permission overlays |
+| 2026-07-31 | packaging | Initial Huly packaging from platform v0.7.426 / huly-selfhost |
+| 2026-07-31 | compose | Mixinary unique names + Authentik OIDC env on account |
+| 2026-07-31 | company/* | Branding, app selector, ERP mapping/resources, templates, permissions |

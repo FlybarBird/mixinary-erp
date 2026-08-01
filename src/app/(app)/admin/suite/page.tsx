@@ -58,7 +58,7 @@ export default async function SuiteAdminPage() {
         <h2 className="section-title">Runbooks</h2>
         <ul>
           <li>
-            <code>services/project-management/docs/AGPL-COMPLIANCE.md</code>
+            <code>services/project-management/docs/EPL-2.0-COMPLIANCE.md</code>
           </li>
           <li>
             <code>services/project-management/docs/UPSTREAM-SYNC.md</code>
@@ -67,7 +67,7 @@ export default async function SuiteAdminPage() {
             <code>services/project-management/docs/CLOUDFLARE.md</code>
           </li>
           <li>
-            <code>docs/plane-pm/ACCEPTANCE.md</code>
+            <code>docs/huly-pm/ACCEPTANCE.md</code>
           </li>
         </ul>
       </section>

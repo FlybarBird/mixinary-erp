@@ -47,13 +47,13 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/v1/progress") {
       const erpId = url.searchParams.get("erpProjectId");
-      // Progress is supplied by Plane webhooks into mapping detail later; stub summary.
+      // Progress is supplied by Huly webhooks into mapping detail later; stub summary.
       const { rows } = await query(`select * from project_map where erp_project_id=$1`, [erpId]);
       return send(res, 200, {
         erpProjectId: erpId,
         status: rows[0]?.integration_status ?? "unknown",
-        planeProjectId: rows[0]?.plane_project_id ?? null,
-        summary: rows[0] ? { linked: Boolean(rows[0].plane_project_id) } : null,
+        hulyProjectId: rows[0]?.huly_project_id ?? null,
+        summary: rows[0] ? { linked: Boolean(rows[0].huly_project_id) } : null,
       });
     }
 
@@ -73,13 +73,13 @@ const server = http.createServer(async (req, res) => {
       return send(res, 202, { accepted: true, event: row });
     }
 
-    if (req.method === "POST" && url.pathname === "/v1/webhooks/plane") {
+    if (req.method === "POST" && url.pathname === "/v1/webhooks/huly") {
       if (SECRET && !verifySignature(SECRET, raw, sig)) return unauthorized(res);
       const payload = JSON.parse(raw || "{}");
       const key = payload.idempotencyKey || payload.id || `${payload.eventType}:${JSON.stringify(payload.data||{})}`;
       await query(
         `insert into webhook_receipts (idempotency_key, source, event_type, payload)
-         values ($1,'plane',$2,$3)
+         values ($1,'huly',$2,$3)
          on conflict (idempotency_key) do nothing`,
         [key, payload.eventType || "unknown", payload],
       );

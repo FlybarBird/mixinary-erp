@@ -1,11 +1,7 @@
-# Emergency Plane administrator
+# Emergency Huly administrator
 
-Maintain a local Plane administrator account for recovery if Authentik is unavailable.
+Maintain a local Huly administrator for recovery if Authentik is unavailable.
 
-## Policy
-
-- Credentials stored in company secrets manager only (never git)
-- Unique strong password / hardware key
+- Credentials in secrets manager only (never git)
 - Break-glass use only; audit every login
-- Rotate after any emergency use
-- Do not use this account for daily operations
+- Rotate after emergency use

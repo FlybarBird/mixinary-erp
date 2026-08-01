@@ -14,9 +14,9 @@ export async function OpenInProjectManagement({
     getPlaneProgress(erpProjectId),
   ]);
 
-  const href = projectManagementOpenUrl(mapping?.plane_project_id);
+  const href = projectManagementOpenUrl(mapping?.huly_project_id);
   const status = mapping?.integration_status ?? "not_linked";
-  const linked = Boolean(mapping?.plane_project_id);
+  const linked = Boolean(mapping?.huly_project_id);
   const summary = (progress as { summary?: { linked?: boolean } } | null)
     ?.summary;
 
@@ -25,7 +25,7 @@ export async function OpenInProjectManagement({
       <a className="btn btn-secondary" href={href}>
         {linked ? "Open in Project Management" : "Project Management"}
       </a>
-      <span className="pm-link-status" title="Plane sync status">
+      <span className="pm-link-status" title="Huly sync status">
         {status}
         {summary?.linked ? " · synced" : ""}
       </span>

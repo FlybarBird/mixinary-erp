@@ -1119,12 +1119,12 @@ function migrate(database: Database.Database) {
         ON integration_outbox(status, created_at);
     `);
   }
-  if (!suiteTables.has("erp_plane_project_links")) {
+  if (!suiteTables.has("erp_pm_project_links")) {
     database.exec(`
-      CREATE TABLE IF NOT EXISTS erp_plane_project_links (
+      CREATE TABLE IF NOT EXISTS erp_pm_project_links (
         id TEXT PRIMARY KEY,
         erp_project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
-        plane_project_id TEXT,
+        huly_project_id TEXT,
         integration_status TEXT NOT NULL DEFAULT 'pending',
         last_sync_at TEXT,
         last_sync_error TEXT,

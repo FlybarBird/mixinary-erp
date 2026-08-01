@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Independent Plane stack backup (Postgres + MinIO volume).
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="${BACKUP_DIR:-./backups}/mixinary-pm-$STAMP"
 mkdir -p "$OUT"
-COMPOSE="${COMPOSE_FILE:-docker-compose.yml}"
 PROJECT="${COMPOSE_PROJECT_NAME:-mixinary-pm}"
+COMPOSE="${COMPOSE_FILE:-docker-compose.yml}"
 
-docker compose -p "$PROJECT" -f "$COMPOSE" exec -T mixinary-pm-db \
-  pg_dump -U "${POSTGRES_USER:-mixinary_pm}" "${POSTGRES_DB:-mixinary_pm}" \
-  | gzip > "$OUT/postgres.sql.gz"
+echo "Backing up Cockroach + MinIO for $PROJECT → $OUT"
+docker compose -p "$PROJECT" -f "$COMPOSE" exec -T cockroach \
+  ./cockroach dump "${CR_DATABASE:-mixinary_pm}" --insecure 2>/dev/null \
+  | gzip > "$OUT/cockroach.sql.gz" || echo "cockroach dump skipped (check auth flags for your version)"
 
-docker run --rm -v "${PROJECT}_mixinary_pm_uploads:/data:ro" -v "$OUT:/out" alpine \
-  tar czf /out/uploads.tar.gz -C /data .
+docker run --rm -v "${PROJECT}_files:/data:ro" -v "$OUT:/out" alpine \
+  tar czf /out/files.tar.gz -C /data . || true
 
 echo "Backup written to $OUT"

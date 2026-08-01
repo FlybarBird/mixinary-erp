@@ -1,16 +1,20 @@
-# Example Cloudflare Tunnel ingress for Mixinary suite + Plane
 tunnel: <TUNNEL_ID>
 credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
-
 ingress:
   - hostname: <company-domain>
     path: /project-management*
-    service: http://127.0.0.1:8088
+    service: http://127.0.0.1:8087
+  - hostname: <company-domain>
+    path: /_accounts*
+    service: http://127.0.0.1:8087
+  - hostname: <company-domain>
+    path: /_transactor*
+    service: http://127.0.0.1:8087
+  - hostname: <company-domain>
+    path: /_collaborator*
+    service: http://127.0.0.1:8087
   - hostname: <company-domain>
     path: /auth*
-    service: http://127.0.0.1:9000
-  - hostname: <company-domain>
-    path: /application*
     service: http://127.0.0.1:9000
   - hostname: <company-domain>
     path: /integration*

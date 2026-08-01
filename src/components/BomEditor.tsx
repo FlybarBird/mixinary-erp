@@ -17,6 +17,7 @@ import {
   outOfPocketStyle,
 } from "@/lib/pricing";
 import { computeBomHeaderEconomics } from "@/lib/projects/bom-header-economics";
+import { getPoStatusVisual } from "@/lib/projects/procurement";
 import type {
   CatalogPart,
   LineItem,
@@ -950,17 +951,22 @@ export function BomEditor({
                     const isDropAfter =
                       dropTarget?.key === line._key &&
                       dropTarget.place === "after";
+                    const statusVisual = getPoStatusVisual(
+                      line.procurement_status || "not_ordered",
+                    );
                     return (
                       <tr
                         key={line._key}
                         className={[
                           "bom-row",
+                          statusVisual.rowClass,
                           isDragging ? "dragging" : "",
                           isDropBefore ? "drag-over-before" : "",
                           isDropAfter ? "drag-over-after" : "",
                         ]
                           .filter(Boolean)
                           .join(" ")}
+                        aria-label={statusVisual.ariaLabel}
                         onDragOver={(e) => onLineDragOver(e, line._key)}
                         onDrop={(e) => onLineDrop(e, line._key)}
                         onDragEnd={onDragEnd}
@@ -1152,11 +1158,10 @@ export function BomEditor({
                             }
                           />
                         </td>
-                        <td className="muted" style={{ fontSize: "0.78rem" }}>
-                          {(line.procurement_status || "not_ordered").replace(
-                            /_/g,
-                            " ",
-                          )}
+                        <td style={{ fontSize: "0.78rem" }}>
+                          <span className={statusVisual.badgeClass}>
+                            {statusVisual.label}
+                          </span>
                         </td>
                         <td>{Number(line.qty_ordered || 0)}</td>
                         <td>{Number(line.qty_received || 0)}</td>

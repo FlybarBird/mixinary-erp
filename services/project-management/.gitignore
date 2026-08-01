@@ -1,0 +1,8 @@
+.upstream/
+.selfhost-upstream/
+.env
+huly_v7.conf
+*.pem
+node_modules/
+backups/
+data/

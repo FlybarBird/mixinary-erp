@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, canManageProjects } from "@/lib/auth";
 import { addProjectMember, listAccessibleProjectIds } from "@/lib/project-access";
 import { allocateNextProjectNumber } from "@/lib/projects/numbering";
+import { enqueueErpOutbox } from "@/lib/integration/outbox";
 import type { ProjectStatus } from "@/lib/types";
 
 /** List projects accessible to the current user (cookie or Bearer JWT). */
@@ -158,6 +159,25 @@ export async function POST(request: Request) {
       sort_order: 0,
     });
   }
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
+  // Async: Plane outage must not block ERP project creation.
+  void enqueueErpOutbox({
+    eventType: "project.created",
+    idempotencyKey: `project.created:${project.id}`,
+    payload: {
+      erpProjectId: project.id,
+      erpCompanyId: process.env.MIXINARY_COMPANY_ID || "mixinary",
+      erpProjectNumber: project.project_number,
+      erpProjectUrl: appUrl
+        ? `${appUrl}/erp/projects/${project.id}`
+        : `/erp/projects/${project.id}`,
+      name: String(body.name).trim(),
+      templateSlug: "mixinary-avl-install",
+      members: [{ erpUserId: profile.id, role: "admin" }],
+    },
+  });
 
   return NextResponse.json({ id: project.id, project_number: project.project_number });
 }

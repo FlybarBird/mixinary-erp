@@ -479,6 +479,20 @@ export interface PurchaseOrder {
   notes: string | null;
   vendors?: Vendor | null;
   items?: PurchaseOrderItem[];
+  /** True when this project owns the PO (project_id matches). */
+  is_owner?: boolean;
+  /** True when the PO is shared with other projects or viewed via a share link. */
+  is_shared?: boolean;
+  linked_project_ids?: string[];
+}
+
+export interface PurchaseOrderProjectLink {
+  id: string;
+  po_id: string;
+  project_id: string;
+  is_owner: boolean;
+  created_at?: string;
+  project?: { id: string; project_number: string; name: string } | null;
 }
 
 export interface PurchaseOrderItem {
@@ -503,6 +517,8 @@ export interface PurchaseOrderItem {
   qty_shipped: number;
   qty_received: number;
   item_status: PoItemStatus;
+  /** When true, item_status follows parent PO status changes. Manual overrides set false. */
+  inherits_po_status?: boolean | null;
   carrier_id: string | null;
   tracking_number: string | null;
   tracking_url: string | null;

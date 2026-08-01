@@ -1,0 +1,7 @@
+{
+  "administrator": "owner",
+  "project_manager": "maintainer",
+  "technician": "user",
+  "viewer": "guest",
+  "default": "guest"
+}

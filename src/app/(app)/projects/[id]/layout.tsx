@@ -5,6 +5,7 @@ import {
   ProjectBomSummaryBar,
   ProjectBomSummaryProvider,
 } from "@/components/ProjectBomSummaryBar";
+import { OpenInProjectManagement } from "@/components/suite/OpenInProjectManagement";
 import { canEditBom, canViewFinancials, requireProfile } from "@/lib/auth";
 import {
   canAccessProject,
@@ -224,6 +225,7 @@ export default async function ProjectLayout({
           canManageMembers={canManageMembers}
         />
         <ProjectBomSummaryBar />
+        <OpenInProjectManagement erpProjectId={id} />
         <ProjectWorkspaceNav
           projectId={id}
           canViewFinancials={canViewFinancials(profile.role)}

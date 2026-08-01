@@ -51,3 +51,10 @@ apps/ipad/.expo/
 apps/ipad/dist/
 apps/ipad/ios/
 apps/ipad/android/
+
+# suite services
+services/**/node_modules/
+services/project-management/.upstream/
+services/project-management/.selfhost-upstream/
+services/**/data/
+services/**/backups/

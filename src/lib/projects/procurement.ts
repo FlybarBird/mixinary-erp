@@ -322,3 +322,108 @@ export const PO_ITEM_STATUSES: PoItemStatus[] = [
 export function formatStatusLabel(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+/**
+ * Map a PO-level status to the item status that inheriting lines should receive.
+ * Aggregate / non-cascading PO statuses return null (no item update).
+ */
+export function mapPoStatusToItemStatus(poStatus: string): PoItemStatus | null {
+  switch (poStatus) {
+    case "draft":
+    case "ready_to_order":
+      return "not_ordered";
+    case "ordered":
+      return "ordered";
+    case "confirmed":
+      return "confirmed";
+    case "shipped":
+      return "shipped";
+    case "received":
+      return "received";
+    case "cancelled":
+      return "cancelled";
+    default:
+      // partially_*, on_hold, closed — do not overwrite per-item nuance
+      return null;
+  }
+}
+
+/** Visual buckets for PO / procurement line coloring (issue #24). */
+export type PoStatusVisualKey =
+  | "in_procurement"
+  | "ordered"
+  | "received"
+  | "on_site"
+  | "neutral";
+
+export type PoStatusVisual = {
+  key: PoStatusVisualKey;
+  /** Short label for pills (e.g. "In Procurement"). */
+  label: string;
+  rowClass: string;
+  badgeClass: string;
+  ariaLabel: string;
+};
+
+const PO_STATUS_VISUAL_LABELS: Record<PoStatusVisualKey, string> = {
+  in_procurement: "In Procurement",
+  ordered: "Ordered",
+  received: "Received",
+  on_site: "On-site",
+  neutral: "Unknown",
+};
+
+/** Normalize free-form / snake / kebab / Title Case status strings. */
+export function normalizePoStatusKey(value: string | null | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_");
+}
+
+const PO_STATUS_VISUAL_ALIASES: Record<string, PoStatusVisualKey> = {
+  // In Procurement
+  in_procurement: "in_procurement",
+  not_ordered: "in_procurement",
+  partially_ordered: "in_procurement",
+  draft: "in_procurement",
+  ready_to_order: "in_procurement",
+  // Ordered
+  ordered: "ordered",
+  confirmed: "ordered",
+  preparing: "ordered",
+  // Received
+  received: "received",
+  partially_received: "received",
+  // On-site (future / synonym; not yet a stored procurement_status)
+  on_site: "on_site",
+  onsite: "on_site",
+};
+
+/**
+ * Map a PO / procurement / line status string to row + badge CSS classes.
+ * Accepts casing and synonym variations (e.g. "In Procurement", "on-site").
+ */
+export function getPoStatusVisual(
+  status: string | null | undefined,
+): PoStatusVisual {
+  const normalized = normalizePoStatusKey(status);
+  const key = (normalized && PO_STATUS_VISUAL_ALIASES[normalized]) || "neutral";
+  const label =
+    key === "neutral"
+      ? normalized
+        ? formatStatusLabel(normalized)
+        : "Unknown"
+      : PO_STATUS_VISUAL_LABELS[key];
+  return {
+    key,
+    label,
+    rowClass: key === "neutral" ? "status-row--neutral" : `status-row--${key.replace(/_/g, "-")}`,
+    badgeClass:
+      key === "neutral"
+        ? "badge badge-po-status-neutral"
+        : `badge badge-po-status-${key.replace(/_/g, "-")}`,
+    ariaLabel: `Line item, status ${label}`,
+  };
+}

@@ -1076,6 +1076,119 @@ function migrate(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS client_document_events_document_idx ON client_document_events(document_id);
     CREATE INDEX IF NOT EXISTS client_document_signatures_document_idx ON client_document_signatures(document_id);
   `);
+
+  const suiteProfileCols = database
+    .prepare("pragma table_info(user_profiles)")
+    .all() as Array<{ name: string }>;
+  if (
+    suiteProfileCols.length &&
+    !suiteProfileCols.some((c) => c.name === "idp_subject")
+  ) {
+    database.exec("alter table user_profiles add column idp_subject text");
+  }
+  if (
+    suiteProfileCols.length &&
+    !suiteProfileCols.some((c) => c.name === "pm_access")
+  ) {
+    database.exec(
+      "alter table user_profiles add column pm_access integer not null default 0",
+    );
+  }
+
+  const suiteTables = new Set(
+    (
+      database
+        .prepare("select name from sqlite_master where type = 'table'")
+        .all() as Array<{ name: string }>
+    ).map((t) => t.name),
+  );
+  if (!suiteTables.has("integration_outbox")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS integration_outbox (
+        id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        processed_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS integration_outbox_status_idx
+        ON integration_outbox(status, created_at);
+    `);
+  }
+  if (!suiteTables.has("erp_pm_project_links")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS erp_pm_project_links (
+        id TEXT PRIMARY KEY,
+        erp_project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+        huly_project_id TEXT,
+        integration_status TEXT NOT NULL DEFAULT 'pending',
+        last_sync_at TEXT,
+        last_sync_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  }
+
+  const poItemInheritCols = database
+    .prepare("pragma table_info(purchase_order_items)")
+    .all() as Array<{ name: string }>;
+  if (
+    poItemInheritCols.length &&
+    !poItemInheritCols.some((c) => c.name === "inherits_po_status")
+  ) {
+    database.exec(
+      "alter table purchase_order_items add column inherits_po_status integer not null default 1",
+    );
+  }
+
+  const linkTables = new Set(
+    (
+      database
+        .prepare("select name from sqlite_master where type='table'")
+        .all() as Array<{ name: string }>
+    ).map((r) => r.name),
+  );
+  if (!linkTables.has("purchase_order_project_links")) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS purchase_order_project_links (
+        id TEXT PRIMARY KEY,
+        po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        is_owner INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (po_id, project_id)
+      );
+      CREATE INDEX IF NOT EXISTS purchase_order_project_links_project_idx
+        ON purchase_order_project_links(project_id);
+      CREATE INDEX IF NOT EXISTS purchase_order_project_links_po_idx
+        ON purchase_order_project_links(po_id);
+    `);
+  }
+
+  const ownerBackfill = database
+    .prepare(
+      `select po.id, po.project_id
+       from purchase_orders po
+       left join purchase_order_project_links l
+         on l.po_id = po.id and l.project_id = po.project_id
+       where l.id is null`,
+    )
+    .all() as Array<{ id: string; project_id: string }>;
+  if (ownerBackfill.length > 0) {
+    const insertLink = database.prepare(
+      `insert or ignore into purchase_order_project_links
+         (id, po_id, project_id, is_owner)
+       values (?, ?, ?, 1)`,
+    );
+    for (const row of ownerBackfill) {
+      insertLink.run(randomUUID(), row.id, row.project_id);
+    }
+  }
 }
 
 export function getLocalDb() {

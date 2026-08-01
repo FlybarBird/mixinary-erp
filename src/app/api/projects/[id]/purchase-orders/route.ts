@@ -6,6 +6,10 @@ import { rollupBomLineQuantities } from "@/lib/projects/workspace";
 import { recalcPurchaseOrderEconomics } from "@/lib/projects/procurement";
 import { allocateNextPoNumber } from "@/lib/projects/numbering";
 import { rebuildProjectCostLedger } from "@/lib/projects/cost-ledger";
+import {
+  ensurePoOwnerLink,
+  listAccessiblePoIds,
+} from "@/lib/projects/po-move";
 
 export async function GET(
   _request: Request,
@@ -16,24 +20,37 @@ export async function GET(
   if (!profile) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createClient();
+  const poIds = await listAccessiblePoIds(supabase, projectId);
+  if (poIds.length === 0) return NextResponse.json({ data: [] });
 
   const { data: orders, error } = await supabase
     .from("purchase_orders")
     .select("*, vendors(id, code, name, contact_name, contact_email)")
-    .eq("project_id", projectId)
+    .in("id", poIds)
     .order("po_number");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-  const poIds = (orders ?? []).map((o) => o.id);
-  let items: unknown[] = [];
-  if (poIds.length > 0) {
-    const { data } = await supabase
-      .from("purchase_order_items")
-      .select("*")
-      .in("po_id", poIds);
-    items = data ?? [];
+  const { data: links } = await supabase
+    .from("purchase_order_project_links")
+    .select("po_id, project_id, is_owner")
+    .in("po_id", poIds);
+
+  const linksByPo = new Map<string, Array<{ project_id: string; is_owner: boolean }>>();
+  for (const link of links ?? []) {
+    if (!linksByPo.has(link.po_id)) linksByPo.set(link.po_id, []);
+    linksByPo.get(link.po_id)!.push({
+      project_id: link.project_id,
+      is_owner: Boolean(link.is_owner),
+    });
   }
+
+  let items: unknown[] = [];
+  const { data } = await supabase
+    .from("purchase_order_items")
+    .select("*")
+    .in("po_id", poIds);
+  items = data ?? [];
 
   const itemsByPo = new Map<string, unknown[]>();
   for (const item of items) {
@@ -42,10 +59,17 @@ export async function GET(
     itemsByPo.get(i.po_id)!.push(item);
   }
 
-  const result = (orders ?? []).map((o) => ({
-    ...o,
-    items: itemsByPo.get(o.id) ?? [],
-  }));
+  const result = (orders ?? []).map((o) => {
+    const poLinks = linksByPo.get(o.id) ?? [];
+    const isOwner = o.project_id === projectId;
+    return {
+      ...o,
+      items: itemsByPo.get(o.id) ?? [],
+      is_shared: !isOwner || poLinks.some((l) => !l.is_owner && l.project_id !== o.project_id),
+      is_owner: isOwner,
+      linked_project_ids: poLinks.map((l) => l.project_id),
+    };
+  });
 
   return NextResponse.json({ data: result });
 }
@@ -117,6 +141,12 @@ export async function POST(
 
   if (poError) return NextResponse.json({ error: poError.message }, { status: 400 });
 
+  try {
+    await ensurePoOwnerLink(supabase, poId, projectId);
+  } catch {
+    // non-fatal for create path if links table missing in older DBs
+  }
+
   const lineItemIds = new Set<string>();
   for (const item of items) {
     const lineTotal = Number(item.qty_ordered || 0) * Number(item.unit_price || 0);
@@ -161,5 +191,5 @@ export async function POST(
     .select("*")
     .eq("po_id", poId);
 
-  return NextResponse.json({ data: { ...po, items: poItems ?? [] } }, { status: 201 });
+  return NextResponse.json({ data: { ...po, items: poItems ?? [], is_owner: true } }, { status: 201 });
 }

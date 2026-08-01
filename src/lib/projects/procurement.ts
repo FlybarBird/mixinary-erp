@@ -383,9 +383,9 @@ export function normalizePoStatusKey(value: string | null | undefined): string {
 }
 
 const PO_STATUS_VISUAL_ALIASES: Record<string, PoStatusVisualKey> = {
-  // In Procurement
+  // In Procurement — on a PO / purchasing workflow, but not fully ordered yet.
+  // Do NOT map not_ordered here: that means the BOM line is not in procurement.
   in_procurement: "in_procurement",
-  not_ordered: "in_procurement",
   partially_ordered: "in_procurement",
   draft: "in_procurement",
   ready_to_order: "in_procurement",

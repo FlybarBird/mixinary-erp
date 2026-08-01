@@ -29,8 +29,6 @@ test("normalizePoStatusKey handles casing, spaces, and hyphens", () => {
 
 test("getPoStatusVisual maps In Procurement synonyms", () => {
   for (const status of [
-    "not_ordered",
-    "Not Ordered",
     "partially_ordered",
     "in_procurement",
     "In Procurement",
@@ -43,6 +41,16 @@ test("getPoStatusVisual maps In Procurement synonyms", () => {
     assert.equal(v.rowClass, "status-row--in-procurement");
     assert.match(v.badgeClass, /badge-po-status-in-procurement/);
     assert.equal(v.ariaLabel, "Line item, status In Procurement");
+  }
+});
+
+test("getPoStatusVisual treats not_ordered as neutral (not yet in procurement)", () => {
+  for (const status of ["not_ordered", "Not Ordered"]) {
+    const v = getPoStatusVisual(status);
+    assert.equal(v.key, "neutral", status);
+    assert.equal(v.label, "Not Ordered");
+    assert.equal(v.rowClass, "status-row--neutral");
+    assert.match(v.badgeClass, /badge-po-status-neutral/);
   }
 });
 

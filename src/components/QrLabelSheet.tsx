@@ -137,6 +137,19 @@ export function QrLabelSheet({
     return `/projects/${projectId}/receive/labels?po=${poId}&mode=${next}`;
   }
 
+  function printViaBrowser() {
+    const root = document.documentElement;
+    root.classList.add("printing-labels");
+    const cleanup = () => {
+      root.classList.remove("printing-labels");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    // Some browsers fire afterprint unreliably — also clear on a timer.
+    window.setTimeout(cleanup, 60_000);
+    window.print();
+  }
+
   async function printWithDymo() {
     setPrinting(true);
     setStatus(null);
@@ -234,7 +247,7 @@ export function QrLabelSheet({
           type="button"
           className="btn"
           disabled={!rows.length}
-          onClick={() => window.print()}
+          onClick={() => printViaBrowser()}
           title="Fallback when DYMO Connect is unavailable"
         >
           Print via browser…

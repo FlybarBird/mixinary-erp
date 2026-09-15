@@ -685,6 +685,10 @@ tr.status-row--on-site.drag-over-after > td {
   box-shadow: 0 1px 0 #c5daf0;
 }
 
+.bom-table tr.section-row.drag-over-section td {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .bom-table tr.section-row .section-bar {
   display: flex;
   align-items: center;

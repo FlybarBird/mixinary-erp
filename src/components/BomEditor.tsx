@@ -74,6 +74,79 @@ type HeaderPoItem = {
   item_status?: string | null;
 };
 
+function visualOrderKeysFor(
+  source: EditableLine[],
+  sectionList: ProjectSection[],
+) {
+  const map = new Map(sectionList.map((s) => [s.id, s]));
+  const unsorted = source.filter(
+    (l) => !l.section_id || !map.has(l.section_id),
+  );
+  return [
+    ...sectionList
+      .slice()
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .flatMap((section) =>
+        source
+          .filter((l) => l.section_id === section.id)
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((l) => l._key),
+      ),
+    ...unsorted
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((l) => l._key),
+  ];
+}
+
+function applyMoveKeys(
+  source: EditableLine[],
+  keysToMove: string[],
+  sectionId: string | null,
+  sectionList: ProjectSection[],
+): EditableLine[] {
+  const moveSet = new Set(keysToMove);
+  const byKey = new Map(source.map((l) => [l._key, l]));
+  const moving = visualOrderKeysFor(source, sectionList).filter((k) =>
+    moveSet.has(k),
+  );
+  if (!moving.length) return source;
+
+  const staying = visualOrderKeysFor(source, sectionList).filter(
+    (k) => !moveSet.has(k),
+  );
+  const map = new Map(sectionList.map((s) => [s.id, s]));
+  const sectionKeys = staying.filter((key) => {
+    const line = byKey.get(key)!;
+    if (sectionId == null) {
+      return !line.section_id || !map.has(line.section_id);
+    }
+    return line.section_id === sectionId;
+  });
+  const lastInSection = sectionKeys[sectionKeys.length - 1];
+  let insertAt = lastInSection ? staying.indexOf(lastInSection) + 1 : 0;
+  if (!lastInSection && sectionId) {
+    const sorted = sectionList
+      .slice()
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const sectionIndex = sorted.findIndex((s) => s.id === sectionId);
+    const priorSectionIds = new Set(
+      sorted.slice(0, Math.max(0, sectionIndex)).map((s) => s.id),
+    );
+    insertAt = staying.filter((key) =>
+      priorSectionIds.has(byKey.get(key)?.section_id ?? ""),
+    ).length;
+  }
+  staying.splice(insertAt, 0, ...moving);
+
+  return staying.map((key, index) => {
+    const line = byKey.get(key)!;
+    if (moveSet.has(key)) {
+      return { ...line, section_id: sectionId, sort_order: index };
+    }
+    return { ...line, sort_order: index };
+  });
+}
+
 export function BomEditor({
   projectId,
   defaultOverridePct,
@@ -109,6 +182,7 @@ export function BomEditor({
     key: string;
     place: "before" | "after";
   } | null>(null);
+  const [dropSectionKey, setDropSectionKey] = useState<string | null>(null);
   const [bulkDraft, setBulkDraft] = useState<BomBulkDraft>(EMPTY_BOM_BULK);
   const tableWrapRef = useRef<HTMLDivElement>(null);
   const headerRowRef = useRef<HTMLTableRowElement>(null);
@@ -245,24 +319,14 @@ export function BomEditor({
   }
 
   function visualOrderKeys(source: EditableLine[]) {
-    const map = new Map(sections.map((s) => [s.id, s]));
-    const unsorted = source.filter(
-      (l) => !l.section_id || !map.has(l.section_id),
-    );
-    return [
-      ...sections
-        .slice()
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .flatMap((section) =>
-          source
-            .filter((l) => l.section_id === section.id)
-            .sort((a, b) => a.sort_order - b.sort_order)
-            .map((l) => l._key),
-        ),
-      ...unsorted
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .map((l) => l._key),
-    ];
+    return visualOrderKeysFor(source, sections);
+  }
+
+  function keysBeingMoved(fromKey: string) {
+    if (selected.has(fromKey)) {
+      return visualOrderKeys(lines).filter((k) => selected.has(k));
+    }
+    return [fromKey];
   }
 
   function reorderLine(
@@ -270,22 +334,29 @@ export function BomEditor({
     targetKey: string,
     place: "before" | "after",
   ) {
-    if (fromKey === targetKey) return;
+    const movingKeys = keysBeingMoved(fromKey).filter((k) => k !== targetKey);
+    if (!movingKeys.length) return;
     setLines((prev) => {
       const byKey = new Map(prev.map((l) => [l._key, l]));
-      const drag = byKey.get(fromKey);
       const target = byKey.get(targetKey);
-      if (!drag || !target) return prev;
+      if (!target) return prev;
+      const moveSet = new Set(movingKeys.filter((k) => byKey.has(k)));
+      if (!moveSet.size) return prev;
 
-      const ordered = visualOrderKeys(prev).filter((k) => k !== fromKey);
+      const ordered = visualOrderKeysFor(prev, sections).filter(
+        (k) => !moveSet.has(k),
+      );
       let insertAt = ordered.indexOf(targetKey);
       if (insertAt < 0) return prev;
       if (place === "after") insertAt += 1;
-      ordered.splice(insertAt, 0, fromKey);
+      const moving = visualOrderKeysFor(prev, sections).filter((k) =>
+        moveSet.has(k),
+      );
+      ordered.splice(insertAt, 0, ...moving);
 
       return ordered.map((key, index) => {
         const line = byKey.get(key)!;
-        if (key === fromKey) {
+        if (moveSet.has(key)) {
           return {
             ...line,
             section_id: target.section_id,
@@ -299,47 +370,16 @@ export function BomEditor({
   }
 
   function moveLineToSection(fromKey: string, sectionId: string | null) {
-    setLines((prev) => {
-      const byKey = new Map(prev.map((l) => [l._key, l]));
-      const drag = byKey.get(fromKey);
-      if (!drag) return prev;
+    setLines((prev) =>
+      applyMoveKeys(prev, keysBeingMoved(fromKey), sectionId, sections),
+    );
+    bump();
+  }
 
-      const ordered = visualOrderKeys(prev).filter((k) => k !== fromKey);
-      const sectionKeys = ordered.filter((key) => {
-        const line = byKey.get(key)!;
-        if (sectionId == null) {
-          return !line.section_id || !sectionMap.has(line.section_id);
-        }
-        return line.section_id === sectionId;
-      });
-      const lastInSection = sectionKeys[sectionKeys.length - 1];
-      let insertAt = lastInSection ? ordered.indexOf(lastInSection) + 1 : 0;
-      if (!lastInSection && sectionId) {
-        const sectionIndex = sections
-          .slice()
-          .sort((a, b) => a.sort_order - b.sort_order)
-          .findIndex((s) => s.id === sectionId);
-        const priorSectionIds = new Set(
-          sections
-            .slice()
-            .sort((a, b) => a.sort_order - b.sort_order)
-            .slice(0, Math.max(0, sectionIndex))
-            .map((s) => s.id),
-        );
-        insertAt = ordered.filter((key) =>
-          priorSectionIds.has(byKey.get(key)?.section_id ?? ""),
-        ).length;
-      }
-      ordered.splice(insertAt, 0, fromKey);
-
-      return ordered.map((key, index) => {
-        const line = byKey.get(key)!;
-        if (key === fromKey) {
-          return { ...line, section_id: sectionId, sort_order: index };
-        }
-        return { ...line, sort_order: index };
-      });
-    });
+  function moveSelectedToSection(sectionId: string | null) {
+    const keys = visualOrderKeys(lines).filter((k) => selected.has(k));
+    if (!keys.length) return;
+    setLines((prev) => applyMoveKeys(prev, keys, sectionId, sections));
     bump();
   }
 
@@ -354,6 +394,7 @@ export function BomEditor({
     if (!canEditPricing || !dragKey || dragKey === key) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+    setDropSectionKey(null);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const place = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
     setDropTarget({ key, place });
@@ -374,12 +415,15 @@ export function BomEditor({
     reorderLine(fromKey, key, place);
     setDragKey(null);
     setDropTarget(null);
+    setDropSectionKey(null);
   }
 
-  function onSectionDragOver(e: DragEvent) {
+  function onSectionDragOver(e: DragEvent, sectionKey: string) {
     if (!canEditPricing || !dragKey) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+    setDropTarget(null);
+    setDropSectionKey(sectionKey);
   }
 
   function onSectionDrop(e: DragEvent, sectionId: string | null) {
@@ -390,11 +434,13 @@ export function BomEditor({
     moveLineToSection(fromKey, sectionId);
     setDragKey(null);
     setDropTarget(null);
+    setDropSectionKey(null);
   }
 
   function onDragEnd() {
     setDragKey(null);
     setDropTarget(null);
+    setDropSectionKey(null);
   }
 
   function addLine(
@@ -462,19 +508,81 @@ export function BomEditor({
   }
 
   function addSection() {
-    const name = prompt("Section name");
-    if (!name) return;
+    const name = window.prompt(
+      selected.size
+        ? `Section name (${selected.size} selected line${selected.size === 1 ? "" : "s"} will move here)`
+        : "Section name",
+    );
+    if (!name?.trim()) return;
     const id = `new-section-${crypto.randomUUID()}`;
-    setSections((prev) => [
-      ...prev,
+    const nextSections = [
+      ...sections,
       {
         id,
         project_id: projectId,
-        name,
-        sort_order: prev.length,
+        name: name.trim(),
+        sort_order: sections.length,
       },
-    ]);
+    ];
+    setSections(nextSections);
+    if (selected.size) {
+      const keys = visualOrderKeys(lines).filter((k) => selected.has(k));
+      setLines((prev) => applyMoveKeys(prev, keys, id, nextSections));
+    }
     bump();
+  }
+
+  function renameSection(section: ProjectSection) {
+    const name = window.prompt("Section name", section.name);
+    if (!name?.trim()) return;
+    setSections((prev) =>
+      prev.map((s) =>
+        s.id === section.id ? { ...s, name: name.trim() } : s,
+      ),
+    );
+    bump();
+  }
+
+  function removeSection(sectionId: string) {
+    const ok = window.confirm(
+      "Remove this section? Its lines move to General.",
+    );
+    if (!ok) return;
+    setSections((prev) => prev.filter((s) => s.id !== sectionId));
+    setLines((prev) =>
+      prev.map((line) =>
+        line.section_id === sectionId ? { ...line, section_id: null } : line,
+      ),
+    );
+    bump();
+  }
+
+  function removeSelected() {
+    if (!selected.size) return;
+    const selectedLines = lines.filter((l) => selected.has(l.id));
+    const orderedCount = selectedLines.filter(
+      (l) => Number(l.qty_ordered || 0) > 0,
+    ).length;
+    const msg = orderedCount
+      ? `Delete ${selectedLines.length} line item(s)? ${orderedCount} ${orderedCount === 1 ? "has" : "have"} been ordered and will be unlinked from purchase orders.`
+      : `Delete ${selectedLines.length} line item(s)?`;
+    if (!window.confirm(msg)) return;
+    setLines((prev) => prev.filter((l) => !selected.has(l.id)));
+    setSelected(new Set());
+    bump();
+  }
+
+  function onMoveSelect(value: string) {
+    if (!value || !selected.size) return;
+    if (value === "__new__") {
+      addSection();
+      return;
+    }
+    if (value === "__general__") {
+      moveSelectedToSection(null);
+      return;
+    }
+    moveSelectedToSection(value);
   }
 
   async function sendToProcurement() {
@@ -604,6 +712,35 @@ export function BomEditor({
             >
               Pick part
             </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!selected.size}
+              onClick={removeSelected}
+            >
+              Delete selected
+            </button>
+            <select
+              className="field"
+              style={{ maxWidth: 220 }}
+              disabled={!selected.size}
+              value=""
+              aria-label="Move selected to section"
+              onChange={(e) => onMoveSelect(e.target.value)}
+            >
+              <option value="">
+                {selected.size
+                  ? `Move ${selected.size} to section…`
+                  : "Move to section…"}
+              </option>
+              {sections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.name}
+                </option>
+              ))}
+              <option value="__general__">General</option>
+              <option value="__new__">New section…</option>
+            </select>
             <button type="button" className="btn" onClick={refreshMsrp}>
               Refresh MSRP
             </button>
@@ -880,8 +1017,17 @@ export function BomEditor({
               return (
                 <Fragment key={section?.id ?? "general"}>
                   <tr
-                    className="section-row"
-                    onDragOver={onSectionDragOver}
+                    className={[
+                      "section-row",
+                      dropSectionKey === (section?.id ?? "general")
+                        ? "drag-over-section"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onDragOver={(e) =>
+                      onSectionDragOver(e, section?.id ?? "general")
+                    }
                     onDrop={(e) => onSectionDrop(e, section?.id ?? null)}
                   >
                     <td colSpan={23}>
@@ -931,6 +1077,24 @@ export function BomEditor({
                             >
                               Pick part
                             </button>
+                            {section ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => renameSection(section)}
+                                >
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => removeSection(section.id)}
+                                >
+                                  Remove section
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -973,18 +1137,17 @@ export function BomEditor({
                       >
                         <td className="bom-drag-cell">
                           {canEditPricing ? (
-                            <button
-                              type="button"
+                            <span
                               className="bom-drag-handle"
                               draggable
-                              title="Drag to reorder"
+                              title="Drag to reorder or drop on a section"
                               aria-label="Drag to reorder"
                               onDragStart={(e) =>
                                 onLineDragStart(e, line._key)
                               }
                             >
                               ⋮⋮
-                            </button>
+                            </span>
                           ) : null}
                         </td>
                         <td>

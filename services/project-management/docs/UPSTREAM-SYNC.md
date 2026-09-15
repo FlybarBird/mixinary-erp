@@ -1,15 +1,8 @@
-# Upstream Huly update process
+# Upstream OpenProject update process
 
-1. Review platform release notes + huly-selfhost `MIGRATION.md`
-2. Merge/tag into `upstream-sync`
-3. Resolve conflicts in company overlays
-4. Run automated tests (base-path suite)
-5. Test ERP synchronization
-6. Test Authentik OIDC
-7. Test `/project-management` via Cloudflare
-8. Test uploads / realtime
-9. Test DB migrations on staging copy
-10. Deploy staging → approve → backup prod → tagged deploy
-
-Never auto-deploy newest upstream tip to production.
-Use production `v*` tags only.
+1. Review [OpenProject release notes](https://www.openproject.org/docs/release-notes/) for the next major/minor.
+2. Update `OPENPROJECT_VERSION` (image tag major, e.g. `17` → `18`).
+3. Backup Postgres volume + `/var/openproject/assets` before upgrade.
+4. `docker compose pull && docker compose up -d` and watch seeder/migrations in logs.
+5. Smoke-test login, project create via APIv3, and `/project-management` relative root.
+6. Record the change in `docs/MODIFICATIONS.md`.

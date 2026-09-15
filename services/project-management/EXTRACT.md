@@ -1,6 +1,14 @@
-# Extract to FlybarBird/project-management
+# Extract this folder to FlybarBird/project-management
 
-1. Create empty repo `FlybarBird/project-management`.
-2. Copy this directory to the new repo root (not ERP `src/`).
-3. Add remotes per README.
-4. Keep proprietary ERP code out of the fork; integrate via APIs only.
+This directory is the company packaging for OpenProject Community used as Mixinary suite PM.
+
+Suggested remotes after extraction:
+
+```bash
+git remote add origin git@github.com:FlybarBird/project-management.git
+# Track upstream image tags / release notes:
+# https://www.openproject.org/docs/release-notes/
+# https://github.com/opf/openproject-docker-compose
+```
+
+Do not merge ERP application code into the extracted repo — keep API contracts via the suite integration service.

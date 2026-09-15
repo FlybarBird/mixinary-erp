@@ -1,7 +1,0 @@
-{
-  "defaultTemplateSlug": "mixinary-avl-install",
-  "templates": [
-    { "slug": "mixinary-avl-install", "name": "AVL Install" },
-    { "slug": "mixinary-service", "name": "Service" }
-  ]
-}

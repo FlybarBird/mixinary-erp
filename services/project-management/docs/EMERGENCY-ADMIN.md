@@ -1,7 +1,7 @@
-# Emergency Huly administrator
+# Emergency OpenProject administrator
 
-Maintain a local Huly administrator for recovery if Authentik is unavailable.
+Keep a local OpenProject `admin` account for recovery if Authentik is unavailable.
 
-- Credentials in secrets manager only (never git)
-- Break-glass use only; audit every login
-- Rotate after emergency use
+1. First boot creates `admin` / `admin` — change the password immediately.
+2. Prefer Authentik OIDC for day-to-day access; keep admin for break-glass only.
+3. Document the password in the company secrets vault (not git).

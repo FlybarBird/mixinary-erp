@@ -41,7 +41,7 @@ export async function publishIntegrationEvent(input: {
     }
     return { ok: true, json };
   } catch (err) {
-    // Async boundary: ERP project create must not fail if Plane/integration is down.
+    // Async boundary: ERP project create must not fail if PM/integration is down.
     console.error("integration event error", err);
     return { ok: false, error: String(err) };
   }
@@ -58,7 +58,9 @@ export async function getProjectMapping(erpProjectId: string) {
     if (!res.ok) return null;
     const json = (await res.json()) as {
       mapping: {
-        huly_project_id: string | null;
+        pm_project_id?: string | null;
+        pm_project_identifier?: string | null;
+        huly_project_id?: string | null;
         integration_status: string;
         erp_project_number?: string | null;
       } | null;
@@ -69,7 +71,7 @@ export async function getProjectMapping(erpProjectId: string) {
   }
 }
 
-export async function getPlaneProgress(erpProjectId: string) {
+export async function getPmProgress(erpProjectId: string) {
   const { integrationBaseUrl } = suiteConfig();
   if (!integrationBaseUrl) return null;
   try {
@@ -83,6 +85,9 @@ export async function getPlaneProgress(erpProjectId: string) {
     return null;
   }
 }
+
+/** @deprecated Prefer getPmProgress */
+export const getPlaneProgress = getPmProgress;
 
 export function verifyIntegrationSignature(rawBody: string, signature: string | null) {
   const secret = suiteConfig().integrationSecret;

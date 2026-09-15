@@ -1,38 +1,28 @@
-# Cloudflare routing for Huly Project Management
+# Cloudflare routing for OpenProject
 
-## Goal
+`https://<company-domain>/project-management` → Mixinary OpenProject on `127.0.0.1:8087`
 
-`https://<company-domain>/project-management` → Mixinary Huly nginx  
-Account OIDC callbacks must reach the account service as configured in Huly.
+Unlike Huly, OpenProject does **not** need separate `/_accounts` / `/_transactor` routes when using a relative URL root.
 
-## Recommended: Cloudflare Tunnel
+## Example tunnel ingress
 
 ```yaml
-tunnel: <TUNNEL_ID>
-credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
 ingress:
-  - hostname: <company-domain>
+  - hostname: example.com
     path: /project-management*
     service: http://127.0.0.1:8087
-  - hostname: <company-domain>
-    path: /_accounts*
-    service: http://127.0.0.1:8087
-  - hostname: <company-domain>
-    path: /_transactor*
-    service: http://127.0.0.1:8087
-  - hostname: <company-domain>
-    path: /_collaborator*
-    service: http://127.0.0.1:8087
-  - hostname: <company-domain>
+  - hostname: example.com
     path: /auth*
     service: http://127.0.0.1:9000
-  - hostname: <company-domain>
+  - hostname: example.com
     path: /integration*
     service: http://127.0.0.1:8091
-  - hostname: <company-domain>
+  - hostname: example.com
     path: /shared-files*
     service: http://127.0.0.1:8092
   - service: http_status:404
 ```
 
-ERP remains on Vercel for non-PM paths. Ensure `HOST_ADDRESS` and nginx paths match how Cloudflare exposes Huly (`/_accounts`, `/_transactor`, etc.).
+Set `OPENPROJECT_HOST__NAME` to the public hostname and `OPENPROJECT_HTTPS=true` once TLS is terminated at Cloudflare.
+
+ERP (Vercel) continues to serve non-PM paths. Keep `NEXT_PUBLIC_PM_BASE_PATH=/project-management`.

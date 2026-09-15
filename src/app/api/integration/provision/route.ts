@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const userId = String(body.userId || "");
   const action = body.action === "disable" ? "disable" : "enable";
-  const planeRole = String(body.planeRole || "member");
+  const planeRole = String(body.pmRole || body.planeRole || "member");
   if (!userId) {
     return NextResponse.json({ error: "userId required" }, { status: 400 });
   }
@@ -57,7 +57,9 @@ export async function POST(request: Request) {
         erpUserId: userId,
         idpSubject,
         verifiedEmail: email,
+        pmRole: planeRole,
         planeRole,
+        pmAccessStatus: "enabled",
         planeAccessStatus: "enabled",
       },
     });

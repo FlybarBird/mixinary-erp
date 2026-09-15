@@ -4,7 +4,7 @@ import { useState } from "react";
 
 export function SuiteProvisionForm() {
   const [userId, setUserId] = useState("");
-  const [planeRole, setPlaneRole] = useState("member");
+  const [pmRole, setPmRole] = useState("member");
   const [message, setMessage] = useState("");
 
   async function run(action: "enable" | "disable") {
@@ -12,7 +12,7 @@ export function SuiteProvisionForm() {
     const res = await fetch("/api/integration/provision", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId, action, planeRole }),
+      body: JSON.stringify({ userId, action, pmRole, planeRole: pmRole }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -33,10 +33,10 @@ export function SuiteProvisionForm() {
         />
       </label>
       <label className="field">
-        <span>Plane role</span>
+        <span>PM role</span>
         <select
-          value={planeRole}
-          onChange={(e) => setPlaneRole(e.target.value)}
+          value={pmRole}
+          onChange={(e) => setPmRole(e.target.value)}
         >
           <option value="admin">admin</option>
           <option value="member">member</option>

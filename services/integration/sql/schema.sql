@@ -1,11 +1,10 @@
-
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS identity_map (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   erp_user_id TEXT NOT NULL UNIQUE,
   idp_subject TEXT NOT NULL UNIQUE,
-  huly_user_id TEXT,
+  pm_user_id TEXT,
   verified_email TEXT NOT NULL,
   pm_access_status TEXT NOT NULL DEFAULT 'none',
   pm_role TEXT,
@@ -20,8 +19,8 @@ CREATE TABLE IF NOT EXISTS project_map (
   erp_company_id TEXT,
   erp_project_number TEXT,
   erp_project_url TEXT,
-  huly_project_id TEXT UNIQUE,
-  huly_workspace_slug TEXT,
+  pm_project_id TEXT UNIQUE,
+  pm_project_identifier TEXT,
   integration_status TEXT NOT NULL DEFAULT 'pending',
   last_sync_at TIMESTAMPTZ,
   last_sync_error TEXT,

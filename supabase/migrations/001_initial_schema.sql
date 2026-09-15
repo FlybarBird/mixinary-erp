@@ -351,6 +351,7 @@ insert into public.price_sources (name, base_domain, search_url_template, suppor
   ('Middle Atlantic', 'middleatlantic.com', 'https://www.middleatlantic.com/search?q={query}', true, 'Rack manufacturer'),
   ('Netgear', 'netgear.com', 'https://www.netgear.com/search/?q={query}', true, 'AV Line switches'),
   ('Full Compass', 'fullcompass.com', 'https://www.fullcompass.com/search/{query}', true, 'Pro AV catalog'),
+  ('Sweetwater', 'sweetwater.com', 'https://www.sweetwater.com/store/search?s={query}', true, 'Pro audio catalog'),
   ('Sound Pro', 'soundpro.com', null, false, 'Dealer portal — use paste URL or PDF quote'),
   ('Tecnec', 'tecnec.com', null, false, 'Dealer portal — use paste URL or PDF quote'),
   ('Elite Core', 'elitecoreaudio.com', null, false, 'Dealer — use paste URL or PDF quote');

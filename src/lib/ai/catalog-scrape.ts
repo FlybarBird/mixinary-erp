@@ -1,6 +1,10 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { extractJson } from "@/lib/ai/openai";
+import { fetchHtmlDocument } from "@/lib/ai/fetch-html";
+import { extractNextDataProducts } from "@/lib/ai/next-data-products";
+
+export { extractNextDataProducts };
 
 export interface ScrapedPart {
   name: string;
@@ -207,10 +211,11 @@ export function extractMediaCandidates(html: string, baseUrl: string) {
     if (looksLikeProductLink(abs, baseUrl)) links.add(abs);
   }
 
-  const structuredProducts = extractJsonLdProducts(html, baseUrl).slice(
-    0,
-    TARGET_PART_LIMIT,
-  );
+  const structuredProducts = [
+    ...extractNextDataProducts(html, baseUrl),
+    ...extractJsonLdProducts(html, baseUrl),
+  ].slice(0, TARGET_PART_LIMIT);
+
   for (const product of structuredProducts) {
     if (product.product_url) links.add(product.product_url);
     if (product.image_url && !looksLikeJunkImage(product.image_url)) {
@@ -243,6 +248,7 @@ function looksLikeProductLink(url: string, pageUrl: string): boolean {
       return false;
     }
     return (
+      /\/store\/detail\//i.test(path) ||
       /\/(product|products|p|item|items|sku|dp|buy|shop|detail|details|model|equipment|gear)\b/i.test(
         path,
       ) ||
@@ -379,21 +385,8 @@ function jsonLdToPart(
 export async function fetchPublicHtml(url: string) {
   const parsed = await assertSafePublicUrl(url);
 
-  const res = await fetch(parsed.toString(), {
-    headers: {
-      "User-Agent":
-        "MixinaryERP/1.0 (+catalog scrape; contact admin)",
-      Accept: "text/html,application/xhtml+xml",
-    },
-    redirect: "follow",
-    signal: AbortSignal.timeout(25000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Fetch failed (${res.status}) for ${url}`);
-  }
-
-  const finalUrl = res.url || parsed.toString();
+  const fetched = await fetchHtmlDocument(parsed.toString());
+  const finalUrl = fetched.finalUrl || parsed.toString();
   let finalParsed: URL;
   try {
     finalParsed = new URL(finalUrl);
@@ -405,12 +398,11 @@ export async function fetchPublicHtml(url: string) {
   }
   await assertPublicHostname(finalParsed.hostname);
 
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_BYTES) {
+  const html = fetched.html;
+  if (Buffer.byteLength(html, "utf8") > MAX_BYTES) {
     throw new Error("Page is too large to scrape");
   }
 
-  const html = new TextDecoder("utf-8").decode(buf);
   const {
     candidateImages,
     candidateLinks,
@@ -612,6 +604,13 @@ export async function extractPartsFromHtml(params: {
       ),
     )
     .filter((p): p is ScrapedPart => Boolean(p));
+
+  // Sweetwater (and similar) search pages embed full catalog hits in __NEXT_DATA__.
+  // Prefer those over a second AI pass when we already have rich structured rows.
+  const structuredWithPrice = parts.filter((p) => p.msrp != null).length;
+  if (parts.length >= 3 && structuredWithPrice >= Math.min(3, parts.length)) {
+    return parts.slice(0, TARGET_PART_LIMIT);
+  }
 
   const textChunks: string[] = [];
   const chunkSize = 35_000;

@@ -98,6 +98,13 @@ function seed(database: Database.Database) {
         "Dealer portal — paste URL or PDF",
       ],
       ["Tecnec", "tecnec.com", null, 0, "Dealer portal — paste URL or PDF"],
+      [
+        "Sweetwater",
+        "sweetwater.com",
+        "https://www.sweetwater.com/store/search?s={query}",
+        1,
+        "Pro audio catalog (search + product pages)",
+      ],
     ] as const;
     const stmt = database.prepare(
       `insert into price_sources
@@ -107,6 +114,25 @@ function seed(database: Database.Database) {
     for (const [name, domain, template, supports, notes] of sources) {
       stmt.run(randomUUID(), name, domain, template, supports, notes);
     }
+  }
+
+  const sweetwater = database
+    .prepare("select id from price_sources where base_domain = ?")
+    .get("sweetwater.com") as { id: string } | undefined;
+  if (!sweetwater) {
+    database
+      .prepare(
+        `insert into price_sources
+          (id, name, base_domain, search_url_template, enabled, supports_search, notes)
+         values (?, ?, ?, ?, 1, 1, ?)`,
+      )
+      .run(
+        randomUUID(),
+        "Sweetwater",
+        "sweetwater.com",
+        "https://www.sweetwater.com/store/search?s={query}",
+        "Pro audio catalog (search + product pages)",
+      );
   }
 
   const carrierCount = database

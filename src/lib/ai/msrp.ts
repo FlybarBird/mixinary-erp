@@ -1,4 +1,6 @@
 import { extractJson } from "@/lib/ai/openai";
+import { fetchHtmlDocument } from "@/lib/ai/fetch-html";
+import { extractNextDataProducts } from "@/lib/ai/next-data-products";
 import type { PriceSource } from "@/lib/types";
 
 export interface MsrpExtraction {
@@ -37,35 +39,48 @@ export function buildSearchUrl(
   );
 }
 
-export async function fetchAllowlistedHtml(url: string, sources: PriceSource[]) {
-  if (!isAllowlistedUrl(url, sources)) {
-    throw new Error(`URL domain is not in the allowlist: ${url}`);
-  }
-
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "MixinaryERP/1.0 (+internal price lookup; contact admin)",
-      Accept: "text/html,application/xhtml+xml",
-    },
-    signal: AbortSignal.timeout(20000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Fetch failed (${res.status}) for ${url}`);
-  }
-
-  const html = await res.text();
-  // Keep prompt size manageable
-  const cleaned = html
+function htmlToTextSnippet(html: string, limit = 18000): string {
+  return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 18000);
+    .slice(0, limit);
+}
 
-  return { htmlSnippet: cleaned, finalUrl: res.url || url };
+/** Keep structured Next.js product rows in the MSRP prompt (scripts are otherwise stripped). */
+function nextDataPriceHint(html: string, pageUrl: string): string {
+  try {
+    const products = extractNextDataProducts(html, pageUrl).slice(0, 25);
+    if (!products.length) return "";
+    return (
+      "\nSTRUCTURED_PRODUCTS: " +
+      JSON.stringify(
+        products.map((p) => ({
+          name: p.name,
+          sku: p.sku,
+          msrp: p.msrp,
+          product_url: p.product_url,
+          brand: p.brand,
+        })),
+      )
+    );
+  } catch {
+    return "";
+  }
+}
+
+export async function fetchAllowlistedHtml(url: string, sources: PriceSource[]) {
+  if (!isAllowlistedUrl(url, sources)) {
+    throw new Error(`URL domain is not in the allowlist: ${url}`);
+  }
+
+  const { html, finalUrl } = await fetchHtmlDocument(url, { timeoutMs: 20000 });
+  const cleaned =
+    htmlToTextSnippet(html) + nextDataPriceHint(html, finalUrl || url);
+
+  return { htmlSnippet: cleaned.slice(0, 24000), finalUrl: finalUrl || url };
 }
 
 export async function extractMsrpFromHtml(params: {
@@ -75,7 +90,7 @@ export async function extractMsrpFromHtml(params: {
 }): Promise<MsrpExtraction> {
   return extractJson<MsrpExtraction>({
     system:
-      "You extract product MSRP/list price from retailer or manufacturer page text. Return JSON with keys: product_name, sku, msrp (number or null), currency, source_url, confidence (0-1), notes. Prefer official MSRP/list price over sale/street if both exist. If unsure, lower confidence and set msrp null.",
+      "You extract product MSRP/list price from retailer or manufacturer page text. Return JSON with keys: product_name, sku, msrp (number or null), currency, source_url, confidence (0-1), notes. Prefer official MSRP/list price over sale/street if both exist. If STRUCTURED_PRODUCTS is present, prefer matching that list. If unsure, lower confidence and set msrp null.",
     user: JSON.stringify({
       search_query: params.query,
       source_url: params.sourceUrl,

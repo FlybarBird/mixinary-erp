@@ -13,11 +13,14 @@ Company packaging for self-hosted **[OpenProject](https://www.openproject.org)**
 ## Quick start
 
 ```bash
-cp .env.example .env   # set SECRET_KEY_BASE and host
+cp .env.example .env   # set SECRET_KEY_BASE and DB password
 docker compose -f docker-compose.yml --env-file .env up -d
+./scripts/smoke-login.sh
 ```
 
-Default login after first boot: `admin` / `admin` (change immediately).
+**Login:** `http://localhost:8087/project-management/login`  
+Default: username `admin` / password from `OPENPROJECT_SEED__ADMIN__USER__PASSWORD` (default `admin`).  
+See **[docs/LOGIN.md](./docs/LOGIN.md)** for production host/HTTPS settings and reset steps.
 
 Public path (Cloudflare): `/project-management` → container on `LISTEN_HTTP_PORT` (default **8087**).
 
@@ -27,9 +30,12 @@ ERP root remains Mixinary ERP; do not redirect PM users to bare `/`.
 
 `OPENPROJECT_RAILS__RELATIVE__URL__ROOT=/project-management` so the app lives under the suite path without rewriting every link.
 
-## OIDC (Authentik)
+## Authentication
 
-See `company/oidc/authentik.env.example`. Register an OpenProject application in Authentik and seed OpenProject OpenID Connect settings (UI or env).
+| Mode | Community | Notes |
+|------|-----------|--------|
+| Password (`admin`) | Yes | Default — keep enabled |
+| Authentik OIDC | Enterprise add-on | See `company/oidc/authentik.env.example` |
 
 ## API integration
 

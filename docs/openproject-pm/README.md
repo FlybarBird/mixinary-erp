@@ -20,3 +20,4 @@ Upstream: [openproject/openproject](https://github.com/opf/openproject) · Docs:
 4. Start suite sidecars: `docker compose -f services/suite/docker-compose.yml --env-file services/suite/.env up -d`
 5. Create an OpenProject API token (My account → Access token) and set `OPENPROJECT_API_KEY` on the integration service
 6. Set ERP Authentik + `INTEGRATION_*` env vars; apply migrations `023`, `024`, and `028`
+7. Confirm PM login at `/project-management/login` (Community: `admin` password — see `services/project-management/docs/LOGIN.md`)

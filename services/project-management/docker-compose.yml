@@ -25,7 +25,7 @@ services:
     volumes:
       - mixinary_op_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${OPENPROJECT_DB_USER:-openproject}"]
+      test: ["CMD-SHELL", "pg_isready -U ${OPENPROJECT_DB_USER:-openproject} -d ${OPENPROJECT_DB_NAME:-openproject}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -53,14 +53,38 @@ services:
       OPENPROJECT_HOST__NAME: ${OPENPROJECT_HOST__NAME:-localhost:8087}
       OPENPROJECT_HTTPS: ${OPENPROJECT_HTTPS:-false}
       OPENPROJECT_DEFAULT__LANGUAGE: ${OPENPROJECT_DEFAULT__LANGUAGE:-en}
-      # Keep suite path /project-management (Cloudflare + ERP app selector).
+      # Suite path — must match Cloudflare + NEXT_PUBLIC_PM_BASE_PATH
       OPENPROJECT_RAILS__RELATIVE__URL__ROOT: ${APP_BASE_PATH:-/project-management}
       DATABASE_URL: postgres://${OPENPROJECT_DB_USER:-openproject}:${OPENPROJECT_DB_PASSWORD}@openproject-db:5432/${OPENPROJECT_DB_NAME:-openproject}
-      MEMCACHE_SERVER: openproject-cache:11211
-      # Optional Authentik OIDC — configure fully in Admin UI or via OPENPROJECT_OPENID__CONNECT_* envs.
+      # Official cache wiring (not MEMCACHE_SERVER alone)
+      OPENPROJECT_RAILS__CACHE__STORE: memcache
+      OPENPROJECT_CACHE__MEMCACHE__SERVER: openproject-cache:11211
+      # --- Community login (password) — OIDC is Enterprise-only ---
+      # Keep password login enabled so Community installs can always sign in.
+      OPENPROJECT_DISABLE__PASSWORD__LOGIN: ${OPENPROJECT_DISABLE__PASSWORD__LOGIN:-false}
+      OPENPROJECT_LOGIN__REQUIRED: ${OPENPROJECT_LOGIN__REQUIRED:-true}
+      OPENPROJECT_LOST__PASSWORD: ${OPENPROJECT_LOST__PASSWORD:-true}
+      # Seeded on first boot only (changing later has no effect).
+      OPENPROJECT_SEED__ADMIN__USER__PASSWORD: ${OPENPROJECT_SEED__ADMIN__USER__PASSWORD:-admin}
+      OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET: ${OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET:-true}
+      OPENPROJECT_SEED__ADMIN__USER__MAIL: ${OPENPROJECT_SEED__ADMIN__USER__MAIL:-admin@example.net}
+      OPENPROJECT_SEED__ADMIN__USER__NAME: ${OPENPROJECT_SEED__ADMIN__USER__NAME:-OpenProject Admin}
+      OPENPROJECT_SEED__ADMIN__USER__LOCKED: ${OPENPROJECT_SEED__ADMIN__USER__LOCKED:-false}
+      # Optional Enterprise OIDC (ignored / unavailable on Community without EE token)
       OPENPROJECT_OPENID__CONNECT__AUTHENTIK__DISPLAY__NAME: ${OIDC_DISPLAY_NAME:-Authentik}
       OPENPROJECT_OPENID__CONNECT__AUTHENTIK__HOST: ${OIDC_ISSUER:-}
       OPENPROJECT_OPENID__CONNECT__AUTHENTIK__IDENTIFIER: ${OIDC_CLIENT_ID:-}
       OPENPROJECT_OPENID__CONNECT__AUTHENTIK__SECRET: ${OIDC_CLIENT_SECRET:-}
     volumes:
       - mixinary_op_assets:/var/openproject/assets
+    healthcheck:
+      # Relative URL root — login must be under /project-management
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1/project-management/login | grep -E '^(200|302)$$'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s

@@ -1707,6 +1707,63 @@ tr.status-row--on-site.drag-over-after > td {
   padding: 1.1rem 1.2rem 1.25rem;
 }
 
+.picker-tabs {
+  display: flex;
+  gap: 0.15rem;
+  margin-top: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.picker-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #667788);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 0.55rem 0.85rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.picker-tab:hover {
+  color: var(--ink, #223548);
+}
+
+.picker-tab.active {
+  color: var(--ink, #223548);
+  border-bottom-color: var(--accent, #1f6feb);
+}
+
+.picker-empty-create {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-style: dashed;
+  background: #fafbfc;
+}
+
+.picker-empty-create:hover {
+  border-color: var(--accent, #1f6feb);
+  background: #f3f8ff;
+}
+
+.picker-empty-create-mark {
+  flex: 0 0 72px;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  font-weight: 500;
+  color: var(--accent, #1f6feb);
+  background: #eef4ff;
+  border-radius: calc(var(--radius) - 2px);
+}
+
 /* Legacy aliases used by older nav class names */
 .top-nav {
   display: contents;

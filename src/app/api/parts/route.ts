@@ -128,6 +128,68 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
+  if (isLocalMode()) {
+    const db = getLocalDb();
+    const now = new Date().toISOString();
+    db.prepare(
+      `insert into catalog_parts (
+        id, sku, upc, name, description, category_id, company_id,
+        default_vendor_id, msrp, default_quote, image_path, image_url,
+        specs, source, active, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      payload.id,
+      payload.sku,
+      payload.upc,
+      payload.name,
+      payload.description,
+      payload.category_id,
+      payload.company_id,
+      payload.default_vendor_id,
+      payload.msrp,
+      payload.default_quote,
+      payload.image_path,
+      payload.image_url,
+      payload.specs == null ? null : JSON.stringify(payload.specs),
+      payload.source,
+      payload.active ? 1 : 0,
+      now,
+      now,
+    );
+    const row = db
+      .prepare(
+        `select p.*,
+          c.name as category_name,
+          co.name as company_name,
+          v.code as vendor_code
+         from catalog_parts p
+         left join part_categories c on c.id = p.category_id
+         left join part_companies co on co.id = p.company_id
+         left join vendors v on v.id = p.default_vendor_id
+         where p.id = ?`,
+      )
+      .get(payload.id) as Record<string, unknown>;
+    return NextResponse.json({
+      data: {
+        ...row,
+        active: Boolean(row.active),
+        specs:
+          typeof row.specs === "string" && row.specs
+            ? JSON.parse(String(row.specs))
+            : row.specs,
+        part_categories: row.category_name
+          ? { id: row.category_id, name: row.category_name }
+          : null,
+        part_companies: row.company_name
+          ? { id: row.company_id, name: row.company_name }
+          : null,
+        vendors: row.vendor_code
+          ? { id: row.default_vendor_id, code: row.vendor_code }
+          : null,
+      },
+    });
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("catalog_parts")

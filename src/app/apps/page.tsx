@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser, getCurrentProfile } from "@/lib/auth";
 import { needsSetup } from "@/lib/setup";
 import { getSuiteApps } from "@/lib/suite/apps";
+import { OPENPROJECT_SUITE_PATH } from "@/lib/suite/pm-base";
 import { suiteOidcEnabled } from "@/lib/suite/config";
 import { AppSelector } from "@/components/suite/AppSelector";
 
@@ -13,7 +14,14 @@ export default async function SuiteLandingPage() {
   if (await needsSetup()) redirect("/setup");
   const user = await getSessionUser();
   const profile = user ? await getCurrentProfile() : null;
-  const apps = getSuiteApps().filter((a) => a.id !== "landing");
+  const suiteApps = getSuiteApps();
+  const apps = suiteApps
+    .filter((a) => a.id !== "landing")
+    .map((app) =>
+      app.id === "pm"
+        ? { ...app, href: OPENPROJECT_SUITE_PATH, external: true }
+        : app,
+    );
 
   return (
     <div className="suite-landing">
@@ -28,7 +36,7 @@ export default async function SuiteLandingPage() {
         <div className="suite-landing-actions">
           {profile ? (
             <>
-              <AppSelector apps={getSuiteApps()} currentId="landing" />
+              <AppSelector apps={suiteApps} currentId="landing" />
               <span className="suite-landing-user">
                 {profile.full_name || profile.email}
               </span>
@@ -52,8 +60,8 @@ export default async function SuiteLandingPage() {
 
       <main className="suite-landing-main">
         <p className="suite-landing-lead">
-          Enter through one identity. Open ERP, Project Management, Client
-          Documents, or Administration.
+          Enter through one identity. Open ERP, Project Management (OpenProject),
+          Client Documents, or Administration.
         </p>
         <div className="suite-app-grid">
           {apps.map((app) =>

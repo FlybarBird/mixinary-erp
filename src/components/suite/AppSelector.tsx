@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { SuiteApp } from "@/lib/suite/apps";
+import { OPENPROJECT_SUITE_PATH } from "@/lib/suite/pm-base";
+
+function sanitizeAppHref(app: SuiteApp): string {
+  if (app.id !== "pm") return app.href;
+  // App launcher / dropdown always open same-origin OpenProject.
+  return OPENPROJECT_SUITE_PATH;
+}
 
 export function AppSelector({
   apps,
@@ -36,13 +43,14 @@ export function AppSelector({
       {open ? (
         <div role="menu" className="suite-app-selector-menu">
           {apps.map((app) => {
+            const href = sanitizeAppHref(app);
             const active = app.id === currentId;
             const className = `suite-app-selector-item${active ? " active" : ""}`;
             if (app.external) {
               return (
                 <a
                   key={app.id}
-                  href={app.href}
+                  href={href}
                   role="menuitem"
                   className={className}
                   onClick={() => setOpen(false)}
@@ -55,7 +63,7 @@ export function AppSelector({
             return (
               <Link
                 key={app.id}
-                href={app.href}
+                href={href}
                 role="menuitem"
                 className={className}
                 onClick={() => setOpen(false)}

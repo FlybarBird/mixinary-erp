@@ -1,12 +1,11 @@
 /**
- * Resolve the suite Project Management base URL/path.
+ * Suite Project Management base for app launcher / deep links.
  *
- * Prefer same-origin OpenProject at `/project-management`.
- * Legacy Plane hosts (e.g. plane-mixinary.shadowvis.com) are ignored so stale
- * Vercel env vars cannot keep sending users to the old Plane deploy.
+ * Always prefer same-origin OpenProject. Legacy Plane hosts (e.g.
+ * plane-mixinary.shadowvis.com) are never returned — even if still set in env.
  */
 
-const DEFAULT_PM_BASE = "/project-management";
+export const OPENPROJECT_SUITE_PATH = "/project-management";
 
 const LEGACY_PM_HOST_SNIPPETS = [
   "plane-mixinary",
@@ -16,7 +15,6 @@ const LEGACY_PM_HOST_SNIPPETS = [
 function isLegacyPmHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (LEGACY_PM_HOST_SNIPPETS.some((s) => host.includes(s))) return true;
-  // plane.example.com / app.plane.example.com style hosts from old Plane deploys
   if (host === "plane" || host.startsWith("plane.") || host.includes(".plane.")) {
     return true;
   }
@@ -28,8 +26,9 @@ function looksLikeAbsoluteUrl(value: string): boolean {
 }
 
 /**
- * Returns a path (`/project-management`) or absolute OpenProject origin+path.
- * Never returns a legacy Plane URL.
+ * Base href for Apps launcher + dropdown (OpenProject).
+ * Env overrides are allowed only for non-Plane absolute OpenProject URLs;
+ * otherwise this is always `/project-management`.
  */
 export function resolvePmBasePath(
   raw:
@@ -38,31 +37,41 @@ export function resolvePmBasePath(
     | null = process.env.NEXT_PUBLIC_PM_BASE_PATH ??
     process.env.NEXT_PUBLIC_PM_BASE_URL,
 ): string {
-  const trimmed = (raw ?? "").trim().replace(/\/+$/, "") || DEFAULT_PM_BASE;
+  const trimmed = (raw ?? "").trim().replace(/\/+$/, "");
+
+  // No override → suite path
+  if (!trimmed) return OPENPROJECT_SUITE_PATH;
 
   if (looksLikeAbsoluteUrl(trimmed)) {
     try {
       const url = new URL(trimmed);
       if (isLegacyPmHost(url.hostname)) {
-        return DEFAULT_PM_BASE;
+        return OPENPROJECT_SUITE_PATH;
       }
-      // Absolute OpenProject URL — keep origin + pathname (or default path)
       const path =
         url.pathname && url.pathname !== "/"
           ? url.pathname.replace(/\/+$/, "")
-          : DEFAULT_PM_BASE;
+          : OPENPROJECT_SUITE_PATH;
       return `${url.origin}${path}`;
     } catch {
-      return DEFAULT_PM_BASE;
+      return OPENPROJECT_SUITE_PATH;
     }
   }
 
-  // Relative path — reject accidental "plane-..." path segments
   if (/plane/i.test(trimmed) && !/project-management/i.test(trimmed)) {
-    return DEFAULT_PM_BASE;
+    return OPENPROJECT_SUITE_PATH;
   }
 
+  // Relative override must still land under OpenProject suite path when empty/odd
+  if (trimmed === "/" || trimmed === "") return OPENPROJECT_SUITE_PATH;
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+/** App launcher / dropdown always use the suite OpenProject path (never Plane). */
+export function suitePmLauncherHref(): string {
+  // Intentionally ignore absolute cross-host overrides for the suite chrome —
+  // Cloudflare serves OpenProject under the same host at /project-management.
+  return OPENPROJECT_SUITE_PATH;
 }
 
 export function projectManagementOpenUrl(pmProjectId?: string | null) {

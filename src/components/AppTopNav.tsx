@@ -8,6 +8,7 @@ import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/format";
 import { canViewFinancials } from "@/lib/permissions";
 import { AppSelector } from "@/components/suite/AppSelector";
+import type { SuiteApp } from "@/lib/suite/apps";
 import { getSuiteApps } from "@/lib/suite/apps";
 
 const primaryLinks = [
@@ -31,7 +32,13 @@ function initials(profile: UserProfile) {
   return source.slice(0, 2).toUpperCase();
 }
 
-export function AppTopNav({ profile }: { profile: UserProfile }) {
+export function AppTopNav({
+  profile,
+  suiteApps = getSuiteApps(),
+}: {
+  profile: UserProfile;
+  suiteApps?: SuiteApp[];
+}) {
   const pathname = usePathname();
   const isAdmin = profile.role === "administrator";
   const showFinancials = canViewFinancials(profile.role);
@@ -51,8 +58,6 @@ export function AppTopNav({ profile }: { profile: UserProfile }) {
     // Prefer suite OIDC logout (ends IdP session when configured).
     window.location.assign("/api/auth/oidc/logout");
   }
-
-  const suiteApps = getSuiteApps();
 
   return (
     <header className="shell">

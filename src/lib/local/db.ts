@@ -1151,7 +1151,7 @@ function migrate(database: Database.Database) {
       CREATE TABLE IF NOT EXISTS erp_pm_project_links (
         id TEXT PRIMARY KEY,
         erp_project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
-        huly_project_id TEXT,
+        pm_project_id TEXT,
         integration_status TEXT NOT NULL DEFAULT 'pending',
         last_sync_at TEXT,
         last_sync_error TEXT,
@@ -1159,6 +1159,16 @@ function migrate(database: Database.Database) {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
+  } else {
+    const linkCols = database
+      .prepare("pragma table_info(erp_pm_project_links)")
+      .all() as Array<{ name: string }>;
+    const names = new Set(linkCols.map((c) => c.name));
+    if (names.has("huly_project_id") && !names.has("pm_project_id")) {
+      database.exec(
+        "alter table erp_pm_project_links rename column huly_project_id to pm_project_id",
+      );
+    }
   }
 
   const poItemInheritCols = database

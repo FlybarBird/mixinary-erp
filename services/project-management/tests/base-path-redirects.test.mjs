@@ -1,40 +1,20 @@
-
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function withBasePath(base, path) {
-  const b = base.replace(/\/$/, "") || "";
-  const p = path.startsWith("/") ? path : `/${path}`;
-  if (!b) return p;
-  if (p === b || p.startsWith(`${b}/`)) return p;
-  return `${b}${p}`;
-}
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function assertNotErpRoot(url) {
-  assert.notEqual(url, "/");
-  assert.ok(!url.match(/^https?:\/\/[^/]+\/?$/), `accidental ERP root: ${url}`);
-}
-
-const BASE = "/project-management";
-
-test("login stays under base path", () => {
-  const url = withBasePath(BASE, "/login");
-  assert.equal(url, "/project-management/login");
-  assertNotErpRoot(url);
+test("compose pins OpenProject and relative URL root", () => {
+  const yml = fs.readFileSync(path.join(root, "docker-compose.yml"), "utf8");
+  assert.match(yml, /openproject\/openproject/);
+  assert.match(yml, /OPENPROJECT_RAILS__RELATIVE__URL__ROOT/);
+  assert.match(yml, /APP_BASE_PATH:-\/project-management/);
+  assert.doesNotMatch(yml, /hardcoreeng|huly/i);
 });
 
-test("logout is not ERP root", () => {
-  assert.equal(withBasePath(BASE, "/"), "/project-management/");
-});
-
-test("OIDC account callback path does not collapse to /", () => {
-  const url = "/_accounts/auth/openid/callback";
-  assertNotErpRoot(url);
-});
-
-test("notification deep link keeps PM prefix", () => {
-  assert.equal(
-    withBasePath(BASE, "/workbench/issues/i1"),
-    "/project-management/workbench/issues/i1",
-  );
+test("version pin file exists", () => {
+  const v = fs.readFileSync(path.join(root, "OPENPROJECT_VERSION"), "utf8").trim();
+  assert.ok(v.length > 0);
 });

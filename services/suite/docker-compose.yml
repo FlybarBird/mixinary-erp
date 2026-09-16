@@ -1,5 +1,5 @@
 # Suite sidecars: Authentik + Integration + Shared Files
-# Separate from Plane (mixinary-pm) and ERP. Do not share DB credentials with ERP.
+# Separate from OpenProject (mixinary-pm) and ERP. Do not share DB credentials with ERP.
 name: mixinary-suite
 
 networks:
@@ -70,6 +70,7 @@ services:
     volumes:
       - mixinary_suite_integ_pg:/var/lib/postgresql/data
       - ../integration/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../integration/sql/028_rename_huly_to_pm.sql:/docker-entrypoint-initdb.d/02-rename-huly-to-pm.sql:ro
 
   mixinary-suite-integration:
     build: ../integration
@@ -80,8 +81,10 @@ services:
       PORT: 8091
       DATABASE_URL: postgresql://${INTEGRATION_PG_USER:-mixinary_integ}:${INTEGRATION_PG_PASSWORD}@mixinary-suite-integration-db:5432/${INTEGRATION_PG_DB:-mixinary_integ}
       ERP_BASE_URL: ${ERP_BASE_URL:-https://example.com}
-      HULY_API_BASE_URL: ${HULY_API_BASE_URL:-http://host.docker.internal:8087}
-      HULY_API_TOKEN: ${HULY_API_TOKEN:-}
+      # OpenProject APIv3 (relative URL root included when set on PM compose)
+      OPENPROJECT_API_BASE_URL: ${OPENPROJECT_API_BASE_URL:-http://host.docker.internal:8087/project-management}
+      OPENPROJECT_API_KEY: ${OPENPROJECT_API_KEY:-}
+      OPENPROJECT_DEFAULT_ROLE_ID: ${OPENPROJECT_DEFAULT_ROLE_ID:-3}
       WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?set WEBHOOK_SIGNING_SECRET}
       IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-72}
       AUTHENTIK_URL: ${AUTHENTIK_URL:-http://mixinary-suite-authentik-server:9000}

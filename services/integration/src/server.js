@@ -1,4 +1,3 @@
-
 import http from "node:http";
 import { verifySignature } from "./crypto.js";
 import {
@@ -30,6 +29,26 @@ function unauthorized(res) {
   send(res, 401, { error: "invalid signature" });
 }
 
+async function acceptPmWebhook(raw, payload) {
+  const key =
+    payload.idempotencyKey ||
+    payload.id ||
+    `${payload.eventType}:${JSON.stringify(payload.data || {})}`;
+  await query(
+    `insert into webhook_receipts (idempotency_key, source, event_type, payload)
+     values ($1,'openproject',$2,$3)
+     on conflict (idempotency_key) do nothing`,
+    [key, payload.eventType || "unknown", payload],
+  );
+  if (payload.eventType === "worklog.created") {
+    await enqueueEvent("worklog.created", key, payload.data || payload);
+    setImmediate(() => {
+      processOutboxBatch().catch(console.error);
+    });
+  }
+  return { accepted: true };
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://127.0.0.1:${PORT}`);
@@ -42,18 +61,31 @@ const server = http.createServer(async (req, res) => {
       const erpId = url.searchParams.get("erpProjectId");
       if (!erpId) return send(res, 400, { error: "erpProjectId required" });
       const { rows } = await query(`select * from project_map where erp_project_id=$1`, [erpId]);
-      return send(res, 200, { mapping: rows[0] ?? null });
+      const row = rows[0] ?? null;
+      return send(res, 200, {
+        mapping: row
+          ? {
+              ...row,
+              // Compat aliases for ERP clients still reading huly_* keys.
+              huly_project_id: row.pm_project_id,
+              huly_workspace_slug: row.pm_project_identifier,
+            }
+          : null,
+      });
     }
 
     if (req.method === "GET" && url.pathname === "/v1/progress") {
       const erpId = url.searchParams.get("erpProjectId");
-      // Progress is supplied by Huly webhooks into mapping detail later; stub summary.
+      // Progress is supplied by OpenProject webhooks into mapping detail later; stub summary.
       const { rows } = await query(`select * from project_map where erp_project_id=$1`, [erpId]);
+      const row = rows[0];
       return send(res, 200, {
         erpProjectId: erpId,
-        status: rows[0]?.integration_status ?? "unknown",
-        hulyProjectId: rows[0]?.huly_project_id ?? null,
-        summary: rows[0] ? { linked: Boolean(rows[0].huly_project_id) } : null,
+        status: row?.integration_status ?? "unknown",
+        pmProjectId: row?.pm_project_id ?? null,
+        pmProjectIdentifier: row?.pm_project_identifier ?? null,
+        hulyProjectId: row?.pm_project_id ?? null,
+        summary: row ? { linked: Boolean(row.pm_project_id) } : null,
       });
     }
 
@@ -69,25 +101,19 @@ const server = http.createServer(async (req, res) => {
       }
       const row = await enqueueEvent(eventType, idempotencyKey, data ?? {});
       // Opportunistic process
-      setImmediate(() => { processOutboxBatch().catch(console.error); });
+      setImmediate(() => {
+        processOutboxBatch().catch(console.error);
+      });
       return send(res, 202, { accepted: true, event: row });
     }
 
-    if (req.method === "POST" && url.pathname === "/v1/webhooks/huly") {
+    if (
+      req.method === "POST" &&
+      (url.pathname === "/v1/webhooks/openproject" || url.pathname === "/v1/webhooks/huly")
+    ) {
       if (SECRET && !verifySignature(SECRET, raw, sig)) return unauthorized(res);
       const payload = JSON.parse(raw || "{}");
-      const key = payload.idempotencyKey || payload.id || `${payload.eventType}:${JSON.stringify(payload.data||{})}`;
-      await query(
-        `insert into webhook_receipts (idempotency_key, source, event_type, payload)
-         values ($1,'huly',$2,$3)
-         on conflict (idempotency_key) do nothing`,
-        [key, payload.eventType || "unknown", payload],
-      );
-      if (payload.eventType === "worklog.created") {
-        await enqueueEvent("worklog.created", key, payload.data || payload);
-        setImmediate(() => { processOutboxBatch().catch(console.error); });
-      }
-      return send(res, 202, { accepted: true });
+      return send(res, 202, await acceptPmWebhook(raw, payload));
     }
 
     if (req.method === "POST" && url.pathname === "/v1/admin/process-outbox") {

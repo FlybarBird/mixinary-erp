@@ -11,12 +11,12 @@
 | Expenses | ERP |
 | Revenue and profit | ERP |
 | Invoices and payments | ERP |
-| Work items | Project Management |
+| Work packages | Project Management |
 | Task assignments | Project Management |
 | Comments | Project Management |
-| Cycles and modules | Project Management |
+| Versions / milestones | Project Management |
 | Execution milestones | Project Management |
-| Worklogs | Project Management (Huly) until ERP approval |
+| Time entries / worklogs | Project Management (OpenProject) until ERP approval |
 | Approved labor cost | ERP |
 
 Neither application edits the other's authoritative fields.

@@ -4,7 +4,7 @@ import { verifyIntegrationSignature } from "@/lib/integration/client";
 import { getLocalDb, isLocalMode, newId } from "@/lib/local/db";
 
 /**
- * Ingest Huly worklogs as unapproved ERP labor.
+ * Ingest OpenProject time entries as unapproved ERP labor.
  * Never accepts pay rates / burden from Project Management.
  */
 export async function POST(request: Request) {
@@ -17,6 +17,8 @@ export async function POST(request: Request) {
   const body = JSON.parse(raw || "{}") as {
     erpProjectId?: string;
     erpUserId?: string | null;
+    pmWorkItemId?: string;
+    pmWorklogId?: string;
     hulyWorkItemId?: string;
     hulyWorklogId?: string;
     hours?: number;
@@ -24,14 +26,15 @@ export async function POST(request: Request) {
     description?: string;
   };
 
-  if (!body.erpProjectId || !body.hulyWorklogId || body.hours == null) {
+  const worklogId = body.pmWorklogId || body.hulyWorklogId;
+  if (!body.erpProjectId || !worklogId || body.hours == null) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   const hours = Number(body.hours) || 0;
   const workDate = body.workDate || new Date().toISOString().slice(0, 10);
-  const task = body.description || `Huly worklog ${body.hulyWorklogId}`;
-  const externalKey = `huly-worklog:${body.hulyWorklogId}`;
+  const task = body.description || `OpenProject worklog ${worklogId}`;
+  const externalKey = `pm-worklog:${worklogId}`;
 
   if (isLocalMode()) {
     const db = getLocalDb();
@@ -53,7 +56,7 @@ export async function POST(request: Request) {
     ).run(
       id,
       body.erpProjectId,
-      "Huly worklog",
+      "OpenProject worklog",
       body.erpUserId ?? null,
       "project_management",
       task,
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
     .from("labor_entries")
     .insert({
       project_id: body.erpProjectId,
-      worker_name: "Huly worklog",
+      worker_name: "OpenProject worklog",
       user_id: body.erpUserId ?? null,
       work_category: "project_management",
       task_description: task,

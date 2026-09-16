@@ -34,7 +34,7 @@ export function getSuiteApps(): SuiteApp[] {
       id: "pm",
       label: "Project Management",
       href: pmBase,
-      description: "Tasks, cycles, and execution (Huly)",
+      description: "Tasks, work packages, and execution (OpenProject)",
       external: true,
     },
     {
@@ -52,9 +52,10 @@ export function getSuiteApps(): SuiteApp[] {
   ];
 }
 
-export function projectManagementOpenUrl(planeProjectId?: string | null) {
+/** Deep-link into OpenProject project by numeric id or identifier. */
+export function projectManagementOpenUrl(pmProjectId?: string | null) {
   const pmBase =
     process.env.NEXT_PUBLIC_PM_BASE_PATH?.trim() || "/project-management";
-  if (!planeProjectId) return pmBase;
-  return `${pmBase.replace(/\/$/, "")}/projects/${planeProjectId}`;
+  if (!pmProjectId) return pmBase;
+  return `${pmBase.replace(/\/$/, "")}/projects/${pmProjectId}`;
 }

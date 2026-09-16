@@ -11,7 +11,12 @@ test("suite apps include PM under /project-management", () => {
 });
 
 test("open URL does not collapse to ERP root", () => {
-  const url = projectManagementOpenUrl("plane-1");
-  assert.equal(url, "/project-management/projects/plane-1");
+  const url = projectManagementOpenUrl("op-1");
+  assert.equal(url, "/project-management/projects/op-1");
   assert.notEqual(url, "/");
+});
+
+test("PM app describes OpenProject", () => {
+  const pm = getSuiteApps().find((a) => a.id === "pm");
+  assert.match(pm?.description || "", /OpenProject/i);
 });

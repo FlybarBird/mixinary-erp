@@ -1,7 +1,6 @@
-# Company modifications log
+# Modifications log
 
-| Date | Module | Summary |
-|------|--------|---------|
-| 2026-07-31 | packaging | Initial Huly packaging from platform v0.7.426 / huly-selfhost |
-| 2026-07-31 | compose | Mixinary unique names + Authentik OIDC env on account |
-| 2026-07-31 | company/* | Branding, app selector, ERP mapping/resources, templates, permissions |
+| Date | Area | Note |
+|------|------|------|
+| 2026-09-15 | packaging | Replace Huly with OpenProject Community 17 packaging |
+| 2026-09-15 | integration | APIv3 client + pm_* mapping columns; webhook `/v1/webhooks/openproject` |

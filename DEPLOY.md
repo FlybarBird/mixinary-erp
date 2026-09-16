@@ -69,12 +69,13 @@ OpenProject packaging, Authentik, integration, and shared files live under
 
 ERP env additions (also in `.env.example`):
 
-- `NEXT_PUBLIC_PM_BASE_PATH=/project-management`
+- `NEXT_PUBLIC_PM_BASE_PATH=/project-management` (same-origin OpenProject — **unset** any legacy `https://plane-mixinary.shadowvis.com` value)
 - `INTEGRATION_BASE_URL` / `INTEGRATION_WEBHOOK_SECRET`
 - `AUTHENTIK_ISSUER` / `AUTHENTIK_CLIENT_ID` / `AUTHENTIK_CLIENT_SECRET`
 
 Apply migrations `023_suite_integration.sql`, `024` (legacy Plane cleanup), and `028` (OpenProject column rename). Root entry remains ERP (`/` → dashboard/login); suite app switcher is available from the ERP header (`/apps` optional).
 
+If the Apps menu still opens Plane, clear `NEXT_PUBLIC_PM_BASE_PATH` / `NEXT_PUBLIC_PM_BASE_URL` in Vercel (or set them to `/project-management`) and redeploy. The app ignores known Plane hosts automatically.
 ## 3. Vercel
 
 1. Import this Git repo into Vercel.

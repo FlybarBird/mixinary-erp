@@ -1,3 +1,9 @@
+import {
+  isExternalPmBase,
+  projectManagementOpenUrl,
+  resolvePmBasePath,
+} from "@/lib/suite/pm-base";
+
 export type SuiteAppId =
   | "landing"
   | "erp"
@@ -13,10 +19,11 @@ export type SuiteApp = {
   external?: boolean;
 };
 
+export { projectManagementOpenUrl, resolvePmBasePath };
+
 /** Same-domain suite apps (Cloudflare routes PM / auth / files). */
 export function getSuiteApps(): SuiteApp[] {
-  const pmBase =
-    process.env.NEXT_PUBLIC_PM_BASE_PATH?.trim() || "/project-management";
+  const pmBase = resolvePmBasePath();
   return [
     {
       id: "landing",
@@ -35,6 +42,7 @@ export function getSuiteApps(): SuiteApp[] {
       label: "Project Management",
       href: pmBase,
       description: "Tasks, work packages, and execution (OpenProject)",
+      // Full page to OpenProject (relative or absolute) — not a Next.js route.
       external: true,
     },
     {
@@ -52,10 +60,7 @@ export function getSuiteApps(): SuiteApp[] {
   ];
 }
 
-/** Deep-link into OpenProject project by numeric id or identifier. */
-export function projectManagementOpenUrl(pmProjectId?: string | null) {
-  const pmBase =
-    process.env.NEXT_PUBLIC_PM_BASE_PATH?.trim() || "/project-management";
-  if (!pmProjectId) return pmBase;
-  return `${pmBase.replace(/\/$/, "")}/projects/${pmProjectId}`;
+/** @deprecated Prefer resolvePmBasePath — kept for clarity at call sites. */
+export function pmBaseIsAbsolute() {
+  return isExternalPmBase();
 }

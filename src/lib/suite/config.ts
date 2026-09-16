@@ -1,3 +1,5 @@
+import { resolvePmBasePath } from "@/lib/suite/pm-base";
+
 export function suiteOidcEnabled() {
   return Boolean(
     process.env.AUTHENTIK_ISSUER?.trim() &&
@@ -31,8 +33,7 @@ export function suiteConfig() {
       process.env.INTEGRATION_BASE_URL?.replace(/\/$/, "") ||
       "http://127.0.0.1:8091",
     integrationSecret: process.env.INTEGRATION_WEBHOOK_SECRET || "",
-    pmBasePath:
-      process.env.NEXT_PUBLIC_PM_BASE_PATH?.trim() || "/project-management",
+    pmBasePath: resolvePmBasePath(),
     sharedFilesBaseUrl:
       process.env.NEXT_PUBLIC_SHARED_FILES_URL?.replace(/\/$/, "") ||
       "/shared-files",

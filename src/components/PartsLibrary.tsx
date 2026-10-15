@@ -11,6 +11,28 @@ type PartRow = CatalogPart & {
   vendor_code?: string;
 };
 
+type PartsView = "cards" | "sheet";
+type SheetSortKey =
+  | "name"
+  | "sku"
+  | "upc"
+  | "company"
+  | "category"
+  | "msrp"
+  | "default_quote"
+  | "vendor";
+
+const SHEET_COLUMNS: Array<{ key: SheetSortKey; label: string; numeric?: boolean }> = [
+  { key: "name", label: "Name" },
+  { key: "sku", label: "SKU" },
+  { key: "upc", label: "UPC" },
+  { key: "company", label: "Company" },
+  { key: "category", label: "Category" },
+  { key: "msrp", label: "MSRP", numeric: true },
+  { key: "default_quote", label: "Default quote", numeric: true },
+  { key: "vendor", label: "Vendor" },
+];
+
 export function PartsLibrary({
   canEdit,
   initialCategories,
@@ -39,6 +61,9 @@ export function PartsLibrary({
   const [scrapeCategory, setScrapeCategory] = useState("");
   const [scrapeForcePullImages, setScrapeForcePullImages] = useState(false);
   const [scraping, setScraping] = useState(false);
+  const [view, setView] = useState<PartsView>("cards");
+  const [sortKey, setSortKey] = useState<SheetSortKey>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   async function createCompany(): Promise<PartCompany | null> {
     const name = window.prompt("New company name")?.trim();
@@ -78,15 +103,95 @@ export function PartsLibrary({
     setParts(data.data || []);
   }
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const companyNameById = useMemo(
     () => new Map(companies.map((c) => [c.id, c.name])),
     [companies],
   );
+
+  useEffect(() => {
+    void load();
+    const saved = window.localStorage.getItem("mixinary.parts.view");
+    if (saved === "sheet" || saved === "cards") setView(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function chooseView(next: PartsView) {
+    setView(next);
+    window.localStorage.setItem("mixinary.parts.view", next);
+  }
+
+  function openPart(part: PartRow) {
+    setEditing(part);
+    setEnrichBrand(
+      part.part_companies?.name ||
+        companyNameById.get(part.company_id || "") ||
+        "",
+    );
+  }
+
+  function partCompany(part: PartRow) {
+    return (
+      part.part_companies?.name ||
+      part.company_name ||
+      companyNameById.get(part.company_id || "") ||
+      ""
+    );
+  }
+
+  function partCategory(part: PartRow) {
+    return part.part_categories?.name || part.category_name || "";
+  }
+
+  function partVendor(part: PartRow) {
+    return part.vendors?.code || part.vendor_code || "";
+  }
+
+  function sortValue(part: PartRow, key: SheetSortKey) {
+    switch (key) {
+      case "name":
+        return part.name;
+      case "sku":
+        return part.sku || "";
+      case "upc":
+        return part.upc || "";
+      case "company":
+        return partCompany(part);
+      case "category":
+        return partCategory(part);
+      case "vendor":
+        return partVendor(part);
+      case "msrp":
+        return part.msrp ?? 0;
+      case "default_quote":
+        return part.default_quote ?? 0;
+    }
+  }
+
+  function toggleSort(key: SheetSortKey) {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "msrp" || key === "default_quote" ? "desc" : "asc");
+  }
+
+  const sheetParts = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...parts].sort((a, b) => {
+      const left = sortValue(a, sortKey);
+      const right = sortValue(b, sortKey);
+      if (typeof left === "number" && typeof right === "number") {
+        return (left - right) * dir;
+      }
+      return String(left).localeCompare(String(right), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }) * dir;
+    });
+    // sortValue closes over the latest label helpers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parts, sortKey, sortDir, companies]);
 
   function openNew() {
     setEditing({
@@ -308,6 +413,24 @@ export function PartsLibrary({
           <button type="button" className="btn btn-primary" onClick={() => void load()}>
             {loading ? "Loading…" : "Search"}
           </button>
+          <div className="parts-view-toggle" role="group" aria-label="Parts layout">
+            <button
+              type="button"
+              className={view === "cards" ? "active" : ""}
+              aria-pressed={view === "cards"}
+              onClick={() => chooseView("cards")}
+            >
+              Cards
+            </button>
+            <button
+              type="button"
+              className={view === "sheet" ? "active" : ""}
+              aria-pressed={view === "sheet"}
+              onClick={() => chooseView("sheet")}
+            >
+              Sheet
+            </button>
+          </div>
           {canEdit ? (
             <>
               <button type="button" className="btn" onClick={openNew}>
@@ -447,20 +570,27 @@ export function PartsLibrary({
           alignItems: "start",
         }}
       >
+        {view === "sheet" ? (
+          <PartsSheet
+            parts={sheetParts}
+            editingId={editing?.id}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleSort}
+            onOpen={openPart}
+            companyName={partCompany}
+            categoryName={partCategory}
+            vendorCode={partVendor}
+            canEdit={canEdit}
+          />
+        ) : (
         <div className="parts-grid">
           {parts.map((part) => (
-            <div key={part.id} className="part-card static">
+            <div key={part.id} className={`part-card static${editing?.id === part.id ? " selected" : ""}`}>
               <button
                 type="button"
                 className="part-card-open"
-                onClick={() => {
-                  setEditing(part);
-                  setEnrichBrand(
-                    part.part_companies?.name ||
-                      companyNameById.get(part.company_id || "") ||
-                      "",
-                  );
-                }}
+                onClick={() => openPart(part)}
               >
                 <div className="part-thumb">
                   {part.image_url ? (
@@ -492,6 +622,7 @@ export function PartsLibrary({
             </div>
           ) : null}
         </div>
+        )}
 
         {editing ? (
           <form className="panel stack part-editor" style={{ padding: "1rem" }} onSubmit={savePart}>
@@ -735,6 +866,126 @@ export function PartsLibrary({
           </form>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function PartsSheet({
+  parts,
+  editingId,
+  sortKey,
+  sortDir,
+  onSort,
+  onOpen,
+  companyName,
+  categoryName,
+  vendorCode,
+  canEdit,
+}: {
+  parts: PartRow[];
+  editingId?: string;
+  sortKey: SheetSortKey;
+  sortDir: "asc" | "desc";
+  onSort: (key: SheetSortKey) => void;
+  onOpen: (part: PartRow) => void;
+  companyName: (part: PartRow) => string;
+  categoryName: (part: PartRow) => string;
+  vendorCode: (part: PartRow) => string;
+  canEdit: boolean;
+}) {
+  if (!parts.length) {
+    return (
+      <div className="panel" style={{ padding: "1rem" }}>
+        No parts found. {canEdit ? "Create one or import an XLSX." : ""}
+      </div>
+    );
+  }
+
+  function cell(part: PartRow, key: SheetSortKey) {
+    switch (key) {
+      case "name":
+        return part.name;
+      case "sku":
+        return part.sku || "—";
+      case "upc":
+        return part.upc || "—";
+      case "company":
+        return companyName(part) || "—";
+      case "category":
+        return categoryName(part) || "—";
+      case "vendor":
+        return vendorCode(part) || "—";
+      case "msrp":
+        return formatMoney(part.msrp);
+      case "default_quote":
+        return part.default_quote == null ? "—" : formatMoney(part.default_quote);
+    }
+  }
+
+  return (
+    <div className="parts-sheet">
+      <table>
+        <thead>
+          <tr>
+            <th className="parts-sheet-thumb" aria-label="Image" />
+            {SHEET_COLUMNS.map((column) => (
+              <th
+                key={column.key}
+                className={column.numeric ? "num" : ""}
+                aria-sort={
+                  sortKey === column.key
+                    ? sortDir === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+              >
+                <button type="button" onClick={() => onSort(column.key)}>
+                  {column.label}
+                  {sortKey === column.key ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                </button>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {parts.map((part) => (
+            <tr
+              key={part.id}
+              className={editingId === part.id ? "selected" : ""}
+              onClick={() => onOpen(part)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen(part);
+                }
+              }}
+              tabIndex={0}
+            >
+              <td className="parts-sheet-thumb">
+                {part.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={part.image_url} alt="" />
+                ) : (
+                  <span />
+                )}
+              </td>
+              {SHEET_COLUMNS.map((column) => (
+                <td key={column.key} className={column.numeric ? "num" : ""}>
+                  {column.key === "name" ? (
+                    <span className="parts-sheet-name">
+                      {part.name}
+                      {!part.active ? <span className="badge">inactive</span> : null}
+                    </span>
+                  ) : (
+                    cell(part, column.key)
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

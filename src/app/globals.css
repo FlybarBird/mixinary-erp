@@ -1644,6 +1644,120 @@ tr.status-row--on-site.drag-over-after > td {
   gap: 0.75rem;
 }
 
+.parts-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.parts-view-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 0.42rem 0.8rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.parts-view-toggle button + button {
+  border-left: 1px solid var(--line);
+}
+
+.parts-view-toggle button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.parts-sheet {
+  overflow: auto;
+  max-height: calc(100dvh - 13.5rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.parts-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.parts-sheet th,
+.parts-sheet td {
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+
+.parts-sheet th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.parts-sheet th button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.parts-sheet th.num,
+.parts-sheet td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.parts-sheet tbody tr {
+  cursor: pointer;
+}
+
+.parts-sheet tbody tr:hover td {
+  background: #f4f8fc;
+}
+
+.parts-sheet tbody tr.selected td {
+  background: #e7f1fb;
+}
+
+.parts-sheet-thumb {
+  width: 44px;
+  padding-right: 0.2rem !important;
+}
+
+.parts-sheet-thumb img,
+.parts-sheet-thumb span {
+  display: block;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  background: var(--bg-soft);
+  border-radius: 4px;
+}
+
+.parts-sheet-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 650;
+}
+
 .part-card {
   display: flex;
   flex-direction: column;

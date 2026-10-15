@@ -2122,6 +2122,87 @@ tr.status-row--on-site.drag-over-after > td {
   color: var(--cdoc-accent);
 }
 
+.cdoc-pricing-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.cdoc-pricing-heading h2 {
+  margin: 0;
+  flex: 1;
+}
+
+.cdoc-pricing-heading-total {
+  text-align: right;
+  line-height: 1.15;
+}
+
+.cdoc-pricing-heading-total span {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #556b82;
+}
+
+.cdoc-pricing-heading-total strong {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cdoc-line-delete {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.cdoc-editor-totals {
+  margin-top: 0.25rem;
+}
+
+.cdoc-quote-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid #c5d7ea;
+  border-left: 4px solid var(--cdoc-accent);
+  border-radius: 10px;
+  background: #f4f8fc;
+}
+
+.cdoc-quote-total-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.cdoc-quote-total-label {
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cdoc-accent);
+}
+
+.cdoc-quote-total-note {
+  margin: 0.2rem 0 0;
+  color: #556b82;
+  font-size: 0.88rem;
+}
+
+.cdoc-quote-total-amount {
+  font-size: 1.85rem;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--cdoc-ink);
+  white-space: nowrap;
+}
+
 .cdoc-body {
   margin: 0;
   white-space: pre-line;

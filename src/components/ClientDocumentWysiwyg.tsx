@@ -3,7 +3,9 @@
 import {
   useEffect,
   useRef,
+  useState,
   type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -107,6 +109,8 @@ export function WysiwygBlock({
   docNumber,
   docVersion,
   expiresAt,
+  projectId,
+  documentId,
   documentTotals,
   pricingSections,
   pricingPanelOpen,
@@ -136,6 +140,8 @@ export function WysiwygBlock({
   docNumber: string;
   docVersion: number;
   expiresAt: string | null;
+  projectId: string;
+  documentId: string;
   documentTotals: DocumentTotals;
   pricingSections: Array<{ id: string; title: string }>;
   pricingPanelOpen: boolean;
@@ -230,6 +236,8 @@ export function WysiwygBlock({
         docNumber={docNumber}
         docVersion={docVersion}
         expiresAt={expiresAt}
+        projectId={projectId}
+        documentId={documentId}
         documentTotals={documentTotals}
         pricingPanelOpen={pricingPanelOpen}
         onContent={onContent}
@@ -253,6 +261,8 @@ function WysiwygBlockBody({
   docNumber,
   docVersion,
   expiresAt,
+  projectId,
+  documentId,
   documentTotals,
   pricingPanelOpen,
   onContent,
@@ -271,6 +281,8 @@ function WysiwygBlockBody({
   docNumber: string;
   docVersion: number;
   expiresAt: string | null;
+  projectId: string;
+  documentId: string;
   documentTotals: DocumentTotals;
   pricingPanelOpen: boolean;
   onContent: (patch: Record<string, unknown>) => void;
@@ -333,37 +345,17 @@ function WysiwygBlockBody({
         </section>
       );
 
-    case "image": {
-      const url = str(content.url);
+    case "image":
       return (
-        <section className="cdoc-section">
-          {url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt={str(content.caption)} className="cdoc-image" />
-          ) : (
-            <div className="cdoc-wysiwyg-image-empty">Add an image URL below</div>
-          )}
-          {editable ? (
-            <div className="cdoc-wysiwyg-image-fields">
-              <input
-                className="cdoc-wysiwyg-field"
-                value={url}
-                placeholder="Image URL (https://… or /brand/…)"
-                onChange={(e) => onContent({ url: e.target.value })}
-              />
-              <input
-                className="cdoc-wysiwyg-field"
-                value={str(content.caption)}
-                placeholder="Caption"
-                onChange={(e) => onContent({ caption: e.target.value })}
-              />
-            </div>
-          ) : str(content.caption) ? (
-            <p className="cdoc-caption">{str(content.caption)}</p>
-          ) : null}
-        </section>
+        <QuoteImageBlock
+          url={str(content.url)}
+          caption={str(content.caption)}
+          editable={editable}
+          projectId={projectId}
+          documentId={documentId}
+          onContent={onContent}
+        />
       );
-    }
 
     case "scope":
     case "deliverables": {
@@ -698,6 +690,127 @@ function PricingWysiwyg({
           </div>
         </div>
       </div>
+    </section>
+  );
+}
+
+function QuoteImageBlock({
+  url,
+  caption,
+  editable,
+  projectId,
+  documentId,
+  onContent,
+}: {
+  url: string;
+  caption: string;
+  editable: boolean;
+  projectId: string;
+  documentId: string;
+  onContent: (patch: Record<string, unknown>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  async function upload(file: File | null) {
+    if (!file || !editable) return;
+    setBusy(true);
+    setError(null);
+    const body = new FormData();
+    body.set("file", file);
+    const res = await fetch(
+      `/api/projects/${projectId}/documents/${documentId}/images`,
+      { method: "POST", body },
+    );
+    const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+    setBusy(false);
+    if (!res.ok || !data.url) {
+      setError(data.error || "Image upload failed");
+      return;
+    }
+    onContent({ url: data.url });
+  }
+
+  function takeFiles(e: DragEvent<HTMLElement>) {
+    if (!editable || !e.dataTransfer.types.includes("Files")) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    return true;
+  }
+
+  return (
+    <section
+      className="cdoc-section"
+      onDragOver={(e) => {
+        if (takeFiles(e)) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        if (!takeFiles(e)) return;
+        setDragOver(false);
+        void upload(e.dataTransfer.files?.[0] ?? null);
+      }}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={caption} className="cdoc-image" />
+      ) : editable ? (
+        <label className={`cdoc-wysiwyg-image-empty${dragOver ? " dragover" : ""}`}>
+          {busy ? "Uploading…" : "Drop an image here, or choose a file"}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            hidden
+            disabled={busy}
+            onChange={(e) => {
+              void upload(e.target.files?.[0] ?? null);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      ) : (
+        <div className="cdoc-wysiwyg-image-empty">No image</div>
+      )}
+      {editable ? (
+        <div className="cdoc-wysiwyg-image-fields">
+          {url ? (
+            <div className="cdoc-image-upload-row">
+              <label className="cdoc-image-upload-btn">
+                {busy ? "Uploading…" : "Replace image"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  hidden
+                  disabled={busy}
+                  onChange={(e) => {
+                    void upload(e.target.files?.[0] ?? null);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button type="button" className="cdoc-image-upload-btn" onClick={() => onContent({ url: "" })}>
+                Remove image
+              </button>
+            </div>
+          ) : null}
+          <input
+            className="cdoc-wysiwyg-field"
+            value={url}
+            placeholder="Or paste an image URL"
+            onChange={(e) => onContent({ url: e.target.value })}
+          />
+          <input
+            className="cdoc-wysiwyg-field"
+            value={caption}
+            placeholder="Caption"
+            onChange={(e) => onContent({ caption: e.target.value })}
+          />
+          {error ? <p className="cdoc-image-upload-error">{error}</p> : null}
+        </div>
+      ) : caption ? (
+        <p className="cdoc-caption">{caption}</p>
+      ) : null}
     </section>
   );
 }

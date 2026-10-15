@@ -11,6 +11,10 @@ import {
   pricingSectionIncluded,
   quoteBlockLabel,
 } from "@/lib/client-documents";
+import {
+  parseClientDocumentImageUrl,
+  readClientDocumentImage,
+} from "@/lib/client-document-images";
 import type {
   ClientDocument,
   ClientDocumentBlock,
@@ -206,14 +210,40 @@ export async function buildClientDocumentPdf(params: {
         break;
       }
       case "image": {
+        const stored = parseClientDocumentImageUrl(str(content.url));
+        const image = stored
+          ? await readClientDocumentImage(stored.docId, stored.fileName)
+          : null;
+        if (image) {
+          try {
+            const opened = (
+              doc as unknown as {
+                openImage(src: Buffer): { width: number; height: number };
+              }
+            ).openImage(image.data);
+            const scale = Math.min(
+              pageWidth / opened.width,
+              260 / opened.height,
+              1,
+            );
+            const w = opened.width * scale;
+            const h = opened.height * scale;
+            ensureSpace(h + 8);
+            const y = doc.y;
+            doc.image(image.data, left, y, { width: w, height: h });
+            doc.y = y + h + 6;
+          } catch {
+            // Unsupported formats stay as a caption.
+          }
+        }
         const caption = str(content.caption);
         if (caption) {
-          doc.moveDown(0.4);
+          doc.moveDown(0.2);
           doc
             .font("Helvetica-Oblique")
             .fontSize(8.5)
             .fillColor("#556b82")
-            .text(`[Image] ${caption}`, left);
+            .text(caption, left);
         }
         break;
       }

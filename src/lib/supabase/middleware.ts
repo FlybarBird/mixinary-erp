@@ -24,6 +24,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/invite") ||
     pathname.startsWith("/d/") ||
     pathname.startsWith("/api/d/") ||
+    pathname.startsWith("/api/client-document-images/") ||
     pathname === "/apps" ||
     pathname === "/favicon.ico";
 

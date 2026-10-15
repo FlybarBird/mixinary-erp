@@ -2864,12 +2864,52 @@ tr.status-row--on-site.drag-over-after > td {
 }
 
 .cdoc-wysiwyg-image-empty {
+  display: grid;
+  place-items: center;
+  min-height: 8rem;
   padding: 2rem 1rem;
   text-align: center;
   color: #6b849c;
   background: #f3f7fb;
   border: 1px dashed #c5d4e3;
   border-radius: 8px;
+  cursor: pointer;
+}
+
+.cdoc-wysiwyg-image-empty.dragover {
+  border-color: var(--cdoc-accent, #0070f2);
+  background: #eaf3fc;
+  color: var(--cdoc-accent, #0070f2);
+}
+
+.cdoc-image-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cdoc-image-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #d7e0ea;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--cdoc-ink, #223548);
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.cdoc-image-upload-btn:hover {
+  border-color: var(--cdoc-accent, #0070f2);
+  color: var(--cdoc-accent, #0070f2);
+}
+
+.cdoc-image-upload-error {
+  margin: 0;
+  color: #ba0517;
+  font-size: 0.82rem;
 }
 
 .cdoc-wysiwyg-image-fields {

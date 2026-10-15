@@ -43,9 +43,21 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Review not found" }, { status: 404 });
   }
 
-  const { error } = await supabase.from("ai_jobs").delete().eq("id", id);
+  const { error, count } = await supabase
+    .from("ai_jobs")
+    .delete({ count: "exact" })
+    .eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!count) {
+    return NextResponse.json(
+      {
+        error:
+          "Could not delete this review. Apply database migration 029_ai_jobs_delete.sql, then try again.",
+      },
+      { status: 403 },
+    );
   }
   return NextResponse.json({ ok: true });
 }

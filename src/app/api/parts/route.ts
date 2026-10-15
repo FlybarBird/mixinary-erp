@@ -275,9 +275,15 @@ export async function DELETE(request: Request) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("catalog_parts").delete().eq("id", id);
+  const { error, count } = await supabase
+    .from("catalog_parts")
+    .delete({ count: "exact" })
+    .eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!count) {
+    return NextResponse.json({ error: "Part not found" }, { status: 404 });
   }
   return NextResponse.json({ ok: true });
 }

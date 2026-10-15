@@ -890,7 +890,9 @@ function PricingBlockEditor({
               <th style={{ width: 70 }}>Qty</th>
               <th style={{ width: 100 }}>Unit price</th>
               <th style={{ width: 100, textAlign: "right" }}>Total</th>
-              <th title="Customer may include/exclude">Optional</th>
+              <th style={{ minWidth: 112 }} title="Customer may include/exclude">
+                Optional
+              </th>
               <th title="Customer may change quantity">Qty editable</th>
               <th />
             </tr>
@@ -932,6 +934,9 @@ function PricingBlockEditor({
                               updateLine(line.id, { description: e.target.value || null })
                             }
                           />
+                          {isChild ? (
+                            <div className="cdoc-follows-parent">Follows parent</div>
+                          ) : null}
                           {editable ? (
                             <div className="row" style={{ gap: "0.35rem", marginTop: 6 }}>
                               {isChild ? null : (
@@ -987,13 +992,12 @@ function PricingBlockEditor({
                         {formatMoney(line.qty * line.unit_price)}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        {isChild ? (
-                          <span className="cdoc-follows-parent">Follows parent</span>
-                        ) : (
+                        {isChild ? null : (
                           <input
                             type="checkbox"
                             checked={line.optional}
                             disabled={disabled}
+                            title="Customer may include or exclude this item. Sub-items follow it."
                             onChange={(e) =>
                               updateLine(line.id, {
                                 optional: e.target.checked,

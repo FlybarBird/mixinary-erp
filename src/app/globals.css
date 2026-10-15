@@ -2281,6 +2281,10 @@ tr.status-row--on-site.drag-over-after > td {
   color: #556b82;
 }
 
+.cdoc-editor-subitem .cdoc-follows-parent {
+  margin-top: 0.35rem;
+}
+
 .cdoc-section-optional-toggle {
   display: inline-flex;
   align-items: center;

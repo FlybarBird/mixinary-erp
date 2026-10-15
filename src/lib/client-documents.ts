@@ -65,12 +65,14 @@ export interface PricingLine {
   category?: string | null;
   qty: number;
   unit_price: number;
-  /** Customer may include/exclude this line. */
+  /** Customer may include/exclude this line. Sub-items are never independently optional. */
   optional: boolean;
-  /** Current selection (always true for required lines). */
+  /** Current selection (always true for required lines and sub-items). */
   selected: boolean;
   /** Customer may adjust quantity. */
   qty_editable: boolean;
+  /** Parent line this sub-item follows. Null for top-level lines. */
+  parent_id: string | null;
 }
 
 export interface PricingDiscount {
@@ -86,10 +88,19 @@ export interface PricingTax {
 
 export interface PricingBlockContent {
   title?: string;
+  /** Customer may include or exclude this entire table. */
+  optional: boolean;
+  /** Whether an optional table is included (always true when the table is required). */
+  selected: boolean;
   lines: PricingLine[];
   discount: PricingDiscount;
   tax: PricingTax;
   [key: string]: unknown;
+}
+
+export interface PricingLineGroup {
+  line: PricingLine;
+  children: PricingLine[];
 }
 
 export interface DocumentTotals {
@@ -139,6 +150,8 @@ export function defaultBlockContent(
     case "pricing":
       return {
         title: "Pricing",
+        optional: false,
+        selected: true,
         lines: [] as PricingLine[],
         discount: { type: "none", value: 0 },
         tax: { type: "none", value: 0, label: "Tax" },
@@ -169,24 +182,34 @@ export function normalizePricingContent(
   const lines = Array.isArray(raw.lines) ? raw.lines : [];
   const discount = raw.discount ?? { type: "none", value: 0 };
   const tax = raw.tax ?? { type: "none", value: 0 };
+  const optional = Boolean(raw.optional);
   return {
     ...raw,
     title: typeof raw.title === "string" ? raw.title : "Pricing",
-    lines: lines.map((l) => {
-      const line = l as Partial<PricingLine>;
-      const optional = Boolean(line.optional);
-      return {
-        id: String(line.id ?? ""),
-        name: String(line.name ?? ""),
-        description: line.description == null ? null : String(line.description),
-        category: line.category == null ? null : String(line.category),
-        qty: Math.max(0, num(line.qty)),
-        unit_price: num(line.unit_price),
-        optional,
-        selected: optional ? line.selected !== false : true,
-        qty_editable: Boolean(line.qty_editable),
-      };
-    }),
+    optional,
+    selected: optional ? raw.selected !== false : true,
+    lines: clampPricingParents(
+      lines.map((l) => {
+        const line = l as Partial<PricingLine>;
+        const lineOptional = Boolean(line.optional);
+        const parentId =
+          line.parent_id == null || line.parent_id === ""
+            ? null
+            : String(line.parent_id);
+        return {
+          id: String(line.id ?? ""),
+          name: String(line.name ?? ""),
+          description: line.description == null ? null : String(line.description),
+          category: line.category == null ? null : String(line.category),
+          qty: Math.max(0, num(line.qty)),
+          unit_price: num(line.unit_price),
+          optional: lineOptional,
+          selected: lineOptional ? line.selected !== false : true,
+          qty_editable: Boolean(line.qty_editable),
+          parent_id: parentId,
+        };
+      }),
+    ),
     discount: {
       type:
         discount.type === "percent" || discount.type === "amount"
@@ -202,14 +225,102 @@ export function normalizePricingContent(
   };
 }
 
+/** An optional table counts only while the customer (or the default) includes it. */
+export function pricingSectionIncluded(
+  pricing: Pick<PricingBlockContent, "optional" | "selected">,
+): boolean {
+  return !pricing.optional || pricing.selected;
+}
+
+/**
+ * Parent of a sub-item. Missing parents and parents that are themselves
+ * sub-items are ignored so nesting stays one level deep.
+ */
+export function pricingLineParent(
+  line: PricingLine,
+  lines: PricingLine[],
+): PricingLine | null {
+  if (!line.parent_id || line.parent_id === line.id) return null;
+  const parent = lines.find((candidate) => candidate.id === line.parent_id);
+  if (!parent || parent.parent_id) return null;
+  return parent;
+}
+
+/** A line counts when its table is included and, for a sub-item, its parent is included. */
+export function pricingLineIncluded(
+  line: PricingLine,
+  lines: PricingLine[],
+  sectionIncluded = true,
+): boolean {
+  if (!sectionIncluded) return false;
+  const parent = pricingLineParent(line, lines);
+  if (parent) return parent.selected || !parent.optional;
+  return line.selected || !line.optional;
+}
+
+/** Top-level lines with their sub-items, in document order. */
+export function groupPricingLines(lines: PricingLine[]): PricingLineGroup[] {
+  const groups: PricingLineGroup[] = [];
+  const byParent = new Map<string, PricingLineGroup>();
+  for (const line of lines) {
+    if (pricingLineParent(line, lines)) continue;
+    const group: PricingLineGroup = { line, children: [] };
+    groups.push(group);
+    if (line.id) byParent.set(line.id, group);
+  }
+  for (const line of lines) {
+    const parent = pricingLineParent(line, lines);
+    if (!parent) continue;
+    byParent.get(parent.id)?.children.push(line);
+  }
+  return groups;
+}
+
+export function flattenPricingGroups(groups: PricingLineGroup[]): PricingLine[] {
+  return groups.flatMap((group) => [group.line, ...group.children]);
+}
+
+/** Drop a line. Deleting a parent also deletes its sub-items. */
+export function removePricingLine(lines: PricingLine[], lineId: string): PricingLine[] {
+  const target = lines.find((line) => line.id === lineId);
+  if (!target) return lines;
+  const drop = new Set<string>([lineId]);
+  if (!pricingLineParent(target, lines)) {
+    for (const line of lines) {
+      if (line.parent_id === lineId) drop.add(line.id);
+    }
+  }
+  return lines.filter((line) => !drop.has(line.id));
+}
+
+function clampPricingParents(lines: PricingLine[]): PricingLine[] {
+  const ids = new Set(lines.map((line) => line.id).filter(Boolean));
+  const linked = lines.map((line) => ({
+    ...line,
+    parent_id:
+      line.parent_id && ids.has(line.parent_id) && line.parent_id !== line.id
+        ? line.parent_id
+        : null,
+  }));
+  const parentOf = new Map(linked.map((line) => [line.id, line.parent_id]));
+  return linked.map((line) => {
+    if (!line.parent_id) return line;
+    if (parentOf.get(line.parent_id)) return { ...line, parent_id: null };
+    return { ...line, optional: false, selected: true };
+  });
+}
+
 export function computePricingTotals(
   content: Record<string, unknown> | null | undefined,
 ): DocumentTotals {
   const pricing = normalizePricingContent(content);
+  if (!pricingSectionIncluded(pricing)) {
+    return { subtotal: 0, discount_total: 0, tax_total: 0, total: 0 };
+  }
   const subtotal = round2(
     pricing.lines
-      .filter((l) => l.selected || !l.optional)
-      .reduce((sum, l) => sum + l.qty * l.unit_price, 0),
+      .filter((line) => pricingLineIncluded(line, pricing.lines))
+      .reduce((sum, line) => sum + line.qty * line.unit_price, 0),
   );
   let discount = 0;
   if (pricing.discount.type === "percent") {
@@ -263,17 +374,19 @@ export function computeDocumentTotals(
 }
 
 /**
- * Apply customer option selections to pricing blocks. Only optional lines can
- * be toggled and only qty_editable lines can change quantity — everything else
- * in the document is untouchable from the public route.
+ * Apply customer option selections to pricing blocks. Only an optional table
+ * or an optional top-level line can be toggled, and only qty_editable lines
+ * can change quantity. Sub-items follow their parent and cannot be toggled
+ * on their own.
  */
 export function applyCustomerSelections(
   blocks: DocBlockSnapshot[],
   selections: Array<{
     block_id: string;
-    line_id: string;
+    line_id?: string;
     selected?: boolean;
     qty?: number;
+    section_selected?: boolean;
   }>,
 ): DocBlockSnapshot[] {
   return blocks.map((block) => {
@@ -281,11 +394,23 @@ export function applyCustomerSelections(
     const updates = selections.filter((s) => s.block_id === block.id);
     if (!updates.length) return block;
     const pricing = normalizePricingContent(block.content);
-    const lines = pricing.lines.map((line) => {
-      const update = updates.find((u) => u.line_id === line.id);
+    const sectionUpdate = [...updates]
+      .reverse()
+      .find((update) => typeof update.section_selected === "boolean");
+    const nextPricing =
+      sectionUpdate &&
+      pricing.optional &&
+      typeof sectionUpdate.section_selected === "boolean"
+        ? { ...pricing, selected: sectionUpdate.section_selected }
+        : pricing;
+    const lines = nextPricing.lines.map((line) => {
+      const update = [...updates]
+        .reverse()
+        .find((candidate) => candidate.line_id && candidate.line_id === line.id);
       if (!update) return line;
       const next = { ...line };
-      if (line.optional && typeof update.selected === "boolean") {
+      const isChild = Boolean(pricingLineParent(line, nextPricing.lines));
+      if (!isChild && line.optional && typeof update.selected === "boolean") {
         next.selected = update.selected;
       }
       if (line.qty_editable && typeof update.qty === "number") {
@@ -293,7 +418,7 @@ export function applyCustomerSelections(
       }
       return next;
     });
-    return { ...block, content: { ...pricing, lines } };
+    return { ...block, content: { ...nextPricing, lines } };
   });
 }
 

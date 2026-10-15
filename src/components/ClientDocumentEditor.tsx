@@ -19,7 +19,11 @@ import {
   computeDocumentTotals,
   computePricingTotals,
   defaultBlockContent,
+  flattenPricingGroups,
+  groupPricingLines,
   normalizePricingContent,
+  pricingLineParent,
+  removePricingLine,
   type ClientDocBlockType,
   type PricingBlockContent,
   type PricingLine,
@@ -281,13 +285,19 @@ export function ClientDocumentEditor({
       const sourcePricing = normalizePricingContent(source.content);
       const line = sourcePricing.lines.find((l) => l.id === lineId);
       if (!line) return prev;
+      const moving = pricingLineParent(line, sourcePricing.lines)
+        ? [{ ...line, parent_id: null }]
+        : sourcePricing.lines.filter(
+            (candidate) => candidate.id === lineId || candidate.parent_id === lineId,
+          );
+      const movingIds = new Set(moving.map((candidate) => candidate.id));
       return prev.map((b) => {
         if (b.id === fromBlockId) {
           return {
             ...b,
             content: {
               ...sourcePricing,
-              lines: sourcePricing.lines.filter((l) => l.id !== lineId),
+              lines: sourcePricing.lines.filter((l) => !movingIds.has(l.id)),
             } as unknown as Record<string, unknown>,
           };
         }
@@ -297,7 +307,7 @@ export function ClientDocumentEditor({
             ...b,
             content: {
               ...targetPricing,
-              lines: [...targetPricing.lines, line],
+              lines: [...targetPricing.lines, ...moving],
             } as unknown as Record<string, unknown>,
           };
         }
@@ -357,9 +367,17 @@ export function ClientDocumentEditor({
     updatePricing(blockId, (pricing) => ({
       ...pricing,
       lines: pricing.lines.map((l) =>
-        l.id === lineId && l.optional ? { ...l, selected } : l,
+        l.id === lineId && l.optional && !pricingLineParent(l, pricing.lines)
+          ? { ...l, selected }
+          : l,
       ),
     }));
+  }
+
+  function previewToggleSection(blockId: string, selected: boolean) {
+    updatePricing(blockId, (pricing) =>
+      pricing.optional ? { ...pricing, selected } : pricing,
+    );
   }
 
   function previewChangeQty(blockId: string, lineId: string, qty: number) {
@@ -559,6 +577,7 @@ export function ClientDocumentEditor({
               signatures={signatures}
               interactive={editable}
               onToggleLine={previewToggleLine}
+              onToggleSection={previewToggleSection}
               onChangeQty={previewChangeQty}
             />
           </div>
@@ -625,10 +644,10 @@ export function ClientDocumentEditor({
                       onOpenPricing={() => setPricingEditId(block.id)}
                       onClosePricing={() => setPricingEditId(null)}
                       documentTotals={totals}
-                      onDeletePricingLine={(lineIndex) =>
+                      onDeletePricingLine={(lineId) =>
                         updatePricing(block.id, (pricing) => ({
                           ...pricing,
-                          lines: pricing.lines.filter((_, i) => i !== lineIndex),
+                          lines: removePricingLine(pricing.lines, lineId),
                         }))
                       }
                       pricingEditor={
@@ -724,6 +743,7 @@ function PricingBlockEditor({
   const totals = computePricingTotals(block.content);
   const disabled = !editable;
   const otherSections = pricingSections.filter((s) => s.id !== block.id);
+  const groups = groupPricingLines(pricing.lines);
 
   function updateLine(lineId: string, patch: Partial<PricingLine>) {
     onPricing((p) => ({
@@ -732,43 +752,79 @@ function PricingBlockEditor({
     }));
   }
 
-  function removeLine(index: number) {
-    const line = pricing.lines[index];
+  function removeLine(lineId: string) {
+    const line = pricing.lines.find((candidate) => candidate.id === lineId);
     const label = line?.name.trim() || "this line";
-    if (!window.confirm(`Delete “${label}” from this pricing section?`)) return;
-    onPricing((p) => ({ ...p, lines: p.lines.filter((_, i) => i !== index) }));
+    const childCount = pricing.lines.filter((candidate) => candidate.parent_id === lineId).length;
+    const extra =
+      childCount > 0
+        ? ` and its ${childCount} sub-item${childCount === 1 ? "" : "s"}`
+        : "";
+    if (!window.confirm(`Delete “${label}”${extra} from this pricing section?`)) return;
+    onPricing((p) => ({ ...p, lines: removePricingLine(p.lines, lineId) }));
   }
 
   function moveLine(lineId: string, delta: number) {
     onPricing((p) => {
-      const from = p.lines.findIndex((l) => l.id === lineId);
+      const groups = groupPricingLines(p.lines);
+      const childGroupIndex = groups.findIndex((group) =>
+        group.children.some((child) => child.id === lineId),
+      );
+      if (childGroupIndex >= 0) {
+        const group = groups[childGroupIndex]!;
+        const from = group.children.findIndex((child) => child.id === lineId);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= group.children.length) return p;
+        const children = [...group.children];
+        const [item] = children.splice(from, 1);
+        children.splice(to, 0, item!);
+        const next = groups.map((candidate, index) =>
+          index === childGroupIndex ? { ...candidate, children } : candidate,
+        );
+        return { ...p, lines: flattenPricingGroups(next) };
+      }
+      const from = groups.findIndex((group) => group.line.id === lineId);
       const to = from + delta;
-      if (from < 0 || to < 0 || to >= p.lines.length) return p;
-      const lines = [...p.lines];
-      const [item] = lines.splice(from, 1);
-      lines.splice(to, 0, item!);
-      return { ...p, lines };
+      if (from < 0 || to < 0 || to >= groups.length) return p;
+      const next = [...groups];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item!);
+      return { ...p, lines: flattenPricingGroups(next) };
     });
+  }
+
+  function blankLine(parentId: string | null): PricingLine {
+    return {
+      id: newBlockId(),
+      name: "",
+      description: null,
+      category: null,
+      qty: 1,
+      unit_price: 0,
+      optional: false,
+      selected: true,
+      qty_editable: false,
+      parent_id: parentId,
+    };
   }
 
   function addLine() {
     onPricing((p) => ({
       ...p,
-      lines: [
-        ...p.lines,
-        {
-          id: newBlockId(),
-          name: "",
-          description: null,
-          category: null,
-          qty: 1,
-          unit_price: 0,
-          optional: false,
-          selected: true,
-          qty_editable: false,
-        },
-      ],
+      lines: [...p.lines, blankLine(null)],
     }));
+  }
+
+  function addSubItem(parentId: string) {
+    onPricing((p) => {
+      const groups = groupPricingLines(p.lines);
+      const next = groups.map((group) =>
+        group.line.id === parentId
+          ? { ...group, children: [...group.children, blankLine(parentId)] }
+          : group,
+      );
+      return { ...p, lines: flattenPricingGroups(next) };
+    });
   }
 
   return (
@@ -793,6 +849,37 @@ function PricingBlockEditor({
           </>
         ) : null}
       </div>
+      <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+        <label className="cdoc-section-optional-toggle">
+          <input
+            type="checkbox"
+            checked={pricing.optional}
+            disabled={disabled}
+            onChange={(e) =>
+              onPricing((p) => ({
+                ...p,
+                optional: e.target.checked,
+                selected: e.target.checked ? p.selected : true,
+              }))
+            }
+          />
+          Optional table
+        </label>
+        {pricing.optional ? (
+          <label className="cdoc-section-optional-toggle">
+            <input
+              type="checkbox"
+              checked={pricing.selected}
+              disabled={disabled}
+              onChange={(e) => onPricing((p) => ({ ...p, selected: e.target.checked }))}
+            />
+            Included by default
+          </label>
+        ) : null}
+        {pricing.optional && !pricing.selected ? (
+          <span className="muted">This table is left out of the quote total.</span>
+        ) : null}
+      </div>
 
       <div className="table-wrap">
         <table className="bom-table">
@@ -809,7 +896,7 @@ function PricingBlockEditor({
             </tr>
           </thead>
           <tbody>
-            {pricing.lines.length === 0 ? (
+            {groups.length === 0 ? (
               <tr>
                 <td colSpan={8} className="muted" style={{ padding: "0.75rem" }}>
                   No lines yet — import from the BOM or add lines manually. Only
@@ -817,141 +904,166 @@ function PricingBlockEditor({
                 </td>
               </tr>
             ) : (
-              pricing.lines.map((line, lineIndex) => (
-                <tr key={line.id}>
-                  <td>
-                    <input
-                      className="field-light"
-                      value={line.name}
-                      disabled={disabled}
-                      placeholder="Item name"
-                      onChange={(e) => updateLine(line.id, { name: e.target.value })}
-                    />
-                    <input
-                      className="field-light"
-                      style={{ marginTop: 4, fontSize: "0.82rem" }}
-                      value={line.description ?? ""}
-                      disabled={disabled}
-                      placeholder="Customer-facing description (optional)"
-                      onChange={(e) =>
-                        updateLine(line.id, { description: e.target.value || null })
-                      }
-                    />
-                    {editable ? (
-                      <button
-                        className="btn btn-danger"
-                        type="button"
-                        style={{ marginTop: 6 }}
-                        onClick={() => removeLine(lineIndex)}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </td>
-                  <td>
-                    <input
-                      className="field-light"
-                      value={line.category ?? ""}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, { category: e.target.value || null })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="field-light"
-                      type="number"
-                      min={0}
-                      value={line.qty}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, { qty: Math.max(0, Number(e.target.value)) })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <CurrencyInput
-                      value={line.unit_price}
-                      disabled={disabled}
-                      onChange={(v) => updateLine(line.id, { unit_price: v ?? 0 })}
-                    />
-                  </td>
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    {formatMoney(line.qty * line.unit_price)}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={line.optional}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, {
-                          optional: e.target.checked,
-                          selected: e.target.checked ? line.selected : true,
-                        })
-                      }
-                    />
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={line.qty_editable}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, { qty_editable: e.target.checked })
-                      }
-                    />
-                  </td>
-                  <td>
-                    {editable ? (
-                      <div
-                        className="row"
-                        style={{ gap: "0.25rem", flexWrap: "nowrap" }}
-                      >
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => moveLine(line.id, -1)}
-                          disabled={lineIndex === 0}
-                          title="Move line up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => moveLine(line.id, 1)}
-                          disabled={lineIndex === pricing.lines.length - 1}
-                          title="Move line down"
-                        >
-                          ↓
-                        </button>
-                        {otherSections.length > 0 ? (
-                          <select
+              groups.flatMap((group, groupIndex) =>
+                [group.line, ...group.children].map((line, rowIndex) => {
+                  const isChild = rowIndex > 0;
+                  const atStart = isChild ? rowIndex === 1 : groupIndex === 0;
+                  const atEnd = isChild
+                    ? rowIndex === group.children.length
+                    : groupIndex === groups.length - 1;
+                  return (
+                    <tr key={line.id} className={isChild ? "cdoc-editor-subrow" : undefined}>
+                      <td>
+                        <div className={isChild ? "cdoc-editor-subitem" : undefined}>
+                          <input
                             className="field-light"
-                            value=""
-                            title="Move line to another pricing section"
-                            style={{ width: 92 }}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                onMoveLineTo(e.target.value, line.id);
-                              }
-                            }}
+                            value={line.name}
+                            disabled={disabled}
+                            placeholder={isChild ? "Sub-item name" : "Item name"}
+                            onChange={(e) => updateLine(line.id, { name: e.target.value })}
+                          />
+                          <input
+                            className="field-light"
+                            style={{ marginTop: 4, fontSize: "0.82rem" }}
+                            value={line.description ?? ""}
+                            disabled={disabled}
+                            placeholder="Customer-facing description (optional)"
+                            onChange={(e) =>
+                              updateLine(line.id, { description: e.target.value || null })
+                            }
+                          />
+                          {editable ? (
+                            <div className="row" style={{ gap: "0.35rem", marginTop: 6 }}>
+                              {isChild ? null : (
+                                <button
+                                  className="btn"
+                                  type="button"
+                                  onClick={() => addSubItem(line.id)}
+                                >
+                                  Add sub-item
+                                </button>
+                              )}
+                              <button
+                                className="btn btn-danger"
+                                type="button"
+                                onClick={() => removeLine(line.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          className="field-light"
+                          value={line.category ?? ""}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLine(line.id, { category: e.target.value || null })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="field-light"
+                          type="number"
+                          min={0}
+                          value={line.qty}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLine(line.id, { qty: Math.max(0, Number(e.target.value)) })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <CurrencyInput
+                          value={line.unit_price}
+                          disabled={disabled}
+                          onChange={(v) => updateLine(line.id, { unit_price: v ?? 0 })}
+                        />
+                      </td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {formatMoney(line.qty * line.unit_price)}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        {isChild ? (
+                          <span className="cdoc-follows-parent">Follows parent</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={line.optional}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              updateLine(line.id, {
+                                optional: e.target.checked,
+                                selected: e.target.checked ? line.selected : true,
+                              })
+                            }
+                          />
+                        )}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={line.qty_editable}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLine(line.id, { qty_editable: e.target.checked })
+                          }
+                        />
+                      </td>
+                      <td>
+                        {editable ? (
+                          <div
+                            className="row"
+                            style={{ gap: "0.25rem", flexWrap: "nowrap" }}
                           >
-                            <option value="">Move to…</option>
-                            {otherSections.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.title}
-                              </option>
-                            ))}
-                          </select>
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => moveLine(line.id, -1)}
+                              disabled={atStart}
+                              title={isChild ? "Move sub-item up" : "Move line up"}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => moveLine(line.id, 1)}
+                              disabled={atEnd}
+                              title={isChild ? "Move sub-item down" : "Move line down"}
+                            >
+                              ↓
+                            </button>
+                            {!isChild && otherSections.length > 0 ? (
+                              <select
+                                className="field-light"
+                                value=""
+                                title="Move line and its sub-items to another pricing section"
+                                style={{ width: 92 }}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    onMoveLineTo(e.target.value, line.id);
+                                  }
+                                }}
+                              >
+                                <option value="">Move to…</option>
+                                {otherSections.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.title}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+                          </div>
                         ) : null}
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))
+                      </td>
+                    </tr>
+                  );
+                }),
+              )
             )}
           </tbody>
         </table>
@@ -1151,6 +1263,7 @@ function ImportBomModal({
         optional: asOptional,
         selected: true,
         qty_editable: false,
+        parent_id: null,
       });
     };
     for (const section of data.sections) {

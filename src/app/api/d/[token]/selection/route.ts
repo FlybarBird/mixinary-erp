@@ -16,7 +16,7 @@ import {
 
 type ServiceClient = Awaited<ReturnType<typeof createClient>>;
 
-/** Customer toggles an optional line or adjusts an editable quantity. */
+/** Customer toggles an optional table or line, or adjusts an editable quantity. */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
@@ -37,8 +37,10 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
   const blockId = String(body.block_id ?? "");
-  const lineId = String(body.line_id ?? "");
-  if (!blockId || !lineId) {
+  const lineId = body.line_id == null || body.line_id === "" ? "" : String(body.line_id);
+  const sectionSelected =
+    typeof body.section_selected === "boolean" ? body.section_selected : undefined;
+  if (!blockId || (!lineId && sectionSelected === undefined)) {
     return NextResponse.json({ error: "Invalid selection" }, { status: 400 });
   }
 
@@ -54,9 +56,10 @@ export async function POST(
   const updated = applyCustomerSelections(snapshots, [
     {
       block_id: blockId,
-      line_id: lineId,
+      line_id: lineId || undefined,
       selected: typeof body.selected === "boolean" ? body.selected : undefined,
       qty: typeof body.qty === "number" ? body.qty : undefined,
+      section_selected: sectionSelected,
     },
   ]);
 
@@ -97,8 +100,9 @@ export async function POST(
     userAgent: request.headers.get("user-agent"),
     metadata: {
       block_id: blockId,
-      line_id: lineId,
+      line_id: lineId || null,
       selected: body.selected ?? null,
+      section_selected: sectionSelected ?? null,
       qty: body.qty ?? null,
     },
   });

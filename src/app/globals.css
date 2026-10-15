@@ -2262,6 +2262,32 @@ tr.status-row--on-site.drag-over-after > td {
   opacity: 0.45;
 }
 
+.cdoc-section-off {
+  opacity: 0.5;
+}
+
+.cdoc-line-child .cdoc-line-name {
+  padding-left: 1.15rem;
+  font-weight: 550;
+}
+
+.cdoc-editor-subitem {
+  margin-left: 1.15rem;
+}
+
+.cdoc-follows-parent,
+.cdoc-section-optional-toggle {
+  font-size: 0.78rem;
+  color: #556b82;
+}
+
+.cdoc-section-optional-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 .cdoc-line-name {
   font-weight: 650;
 }

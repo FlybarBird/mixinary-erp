@@ -5,7 +5,10 @@ import { formatMoney } from "@/lib/pricing";
 import {
   computeDocumentTotals,
   computePricingTotals,
+  groupPricingLines,
   normalizePricingContent,
+  pricingLineIncluded,
+  pricingSectionIncluded,
   quoteBlockLabel,
 } from "@/lib/client-documents";
 import type {
@@ -59,6 +62,7 @@ export function ClientDocumentRenderer({
   interactive = false,
   busy = false,
   onToggleLine,
+  onToggleSection,
   onChangeQty,
   onSign,
   onDecline,
@@ -78,6 +82,7 @@ export function ClientDocumentRenderer({
   interactive?: boolean;
   busy?: boolean;
   onToggleLine?: (blockId: string, lineId: string, selected: boolean) => void;
+  onToggleSection?: (blockId: string, selected: boolean) => void;
   onChangeQty?: (blockId: string, lineId: string, qty: number) => void;
   onSign?: (values: {
     signer_name: string;
@@ -220,16 +225,34 @@ export function ClientDocumentRenderer({
             const pricing = normalizePricingContent(content);
             const totals = computePricingTotals(content);
             const canInteract = interactive && !signed && !busy;
+            const sectionOn = pricingSectionIncluded(pricing);
+            const groups = groupPricingLines(pricing.lines);
             return (
               <section key={block.id} className="cdoc-section">
                 <div className="cdoc-pricing-heading">
-                  <h2>{pricing.title || "Pricing"}</h2>
+                  {pricing.optional ? (
+                    <label className="cdoc-section-optional-toggle">
+                      <input
+                        type="checkbox"
+                        checked={pricing.selected}
+                        disabled={!canInteract || !onToggleSection}
+                        onChange={(e) =>
+                          onToggleSection?.(block.id, e.target.checked)
+                        }
+                        aria-label={`Include ${pricing.title || "pricing table"}`}
+                      />
+                    </label>
+                  ) : null}
+                  <h2>
+                    {pricing.title || "Pricing"}
+                    {pricing.optional ? <span className="cdoc-tag">Optional</span> : null}
+                  </h2>
                   <div className="cdoc-pricing-heading-total">
                     <span>Total</span>
                     <strong>{formatMoney(totals.total)}</strong>
                   </div>
                 </div>
-                <div className="cdoc-pricing">
+                <div className={sectionOn ? "cdoc-pricing" : "cdoc-pricing cdoc-section-off"}>
                   <table>
                     <thead>
                       <tr>
@@ -241,61 +264,81 @@ export function ClientDocumentRenderer({
                       </tr>
                     </thead>
                     <tbody>
-                      {pricing.lines.map((line) => {
-                        const active = line.selected || !line.optional;
-                        return (
-                          <tr key={line.id} className={active ? "" : "cdoc-line-off"}>
-                            <td className="cdoc-col-include">
-                              {line.optional ? (
-                                <input
-                                  type="checkbox"
-                                  checked={line.selected}
-                                  disabled={!canInteract || !onToggleLine}
-                                  onChange={(e) =>
-                                    onToggleLine?.(block.id, line.id, e.target.checked)
-                                  }
-                                  aria-label={`Include ${line.name}`}
-                                />
-                              ) : null}
-                            </td>
-                            <td>
-                              <div className="cdoc-line-name">
-                                {line.name}
-                                {line.optional ? (
-                                  <span className="cdoc-tag">Optional</span>
+                      {groups.flatMap((group) =>
+                        [group.line, ...group.children].map((line, rowIndex) => {
+                          const isChild = rowIndex > 0;
+                          const active = pricingLineIncluded(
+                            line,
+                            pricing.lines,
+                            sectionOn,
+                          );
+                          const parentOn = pricingLineIncluded(
+                            group.line,
+                            pricing.lines,
+                            sectionOn,
+                          );
+                          const qtyOpen =
+                            line.qty_editable &&
+                            canInteract &&
+                            Boolean(onChangeQty) &&
+                            (isChild ? parentOn : true);
+                          return (
+                            <tr
+                              key={line.id}
+                              className={`${active ? "" : "cdoc-line-off"}${isChild ? " cdoc-line-child" : ""}`}
+                            >
+                              <td className="cdoc-col-include">
+                                {!isChild && line.optional ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={line.selected}
+                                    disabled={!canInteract || !onToggleLine}
+                                    onChange={(e) =>
+                                      onToggleLine?.(block.id, line.id, e.target.checked)
+                                    }
+                                    aria-label={`Include ${line.name}`}
+                                  />
                                 ) : null}
-                              </div>
-                              {line.description ? (
-                                <div className="cdoc-line-desc">{line.description}</div>
-                              ) : null}
-                            </td>
-                            <td className="cdoc-num">
-                              {line.qty_editable && canInteract && onChangeQty ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={9999}
-                                  value={line.qty}
-                                  className="cdoc-qty"
-                                  onChange={(e) =>
-                                    onChangeQty(
-                                      block.id,
-                                      line.id,
-                                      Number(e.target.value),
-                                    )
-                                  }
-                                />
-                              ) : (
-                                line.qty
-                              )}
-                            </td>
-                            <td className="cdoc-num">{formatMoney(line.unit_price)}</td>
-                            <td className="cdoc-num">
-                              {active ? formatMoney(line.qty * line.unit_price) : "—"}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                              </td>
+                              <td>
+                                <div className="cdoc-line-name">
+                                  {line.name}
+                                  {!isChild && line.optional ? (
+                                    <span className="cdoc-tag">Optional</span>
+                                  ) : null}
+                                </div>
+                                {line.description ? (
+                                  <div className="cdoc-line-desc">{line.description}</div>
+                                ) : null}
+                              </td>
+                              <td className="cdoc-num">
+                                {qtyOpen ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={9999}
+                                    value={line.qty}
+                                    className="cdoc-qty"
+                                    onChange={(e) =>
+                                      onChangeQty?.(
+                                        block.id,
+                                        line.id,
+                                        Number(e.target.value),
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  line.qty
+                                )}
+                              </td>
+                              <td className="cdoc-num">{formatMoney(line.unit_price)}</td>
+                              <td className="cdoc-num">
+                                {active ? formatMoney(line.qty * line.unit_price) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        }),
+                      )}
                     </tbody>
                   </table>
                   <div className="cdoc-totals">

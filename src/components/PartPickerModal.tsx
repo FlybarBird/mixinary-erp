@@ -6,6 +6,8 @@ import type { CatalogPart, PartCategory, PartCompany } from "@/lib/types";
 
 type PickerTab = "search" | "new";
 
+type SelectedPart = { part: CatalogPart; qty: number };
+
 type DraftPart = {
   name: string;
   sku: string;
@@ -50,7 +52,7 @@ export function PartPickerModal({
   const [categories, setCategories] = useState<PartCategory[]>([]);
   const [companies, setCompanies] = useState<PartCompany[]>([]);
   const [parts, setParts] = useState<CatalogPart[]>([]);
-  const [selected, setSelected] = useState<Record<string, number>>({});
+  const [selected, setSelected] = useState<Record<string, SelectedPart>>({});
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [draft, setDraft] = useState<DraftPart>(emptyDraft());
@@ -138,7 +140,7 @@ export function PartPickerModal({
     }
 
     setParts((prev) => [part, ...prev.filter((p) => p.id !== part.id)]);
-    setSelected((prev) => ({ ...prev, [part.id]: qty }));
+    setSelected((prev) => ({ ...prev, [part.id]: { part, qty } }));
     setDraft(emptyDraft());
     setTab("search");
     setSearched(true);
@@ -161,12 +163,10 @@ export function PartPickerModal({
 
   if (!open) return null;
 
-  const selectedList = Object.entries(selected)
-    .map(([id, qty]) => {
-      const part = parts.find((p) => p.id === id);
-      return part ? { part, qty } : null;
-    })
-    .filter(Boolean) as Array<{ part: CatalogPart; qty: number }>;
+  const selectedList = Object.values(selected);
+  const hiddenSelected = selectedList.filter(
+    (item) => !parts.some((part) => part.id === item.part.id),
+  ).length;
 
   const showEmptyCreate = searched && !loading && !parts.length;
 
@@ -259,7 +259,7 @@ export function PartPickerModal({
               style={{ marginTop: "1rem", maxHeight: 420, overflow: "auto" }}
             >
               {parts.map((part) => {
-                const qty = selected[part.id];
+                const qty = selected[part.id]?.qty;
                 return (
                   <div
                     key={part.id}
@@ -289,7 +289,7 @@ export function PartPickerModal({
                             setSelected((prev) => {
                               const next = { ...prev };
                               if (next[part.id]) delete next[part.id];
-                              else next[part.id] = 1;
+                              else next[part.id] = { part, qty: 1 };
                               return next;
                             })
                           }
@@ -306,10 +306,10 @@ export function PartPickerModal({
                             onChange={(e) =>
                               setSelected((prev) => ({
                                 ...prev,
-                                [part.id]: Math.max(
-                                  1,
-                                  Number(e.target.value) || 1,
-                                ),
+                                [part.id]: {
+                                  part,
+                                  qty: Math.max(1, Number(e.target.value) || 1),
+                                },
                               }))
                             }
                           />
@@ -349,7 +349,12 @@ export function PartPickerModal({
               className="row"
               style={{ marginTop: "1rem", justifyContent: "flex-end" }}
             >
-              <span className="muted">{selectedList.length} selected</span>
+              <span className="muted">
+                {selectedList.length} selected
+                {hiddenSelected
+                  ? ` (${hiddenSelected} from earlier search)`
+                  : ""}
+              </span>
               <button
                 type="button"
                 className="btn btn-primary"

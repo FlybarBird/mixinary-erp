@@ -490,18 +490,44 @@ export function BomEditor({
   }
 
   function addFromCatalog(items: Array<{ part: CatalogPart; qty: number }>) {
-    for (const { part, qty } of items) {
-      addLine(pickerSectionId, {
-        description: part.name,
-        sku: part.sku,
-        qty,
-        msrp: Number(part.msrp || 0),
-        quote: part.default_quote,
-        vendor_id: part.default_vendor_id,
-        catalog_part_id: part.id,
-        notes: part.description,
-      });
-    }
+    if (!items.length) return;
+    setLines((prev) => {
+      const next = [...prev];
+      for (const { part, qty } of items) {
+        const key = `new-${crypto.randomUUID()}`;
+        next.push({
+          _key: key,
+          id: key,
+          project_id: projectId,
+          section_id: pickerSectionId,
+          sort_order: next.length,
+          description: part.name || "New item",
+          sku: part.sku,
+          category: null,
+          uom: "ea",
+          qty: Math.max(1, Number(qty) || 1),
+          msrp: Number(part.msrp || 0),
+          quote: part.default_quote ?? null,
+          override_pct: null,
+          estimated_unit_cost: null,
+          required_by_date: null,
+          procurement_status: "not_ordered",
+          qty_ordered: 0,
+          qty_received: 0,
+          vendor_id: part.default_vendor_id,
+          catalog_part_id: part.id,
+          order_status: "none",
+          tracking: null,
+          carrier_id: null,
+          notes: part.description,
+          fetch_error: null,
+          msrp_source_url: null,
+          msrp_fetched_at: null,
+        });
+      }
+      return next;
+    });
+    bump();
     setMessage(
       `Added ${items.length} catalog part${items.length === 1 ? "" : "s"}`,
     );

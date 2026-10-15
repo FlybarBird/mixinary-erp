@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
-import { fetchPublicHtml } from "@/lib/ai/catalog-scrape";
 import { canEditPricing, getCurrentProfile } from "@/lib/auth";
 import { newId } from "@/lib/local/db";
 import { cacheRemotePartImage } from "@/lib/parts/cache-image";
-import { loadCatalogDuplicateIndex } from "@/lib/parts/find-duplicate";
+import {
+  loadCatalogDuplicateIndex,
+  productIdentityUrl,
+} from "@/lib/parts/find-duplicate";
 import { resolveCompanyId } from "@/lib/parts/resolve-company";
 import { createClient } from "@/lib/supabase/server";
+
+function money(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const n = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
 
 export async function POST(request: Request) {
   const profile = await getCurrentProfile();
@@ -16,7 +24,6 @@ export async function POST(request: Request) {
   const body = await request.json();
   const jobId = String(body.jobId || "");
   const acceptedIds = new Set((body.acceptedIds ?? []) as string[]);
-  const forcePullImages = Boolean(body.forcePullImages);
 
   if (!jobId) {
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
@@ -34,10 +41,19 @@ export async function POST(request: Request) {
   }
 
   const input = (job.input || {}) as {
+    url?: string | null;
     company_id?: string | null;
     category_id?: string | null;
     default_vendor_id?: string | null;
   };
+  const priorResult =
+    job.result && typeof job.result === "object"
+      ? (job.result as Record<string, unknown>)
+      : {};
+  const listingUrls = [
+    input.url,
+    typeof priorResult.finalUrl === "string" ? priorResult.finalUrl : null,
+  ];
 
   const { data: proposals } = await supabase
     .from("catalog_part_proposals")
@@ -49,9 +65,12 @@ export async function POST(request: Request) {
   let imported = 0;
   let skippedDuplicates = 0;
   let imagesCached = 0;
+  const failures: Array<{ id: string; name: string; error: string }> = [];
+  const imageJobs: Array<{ partId: string; remoteUrl: string }> = [];
 
   for (const proposal of proposals ?? []) {
-    const accepted = acceptedIds.has(proposal.id) && Boolean(proposal.name);
+    const name = String(proposal.name || "").trim();
+    const accepted = acceptedIds.has(proposal.id) && Boolean(name);
     await supabase
       .from("catalog_part_proposals")
       .update({ accepted })
@@ -68,11 +87,14 @@ export async function POST(request: Request) {
       (proposal.company_id as string | null) || input.company_id || null,
     );
 
-    const productUrl = proposal.product_url as string | null;
+    const productUrl = productIdentityUrl(
+      proposal.product_url as string | null,
+      listingUrls,
+    );
     const duplicate = dupIndex.find({
       sku: proposal.sku,
       upc: proposal.upc,
-      name: proposal.name,
+      name,
       company_id: companyId,
       product_url: productUrl,
     });
@@ -96,34 +118,9 @@ export async function POST(request: Request) {
     }
 
     const partId = newId();
-    let imageUrl = proposal.image_url as string | null;
-    let imagePath: string | null = null;
-
-    if (forcePullImages && productUrl) {
-      try {
-        const page = await fetchPublicHtml(productUrl);
-        const best = page.candidateImages[0] ?? null;
-        if (best) imageUrl = best;
-      } catch {
-        // keep existing image_url
-      }
-    }
-
-    if (imageUrl) {
-      const cached = await cacheRemotePartImage({
-        partId,
-        remoteUrl: imageUrl,
-      });
-      if (cached) {
-        imageUrl = cached.image_url;
-        imagePath = cached.image_path;
-        imagesCached += 1;
-      }
-    }
-
+    const imageUrl = (proposal.image_url as string | null) || null;
     const sourceName =
       (proposal.source_name as string | null)?.trim() || "scrape";
-
     const specs = {
       scraped_from: productUrl,
       confidence: proposal.confidence,
@@ -135,13 +132,13 @@ export async function POST(request: Request) {
 
     const { error } = await supabase.from("catalog_parts").insert({
       id: partId,
-      name: proposal.name,
-      sku: proposal.sku,
-      upc: proposal.upc,
-      description: proposal.description,
-      msrp: proposal.msrp ?? 0,
+      name,
+      sku: proposal.sku || null,
+      upc: proposal.upc || null,
+      description: proposal.description || null,
+      msrp: money(proposal.msrp),
       image_url: imageUrl,
-      image_path: imagePath,
+      image_path: null,
       category_id: proposal.category_id || input.category_id || null,
       company_id: companyId,
       default_vendor_id: input.default_vendor_id || null,
@@ -150,47 +147,69 @@ export async function POST(request: Request) {
       specs,
     });
 
-    if (!error) {
-      imported += 1;
-      dupIndex.remember({
-        id: partId,
-        name: String(proposal.name),
-        sku: proposal.sku,
-        upc: proposal.upc,
-        company_id: companyId,
-        specs,
-        product_url: productUrl,
-      });
-      await supabase
-        .from("catalog_part_proposals")
-        .update({ company_id: companyId })
-        .eq("id", proposal.id);
+    if (error) {
+      failures.push({ id: proposal.id, name, error: error.message });
+      continue;
     }
+
+    imported += 1;
+    dupIndex.remember({
+      id: partId,
+      name,
+      sku: proposal.sku,
+      upc: proposal.upc,
+      company_id: companyId,
+      specs,
+      product_url: productUrl,
+    });
+    await supabase
+      .from("catalog_part_proposals")
+      .update({ company_id: companyId })
+      .eq("id", proposal.id);
+
+    if (imageUrl) imageJobs.push({ partId, remoteUrl: imageUrl });
   }
 
-  const priorResult =
-    job.result && typeof job.result === "object"
-      ? (job.result as Record<string, unknown>)
-      : {};
+  const cacheUntil = Date.now() + 12_000;
+  for (let i = 0; i < imageJobs.length; i += 4) {
+    if (Date.now() > cacheUntil) break;
+    const slice = imageJobs.slice(i, i + 4);
+    await Promise.all(
+      slice.map(async (jobImage) => {
+        const cached = await cacheRemotePartImage(jobImage);
+        if (!cached) return;
+        const { error } = await supabase
+          .from("catalog_parts")
+          .update({
+            image_url: cached.image_url,
+            image_path: cached.image_path,
+          })
+          .eq("id", jobImage.partId);
+        if (!error) imagesCached += 1;
+      }),
+    );
+  }
 
   await supabase
     .from("ai_jobs")
     .update({
-      status: "applied",
+      status: imported > 0 ? "applied" : "needs_review",
       result: {
         ...priorResult,
         imported,
         skippedDuplicates,
         imagesCached,
+        failures,
       },
       updated_at: new Date().toISOString(),
     })
     .eq("id", jobId);
 
   return NextResponse.json({
-    ok: true,
+    ok: failures.length === 0,
     imported,
     skippedDuplicates,
     imagesCached,
+    failures,
   });
 }

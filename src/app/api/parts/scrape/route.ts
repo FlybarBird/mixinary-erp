@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai/catalog-scrape";
 import { isOpenAIConfigured } from "@/lib/ai/openai";
 import { canEditPricing, getCurrentProfile } from "@/lib/auth";
+import { productIdentityUrl } from "@/lib/parts/find-duplicate";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -126,6 +127,7 @@ export async function POST(request: Request) {
     }
 
     const withImages = parts.filter((p) => p.image_url).length;
+    const listingUrls = [url, finalUrl];
 
     const rows = parts.map((part) => ({
       job_id: job.id,
@@ -135,7 +137,8 @@ export async function POST(request: Request) {
       description: part.description,
       msrp: part.msrp,
       image_url: part.image_url,
-      product_url: part.product_url || finalUrl,
+      // Keep a real product page. A shared search/category URL is not the device.
+      product_url: productIdentityUrl(part.product_url, listingUrls),
       brand: part.brand,
       company_name: part.company,
       source_name: part.source || siteName,

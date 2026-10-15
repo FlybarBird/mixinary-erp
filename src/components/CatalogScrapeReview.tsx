@@ -43,8 +43,10 @@ export function CatalogScrapeReview({
     () =>
       new Set(proposals.filter((p) => !p.duplicate).map((p) => p.id)),
   );
-  const [forcePullImages, setForcePullImages] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [failures, setFailures] = useState<Array<{ name: string; error: string }>>(
+    [],
+  );
 
   const duplicateCount = useMemo(
     () => proposals.filter((p) => p.duplicate).length,
@@ -52,29 +54,37 @@ export function CatalogScrapeReview({
   );
 
   async function apply() {
-    setMessage(forcePullImages ? "Pulling images & importing…" : "Importing…");
+    setFailures([]);
+    setMessage("Adding devices to the catalog…");
     const res = await fetch("/api/parts/scrape/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jobId,
         acceptedIds: [...selected],
-        forcePullImages,
       }),
     });
     const data = await res.json();
-    if (!res.ok) {
+    if (!res.ok && !Array.isArray(data.failures)) {
       setMessage(data.error || "Import failed");
       return;
     }
     const skipped = Number(data.skippedDuplicates || 0);
-    setMessage(
-      skipped
-        ? `Imported ${data.imported}, skipped ${skipped} duplicate${skipped === 1 ? "" : "s"}`
-        : `Imported ${data.imported}`,
-    );
-    router.push("/parts");
-    router.refresh();
+    const imported = Number(data.imported || 0);
+    const failed = Array.isArray(data.failures) ? data.failures : [];
+    setFailures(failed);
+    const bits = [`Added ${imported}`];
+    if (skipped) {
+      bits.push(`skipped ${skipped} duplicate${skipped === 1 ? "" : "s"}`);
+    }
+    if (failed.length) {
+      bits.push(`${failed.length} failed`);
+    }
+    setMessage(bits.join(", "));
+    if (imported > 0 && failed.length === 0) {
+      router.push("/parts");
+      router.refresh();
+    }
   }
 
   return (
@@ -108,22 +118,6 @@ export function CatalogScrapeReview({
         >
           Clear
         </button>
-        <label
-          className="row"
-          style={{
-            gap: "0.4rem",
-            alignItems: "center",
-            fontSize: "0.88rem",
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={forcePullImages}
-            onChange={(e) => setForcePullImages(e.target.checked)}
-          />
-          Force pull images
-        </label>
         {duplicateCount ? (
           <span className="muted">
             {duplicateCount} already in catalog (unchecked)
@@ -131,6 +125,15 @@ export function CatalogScrapeReview({
         ) : null}
         {message ? <span className="muted">{message}</span> : null}
       </div>
+      {failures.length ? (
+        <div className="panel" style={{ padding: "0.75rem 1rem" }}>
+          {failures.map((failure) => (
+            <div key={`${failure.name}-${failure.error}`} className="muted">
+              {failure.name}: {failure.error}
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="table-wrap panel-light">
         <table className="bom-table">
           <thead>

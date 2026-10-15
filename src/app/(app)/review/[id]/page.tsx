@@ -4,7 +4,10 @@ import { CatalogScrapeReview } from "@/components/CatalogScrapeReview";
 import { MsrpReview } from "@/components/MsrpReview";
 import { QuoteReview } from "@/components/QuoteReview";
 import { requireProfile } from "@/lib/auth";
-import { loadCatalogDuplicateIndex } from "@/lib/parts/find-duplicate";
+import {
+  loadCatalogDuplicateIndex,
+  proposalIdentityKey,
+} from "@/lib/parts/find-duplicate";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ReviewDetailPage({
@@ -83,6 +86,7 @@ export default async function ReviewDetailPage({
       withImages?: number;
       candidateImageCount?: number;
     };
+    const listingUrls = [input.url, result.finalUrl];
     const imageCount =
       result.withImages ??
       (proposals ?? []).filter((p) => Boolean(p.image_url)).length;
@@ -100,12 +104,15 @@ export default async function ReviewDetailPage({
         product_url: p.product_url,
       });
 
-      const batchKey = [
-        String(p.upc || "").trim().toLowerCase(),
-        String(p.sku || "").trim().toLowerCase(),
-        String(p.product_url || "").trim().toLowerCase(),
-        String(p.name || "").trim().toLowerCase(),
-      ].find((k) => k);
+      const batchKey = proposalIdentityKey(
+        {
+          sku: p.sku,
+          upc: p.upc,
+          name: p.name,
+          product_url: p.product_url,
+        },
+        listingUrls,
+      );
       if (!duplicate && batchKey) {
         if (seenInBatch.has(batchKey)) {
           duplicate = {

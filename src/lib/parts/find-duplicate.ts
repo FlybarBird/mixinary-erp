@@ -16,11 +16,105 @@ export type DuplicateCandidate = {
   product_url?: string | null;
 };
 
+export type DuplicatePartRow = {
+  id: string;
+  name: string;
+  sku: string | null;
+  upc: string | null;
+  company_id: string | null;
+  specs: unknown;
+  product_url?: string | null;
+};
+
 function norm(value: string | null | undefined): string {
   return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+}
+
+/** Ignore placeholder codes that show up on many unrelated devices. */
+function usefulCode(value: string | null | undefined): string {
+  const code = norm(value).replace(/[^a-z0-9]/g, "");
+  if (!code || code === "0" || code === "na" || code === "n" || code === "none") {
+    return "";
+  }
+  return norm(value);
+}
+
+export function canonicalUrl(value: string | null | undefined): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.origin}${path}${url.search}`.toLowerCase();
+  } catch {
+    return norm(raw);
+  }
+}
+
+export function sameUrl(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = canonicalUrl(a);
+  const right = canonicalUrl(b);
+  return Boolean(left) && left === right;
+}
+
+/** Category, search, and listing pages are not a single device. */
+export function looksLikeSharedListing(value: string | null | undefined): boolean {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    const path = url.pathname.toLowerCase();
+    if (
+      /\/(search|category|categories|collections|collection|browse|shop|c|s)(\/|$)/i.test(
+        path,
+      )
+    ) {
+      return true;
+    }
+    const params = url.search.toLowerCase();
+    if (/[?&](q|query|search|page|p)=/.test(params)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+export function productIdentityUrl(
+  productUrl: string | null | undefined,
+  listingUrls: Array<string | null | undefined> = [],
+): string | null {
+  const raw = String(productUrl || "").trim();
+  if (!raw) return null;
+  if (listingUrls.some((listing) => sameUrl(raw, listing))) return null;
+  if (looksLikeSharedListing(raw)) return null;
+  return raw;
+}
+
+/**
+ * Key for "same device in this scrape batch".
+ * A shared listing URL must not collapse distinct devices.
+ */
+export function proposalIdentityKey(
+  part: DuplicateCandidate,
+  listingUrls: Array<string | null | undefined> = [],
+): string | null {
+  const upc = usefulCode(part.upc);
+  if (upc) return `upc:${upc}`;
+  const sku = usefulCode(part.sku);
+  const name = norm(part.name);
+  if (sku && name) return `sku:${sku}::${name}`;
+  if (sku) return `sku:${sku}`;
+  const url = canonicalUrl(productIdentityUrl(part.product_url, listingUrls));
+  if (url) return `url:${url}`;
+  if (name) return `name:${name}`;
+  return null;
 }
 
 function scrapedFrom(specs: unknown): string | null {
@@ -38,39 +132,28 @@ function scrapedFrom(specs: unknown): string | null {
   return typeof url === "string" && url.trim() ? url.trim() : null;
 }
 
-type PartRow = {
-  id: string;
-  name: string;
-  sku: string | null;
-  upc: string | null;
-  company_id: string | null;
-  specs: unknown;
-};
+/** In-memory index for scrape import/review. SKU alone is not enough. */
+export function createDuplicateIndex(rows: DuplicatePartRow[]) {
+  const byUpc = new Map<string, DuplicatePartRow>();
+  const bySku = new Map<string, DuplicatePartRow[]>();
+  const byUrl = new Map<string, DuplicatePartRow>();
+  const byNameCompany = new Map<string, DuplicatePartRow>();
 
-/** Build an in-memory index for fast duplicate checks during scrape import/review. */
-export async function loadCatalogDuplicateIndex(supabase: Client) {
-  const { data } = await supabase
-    .from("catalog_parts")
-    .select("id, name, sku, upc, company_id, specs");
-
-  const byUpc = new Map<string, PartRow>();
-  const bySku = new Map<string, PartRow[]>();
-  const byUrl = new Map<string, PartRow>();
-  const byNameCompany = new Map<string, PartRow>();
-
-  for (const row of (data ?? []) as PartRow[]) {
-    const upc = norm(row.upc);
+  function indexRow(row: DuplicatePartRow) {
+    const upc = usefulCode(row.upc);
     if (upc) byUpc.set(upc, row);
 
-    const sku = norm(row.sku);
+    const sku = usefulCode(row.sku);
     if (sku) {
       const list = bySku.get(sku) || [];
       list.push(row);
       bySku.set(sku, list);
     }
 
-    const url = scrapedFrom(row.specs);
-    if (url) byUrl.set(norm(url), row);
+    const url = canonicalUrl(
+      productIdentityUrl(row.product_url || scrapedFrom(row.specs)),
+    );
+    if (url) byUrl.set(url, row);
 
     const name = norm(row.name);
     if (name) {
@@ -81,26 +164,30 @@ export async function loadCatalogDuplicateIndex(supabase: Client) {
     }
   }
 
+  for (const row of rows) indexRow(row);
+
   return {
     find(candidate: DuplicateCandidate): DuplicateMatch | null {
-      const upc = norm(candidate.upc);
+      const upc = usefulCode(candidate.upc);
       if (upc && byUpc.has(upc)) {
         const hit = byUpc.get(upc)!;
         return { id: hit.id, name: hit.name, reason: "upc" };
       }
 
-      const sku = norm(candidate.sku);
+      const sku = usefulCode(candidate.sku);
       if (sku && bySku.has(sku)) {
         const list = bySku.get(sku)!;
         const companyId = candidate.company_id || null;
-        const hit =
-          (companyId
-            ? list.find((r) => r.company_id === companyId)
-            : null) || list[0];
+        const name = norm(candidate.name);
+        const hit = list.find((row) => {
+          if (companyId && row.company_id === companyId) return true;
+          if (name && norm(row.name) === name) return true;
+          return false;
+        });
         if (hit) return { id: hit.id, name: hit.name, reason: "sku" };
       }
 
-      const url = norm(candidate.product_url);
+      const url = canonicalUrl(productIdentityUrl(candidate.product_url));
       if (url && byUrl.has(url)) {
         const hit = byUrl.get(url)!;
         return { id: hit.id, name: hit.name, reason: "product_url" };
@@ -118,28 +205,18 @@ export async function loadCatalogDuplicateIndex(supabase: Client) {
       return null;
     },
     /** Register a just-imported part so later rows in the same batch collide. */
-    remember(part: PartRow & { product_url?: string | null }) {
-      const upc = norm(part.upc);
-      if (upc) byUpc.set(upc, part);
-      const sku = norm(part.sku);
-      if (sku) {
-        const list = bySku.get(sku) || [];
-        list.push(part);
-        bySku.set(sku, list);
-      }
-      const url = norm(part.product_url || scrapedFrom(part.specs));
-      if (url) byUrl.set(url, part);
-      const name = norm(part.name);
-      if (name) {
-        byNameCompany.set(`${name}::${part.company_id || ""}`, part);
-        if (!byNameCompany.has(`${name}::`)) {
-          byNameCompany.set(`${name}::`, part);
-        }
-      }
+    remember(part: DuplicatePartRow) {
+      indexRow(part);
     },
   };
 }
 
-export type CatalogDuplicateIndex = Awaited<
-  ReturnType<typeof loadCatalogDuplicateIndex>
->;
+export type CatalogDuplicateIndex = ReturnType<typeof createDuplicateIndex>;
+
+export async function loadCatalogDuplicateIndex(supabase: Client) {
+  const { data } = await supabase
+    .from("catalog_parts")
+    .select("id, name, sku, upc, company_id, specs");
+
+  return createDuplicateIndex((data ?? []) as DuplicatePartRow[]);
+}

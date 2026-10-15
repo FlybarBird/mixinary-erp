@@ -154,19 +154,32 @@ export function TemplateEditor({
   }
 
   function addFromCatalog(items: Array<{ part: CatalogPart; qty: number }>) {
-    for (const { part, qty } of items) {
-      addLine(pickerSectionId, {
-        description: part.name,
-        sku: part.sku,
-        qty,
-        msrp: Number(part.msrp || 0),
-        quote: part.default_quote,
-        vendor_code: part.default_vendor_id
-          ? vendorCodeById.get(part.default_vendor_id) || null
-          : null,
-        notes: part.description,
-      });
-    }
+    if (!items.length) return;
+    setLines((prev) => {
+      const next = [...prev];
+      for (const { part, qty } of items) {
+        const key = `new-${crypto.randomUUID()}`;
+        next.push({
+          _key: key,
+          id: key,
+          template_id: template.id,
+          section_id: pickerSectionId,
+          sort_order: next.length,
+          description: part.name || "New item",
+          sku: part.sku,
+          qty: Math.max(1, Number(qty) || 1),
+          msrp: Number(part.msrp || 0),
+          quote: part.default_quote ?? null,
+          override_pct: null,
+          vendor_code: part.default_vendor_id
+            ? vendorCodeById.get(part.default_vendor_id) || null
+            : null,
+          notes: part.description,
+        });
+      }
+      return next;
+    });
+    bump();
     setMessage(
       `Added ${items.length} catalog part${items.length === 1 ? "" : "s"}`,
     );

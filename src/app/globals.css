@@ -492,8 +492,8 @@ input.currency-edit.field {
   max-width: 100%;
 }
 
-.section-total {
-  flex: 0 0 auto;
+.section-title .section-total {
+  margin-left: 0.7rem;
   font-size: 0.82rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;

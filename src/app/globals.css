@@ -2275,6 +2275,38 @@ tr.status-row--on-site.drag-over-after > td {
   margin-left: 1.15rem;
 }
 
+.cdoc-pricing-editor .cdoc-drag-col {
+  width: 1.6rem;
+}
+
+.cdoc-pricing-editor tr.cdoc-row-dragging {
+  opacity: 0.45;
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-before td {
+  box-shadow: inset 0 2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-after td {
+  box-shadow: inset 0 -2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-nest td {
+  box-shadow: inset 3px 0 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-nest.cdoc-drop-before td {
+  box-shadow:
+    inset 3px 0 0 0 var(--accent, #0070f2),
+    inset 0 2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-nest.cdoc-drop-after td {
+  box-shadow:
+    inset 3px 0 0 0 var(--accent, #0070f2),
+    inset 0 -2px 0 0 var(--accent, #0070f2);
+}
+
 .cdoc-follows-parent,
 .cdoc-section-optional-toggle {
   font-size: 0.78rem;

@@ -280,6 +280,162 @@ export function flattenPricingGroups(groups: PricingLineGroup[]): PricingLine[] 
   return groups.flatMap((group) => [group.line, ...group.children]);
 }
 
+export type PricingDropPlace = "before" | "after";
+
+export interface PricingDropMarker {
+  /** Existing row that should show the insertion line. */
+  rowId: string;
+  place: PricingDropPlace;
+  /** The dropped line will land as a sub-item. */
+  nest: boolean;
+}
+
+/**
+ * Drag a pricing line.
+ *
+ * A parent item moves together with its sub-items, among the other top-level
+ * items. A sub-item, or a top-level item that has no sub-items, can also be
+ * dropped under another item when `nest` is set. Without `nest`, that line
+ * stays at the top level and lands before or after the target item.
+ */
+export function movePricingLine(
+  lines: PricingLine[],
+  fromId: string,
+  toId: string,
+  place: PricingDropPlace,
+  nest = false,
+): PricingLine[] {
+  if (!fromId || !toId || fromId === toId) return lines;
+  const groups = groupPricingLines(lines);
+  const fromIndex = groups.findIndex(
+    (group) =>
+      group.line.id === fromId || group.children.some((child) => child.id === fromId),
+  );
+  const toIndex = groups.findIndex(
+    (group) => group.line.id === toId || group.children.some((child) => child.id === toId),
+  );
+  if (fromIndex < 0 || toIndex < 0) return lines;
+  const fromGroup = groups[fromIndex]!;
+  const movingBlock = fromGroup.line.id === fromId && fromGroup.children.length > 0;
+
+  if (movingBlock) {
+    if (fromGroup.line.id === toId || fromGroup.children.some((child) => child.id === toId)) {
+      return lines;
+    }
+    const next = groups.filter((_, index) => index !== fromIndex);
+    const dest = next.findIndex(
+      (group) => group.line.id === toId || group.children.some((child) => child.id === toId),
+    );
+    if (dest < 0) return lines;
+    const targetIsParent = next[dest]!.line.id === toId;
+    const insertAt = !targetIsParent || place === "after" ? dest + 1 : dest;
+    next.splice(insertAt, 0, fromGroup);
+    return samePricingOrder(lines, flattenPricingGroups(next))
+      ? lines
+      : flattenPricingGroups(next);
+  }
+
+  const moving =
+    fromGroup.line.id === fromId
+      ? fromGroup.line
+      : fromGroup.children.find((child) => child.id === fromId);
+  if (!moving) return lines;
+  const remaining = groups
+    .map((group, index) => {
+      if (index !== fromIndex) return group;
+      if (group.line.id === fromId) return null;
+      return {
+        ...group,
+        children: group.children.filter((child) => child.id !== fromId),
+      };
+    })
+    .filter((group): group is PricingLineGroup => group !== null);
+  const dest = remaining.findIndex(
+    (group) => group.line.id === toId || group.children.some((child) => child.id === toId),
+  );
+  if (dest < 0) return lines;
+  const target = remaining[dest]!;
+  const targetIsParent = target.line.id === toId;
+
+  if (nest) {
+    const adopted: PricingLine = {
+      ...moving,
+      parent_id: target.line.id,
+      optional: false,
+      selected: true,
+    };
+    const children = [...target.children];
+    if (targetIsParent) {
+      children.unshift(adopted);
+    } else {
+      const childIndex = children.findIndex((child) => child.id === toId);
+      const at =
+        childIndex < 0 ? children.length : place === "before" ? childIndex : childIndex + 1;
+      children.splice(at, 0, adopted);
+    }
+    remaining[dest] = { ...target, children };
+  } else {
+    const insertAt = place === "before" ? dest : dest + 1;
+    remaining.splice(insertAt, 0, { line: { ...moving, parent_id: null }, children: [] });
+  }
+
+  const next = flattenPricingGroups(remaining);
+  return samePricingOrder(lines, next) ? lines : next;
+}
+
+/** Where the insertion line should appear for a drag hover. */
+export function pricingDropMarker(
+  lines: PricingLine[],
+  fromId: string,
+  toId: string,
+  place: PricingDropPlace,
+  nest = false,
+): PricingDropMarker | null {
+  const next = movePricingLine(lines, fromId, toId, place, nest);
+  if (next === lines) return null;
+  const groups = groupPricingLines(next);
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index]!;
+    if (group.line.id === fromId) {
+      if (index === 0) {
+        const following = groups[index + 1];
+        return following
+          ? { rowId: following.line.id, place: "before", nest: false }
+          : null;
+      }
+      const previous = groups[index - 1]!;
+      const last = previous.children[previous.children.length - 1] ?? previous.line;
+      return { rowId: last.id, place: "after", nest: false };
+    }
+    const childIndex = group.children.findIndex((child) => child.id === fromId);
+    if (childIndex >= 0) {
+      if (childIndex === 0) {
+        return { rowId: group.line.id, place: "after", nest: true };
+      }
+      return {
+        rowId: group.children[childIndex - 1]!.id,
+        place: "after",
+        nest: true,
+      };
+    }
+  }
+  return null;
+}
+
+function samePricingOrder(current: PricingLine[], next: PricingLine[]): boolean {
+  if (current.length !== next.length) return false;
+  return current.every((line, index) => {
+    const other = next[index];
+    return (
+      other != null &&
+      line.id === other.id &&
+      line.parent_id === other.parent_id &&
+      line.optional === other.optional &&
+      line.selected === other.selected
+    );
+  });
+}
+
 /** Drop a line. Deleting a parent also deletes its sub-items. */
 export function removePricingLine(lines: PricingLine[], lineId: string): PricingLine[] {
   const target = lines.find((line) => line.id === lineId);

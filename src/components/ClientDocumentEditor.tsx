@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import {
@@ -21,9 +21,12 @@ import {
   defaultBlockContent,
   flattenPricingGroups,
   groupPricingLines,
+  movePricingLine,
   normalizePricingContent,
+  pricingDropMarker,
   pricingLineParent,
   removePricingLine,
+  type PricingDropPlace,
   type ClientDocBlockType,
   type PricingBlockContent,
   type PricingLine,
@@ -744,6 +747,80 @@ function PricingBlockEditor({
   const disabled = !editable;
   const otherSections = pricingSections.filter((s) => s.id !== block.id);
   const groups = groupPricingLines(pricing.lines);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [hover, setHover] = useState<{
+    id: string;
+    place: PricingDropPlace;
+    nest: boolean;
+  } | null>(null);
+  const marker =
+    dragId && hover
+      ? pricingDropMarker(pricing.lines, dragId, hover.id, hover.place, hover.nest)
+      : null;
+
+  function lineIsBlock(lineId: string) {
+    const group = groups.find((candidate) => candidate.line.id === lineId);
+    return Boolean(group && group.children.length > 0);
+  }
+
+  function dropIntent(e: DragEvent, isChild: boolean) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const place: PricingDropPlace =
+      e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    const fromId = dragId;
+    const nest = !fromId || lineIsBlock(fromId) ? false : isChild || (place === "after" && e.clientX > rect.left + 56);
+    return { place, nest };
+  }
+
+  function onLineDragStart(e: DragEvent, lineId: string) {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", lineId);
+    setDragId(lineId);
+  }
+
+  function onLineDragOver(e: DragEvent, lineId: string, isChild: boolean) {
+    if (!editable || !dragId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (dragId === lineId) return;
+    const intent = dropIntent(e, isChild);
+    setHover((prev) =>
+      prev &&
+      prev.id === lineId &&
+      prev.place === intent.place &&
+      prev.nest === intent.nest
+        ? prev
+        : { id: lineId, ...intent },
+    );
+  }
+
+  function onLineDrop(e: DragEvent, lineId: string, isChild: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    const fromId = e.dataTransfer.getData("text/plain") || dragId;
+    if (fromId && fromId !== lineId) {
+      const intent = dropIntent(e, isChild);
+      onPricing((current) => {
+        const lines = movePricingLine(
+          current.lines,
+          fromId,
+          lineId,
+          intent.place,
+          intent.nest && !lineIsBlock(fromId),
+        );
+        return lines === current.lines ? current : { ...current, lines };
+      });
+    }
+    setDragId(null);
+    setHover(null);
+  }
+
+  function onLineDragEnd() {
+    setDragId(null);
+    setHover(null);
+  }
 
   function updateLine(lineId: string, patch: Partial<PricingLine>) {
     onPricing((p) => ({
@@ -882,9 +959,10 @@ function PricingBlockEditor({
       </div>
 
       <div className="table-wrap">
-        <table className="bom-table">
+        <table className="bom-table cdoc-pricing-editor">
           <thead>
             <tr>
+              <th className="cdoc-drag-col" />
               <th style={{ minWidth: 220 }}>Item</th>
               <th>Category</th>
               <th style={{ width: 70 }}>Qty</th>
@@ -900,7 +978,7 @@ function PricingBlockEditor({
           <tbody>
             {groups.length === 0 ? (
               <tr>
-                <td colSpan={8} className="muted" style={{ padding: "0.75rem" }}>
+                <td colSpan={9} className="muted" style={{ padding: "0.75rem" }}>
                   No lines yet — import from the BOM or add lines manually. Only
                   customer-facing sale prices are used.
                 </td>
@@ -913,8 +991,45 @@ function PricingBlockEditor({
                   const atEnd = isChild
                     ? rowIndex === group.children.length
                     : groupIndex === groups.length - 1;
+                  const dragging =
+                    dragId === line.id || (dragId != null && line.parent_id === dragId);
+                  const marked = marker?.rowId === line.id;
                   return (
-                    <tr key={line.id} className={isChild ? "cdoc-editor-subrow" : undefined}>
+                    <tr
+                      key={line.id}
+                      className={[
+                        isChild ? "cdoc-editor-subrow" : "",
+                        dragging ? "cdoc-row-dragging" : "",
+                        marked && marker?.place === "before" ? "cdoc-drop-before" : "",
+                        marked && marker?.place === "after" ? "cdoc-drop-after" : "",
+                        marked && marker?.nest ? "cdoc-drop-nest" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onDragOver={(e) => onLineDragOver(e, line.id, isChild)}
+                      onDrop={(e) => onLineDrop(e, line.id, isChild)}
+                      onDragEnd={onLineDragEnd}
+                    >
+                      <td className="bom-drag-cell">
+                        {editable ? (
+                          <span
+                            className="bom-drag-handle"
+                            draggable
+                            title={
+                              isChild
+                                ? "Drag to reorder this sub-item"
+                                : group.children.length > 0
+                                  ? "Drag to reorder. Sub-items move with this item."
+                                  : "Drag to reorder, or drop under an item to make it a sub-item"
+                            }
+                            aria-label={isChild ? "Drag sub-item" : "Drag item"}
+                            onDragStart={(e) => onLineDragStart(e, line.id)}
+                            onDragEnd={onLineDragEnd}
+                          >
+                            ⋮⋮
+                          </span>
+                        ) : null}
+                      </td>
                       <td>
                         <div className={isChild ? "cdoc-editor-subitem" : undefined}>
                           <input

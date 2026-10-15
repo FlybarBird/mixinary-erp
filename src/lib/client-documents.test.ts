@@ -5,7 +5,9 @@ import {
   computeDocumentTotals,
   computePricingTotals,
   groupPricingLines,
+  movePricingLine,
   normalizePricingContent,
+  pricingDropMarker,
   removePricingLine,
   type DocBlockSnapshot,
 } from "./client-documents";
@@ -252,5 +254,109 @@ describe("pricing tables and sub-items", () => {
       },
     ]);
     assert.equal(totals.total, 100);
+  });
+});
+
+function pricingLines(rows: Array<Record<string, unknown>>) {
+  return normalizePricingContent({ lines: rows.map((row) => line(row)) }).lines;
+}
+
+function orderOf(rows: ReturnType<typeof pricingLines>) {
+  return rows.map((row) => `${row.id}:${row.parent_id ?? ""}`);
+}
+
+describe("pricing drag and drop", () => {
+  const sample = () =>
+    pricingLines([
+      { id: "base", name: "Base", unit_price: 100 },
+      { id: "rack", name: "Rack", unit_price: 500, optional: true, selected: true },
+      { id: "shelf", name: "Shelf", unit_price: 80, parent_id: "rack" },
+      { id: "rail", name: "Rail", unit_price: 40, parent_id: "rack" },
+      { id: "cable", name: "Cable", unit_price: 20 },
+    ]);
+
+  it("moves a parent and its sub-items together", () => {
+    const moved = movePricingLine(sample(), "rack", "cable", "after");
+    assert.deepEqual(orderOf(moved), [
+      "base:",
+      "cable:",
+      "rack:",
+      "shelf:rack",
+      "rail:rack",
+    ]);
+  });
+
+  it("reorders sub-items under the same parent", () => {
+    const moved = movePricingLine(sample(), "rail", "shelf", "before", true);
+    assert.deepEqual(orderOf(moved), [
+      "base:",
+      "rack:",
+      "rail:rack",
+      "shelf:rack",
+      "cable:",
+    ]);
+  });
+
+  it("lifts a sub-item to the top level when dropped before a parent", () => {
+    const moved = movePricingLine(sample(), "shelf", "cable", "before");
+    assert.equal(moved.find((row) => row.id === "shelf")?.parent_id, null);
+    assert.deepEqual(orderOf(moved), [
+      "base:",
+      "rack:",
+      "rail:rack",
+      "shelf:",
+      "cable:",
+    ]);
+  });
+
+  it("moves a sub-item under a different parent", () => {
+    const moved = movePricingLine(sample(), "shelf", "cable", "after", true);
+    const shelf = moved.find((row) => row.id === "shelf");
+    assert.equal(shelf?.parent_id, "cable");
+    assert.equal(shelf?.optional, false);
+    assert.deepEqual(orderOf(moved), [
+      "base:",
+      "rack:",
+      "rail:rack",
+      "cable:",
+      "shelf:cable",
+    ]);
+  });
+
+  it("turns a childless item into a sub-item when dropped under a parent", () => {
+    const moved = movePricingLine(sample(), "base", "rack", "after", true);
+    const base = moved.find((row) => row.id === "base");
+    assert.equal(base?.parent_id, "rack");
+    assert.equal(base?.optional, false);
+    assert.deepEqual(orderOf(moved), [
+      "rack:",
+      "base:rack",
+      "shelf:rack",
+      "rail:rack",
+      "cable:",
+    ]);
+  });
+
+  it("keeps a parent with sub-items at the top level when dropped on a child", () => {
+    const lines = pricingLines([
+      { id: "rack", name: "Rack" },
+      { id: "shelf", name: "Shelf", parent_id: "rack" },
+      { id: "kit", name: "Kit" },
+      { id: "bolt", name: "Bolt", parent_id: "kit" },
+    ]);
+    const moved = movePricingLine(lines, "kit", "shelf", "before", true);
+    assert.equal(moved.find((row) => row.id === "kit")?.parent_id, null);
+    assert.deepEqual(orderOf(moved), ["rack:", "shelf:rack", "kit:", "bolt:kit"]);
+  });
+
+  it("leaves the list unchanged when a line is dropped on itself", () => {
+    const lines = sample();
+    assert.equal(movePricingLine(lines, "shelf", "shelf", "before"), lines);
+    assert.equal(pricingDropMarker(lines, "rack", "shelf", "after"), null);
+  });
+
+  it("marks a nest when a sub-item is dropped under another item", () => {
+    const marker = pricingDropMarker(sample(), "shelf", "cable", "after", true);
+    assert.deepEqual(marker, { rowId: "cable", place: "after", nest: true });
   });
 });

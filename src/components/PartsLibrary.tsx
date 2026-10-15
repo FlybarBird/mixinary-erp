@@ -62,6 +62,7 @@ export function PartsLibrary({
   const [scrapeForcePullImages, setScrapeForcePullImages] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [view, setView] = useState<PartsView>("cards");
+  const [sheetEdit, setSheetEdit] = useState(false);
   const [sortKey, setSortKey] = useState<SheetSortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -117,7 +118,58 @@ export function PartsLibrary({
 
   function chooseView(next: PartsView) {
     setView(next);
+    if (next !== "sheet") setSheetEdit(false);
     window.localStorage.setItem("mixinary.parts.view", next);
+  }
+
+  function mergeSheetPart(row: PartRow, patch: Partial<CatalogPart>): PartRow {
+    const next: PartRow = { ...row, ...patch };
+    if ("company_id" in patch) {
+      const company = companies.find((item) => item.id === patch.company_id) ?? null;
+      next.company_id = company?.id ?? null;
+      next.company_name = company?.name;
+      next.part_companies = company;
+    }
+    if ("category_id" in patch) {
+      const category = categories.find((item) => item.id === patch.category_id) ?? null;
+      next.category_id = category?.id ?? null;
+      next.category_name = category?.name;
+      next.part_categories = category;
+    }
+    if ("default_vendor_id" in patch) {
+      const vendor = vendors.find((item) => item.id === patch.default_vendor_id) ?? null;
+      next.default_vendor_id = vendor?.id ?? null;
+      next.vendor_code = vendor?.code;
+      next.vendors = vendor;
+    }
+    return next;
+  }
+
+  async function saveSheetCell(part: PartRow, patch: Partial<CatalogPart>) {
+    if ("name" in patch && !String(patch.name || "").trim()) {
+      setMessage("A part needs a name");
+      return false;
+    }
+    setMessage(null);
+    setParts((prev) =>
+      prev.map((row) => (row.id === part.id ? mergeSheetPart(row, patch) : row)),
+    );
+    setEditing((prev) =>
+      prev?.id === part.id ? mergeSheetPart(prev as PartRow, patch) : prev,
+    );
+    const res = await fetch("/api/parts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: part.id, ...patch }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setParts((prev) => prev.map((row) => (row.id === part.id ? part : row)));
+      setEditing((prev) => (prev?.id === part.id ? part : prev));
+      setMessage(data.error || "Save failed");
+      return false;
+    }
+    return true;
   }
 
   function openPart(part: PartRow) {
@@ -431,6 +483,16 @@ export function PartsLibrary({
               Sheet
             </button>
           </div>
+          {canEdit && view === "sheet" ? (
+            <button
+              type="button"
+              className={`btn ${sheetEdit ? "btn-primary" : ""}`}
+              aria-pressed={sheetEdit}
+              onClick={() => setSheetEdit((on) => !on)}
+            >
+              {sheetEdit ? "Done editing" : "Edit sheet"}
+            </button>
+          ) : null}
           {canEdit ? (
             <>
               <button type="button" className="btn" onClick={openNew}>
@@ -582,6 +644,11 @@ export function PartsLibrary({
             categoryName={partCategory}
             vendorCode={partVendor}
             canEdit={canEdit}
+            sheetEdit={sheetEdit}
+            categories={categories}
+            companies={companies}
+            vendors={vendors}
+            onSave={saveSheetCell}
           />
         ) : (
         <div className="parts-grid">
@@ -881,6 +948,11 @@ function PartsSheet({
   categoryName,
   vendorCode,
   canEdit,
+  sheetEdit,
+  categories,
+  companies,
+  vendors,
+  onSave,
 }: {
   parts: PartRow[];
   editingId?: string;
@@ -892,6 +964,11 @@ function PartsSheet({
   categoryName: (part: PartRow) => string;
   vendorCode: (part: PartRow) => string;
   canEdit: boolean;
+  sheetEdit: boolean;
+  categories: PartCategory[];
+  companies: PartCompany[];
+  vendors: Vendor[];
+  onSave: (part: PartRow, patch: Partial<CatalogPart>) => Promise<boolean>;
 }) {
   if (!parts.length) {
     return (
@@ -923,7 +1000,7 @@ function PartsSheet({
   }
 
   return (
-    <div className="parts-sheet">
+    <div className={`parts-sheet${sheetEdit ? " editing" : ""}`}>
       <table>
         <thead>
           <tr>
@@ -953,26 +1030,46 @@ function PartsSheet({
             <tr
               key={part.id}
               className={editingId === part.id ? "selected" : ""}
-              onClick={() => onOpen(part)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onOpen(part);
-                }
-              }}
-              tabIndex={0}
+              onClick={sheetEdit ? undefined : () => onOpen(part)}
+              onKeyDown={
+                sheetEdit
+                  ? undefined
+                  : (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpen(part);
+                      }
+                    }
+              }
+              tabIndex={sheetEdit ? undefined : 0}
             >
               <td className="parts-sheet-thumb">
-                {part.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={part.image_url} alt="" />
-                ) : (
-                  <span />
-                )}
+                <button
+                  type="button"
+                  className="parts-sheet-open"
+                  title="Open part"
+                  onClick={() => onOpen(part)}
+                >
+                  {part.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={part.image_url} alt="" />
+                  ) : (
+                    <span />
+                  )}
+                </button>
               </td>
               {SHEET_COLUMNS.map((column) => (
                 <td key={column.key} className={column.numeric ? "num" : ""}>
-                  {column.key === "name" ? (
+                  {sheetEdit ? (
+                    <SheetEditor
+                      part={part}
+                      column={column.key}
+                      categories={categories}
+                      companies={companies}
+                      vendors={vendors}
+                      onSave={onSave}
+                    />
+                  ) : column.key === "name" ? (
                     <span className="parts-sheet-name">
                       {part.name}
                       {!part.active ? <span className="badge">inactive</span> : null}
@@ -987,5 +1084,140 @@ function PartsSheet({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SheetEditor({
+  part,
+  column,
+  categories,
+  companies,
+  vendors,
+  onSave,
+}: {
+  part: PartRow;
+  column: SheetSortKey;
+  categories: PartCategory[];
+  companies: PartCompany[];
+  vendors: Vendor[];
+  onSave: (part: PartRow, patch: Partial<CatalogPart>) => Promise<boolean>;
+}) {
+  if (column === "company" || column === "category" || column === "vendor") {
+    const value =
+      column === "company"
+        ? part.company_id || ""
+        : column === "category"
+          ? part.category_id || ""
+          : part.default_vendor_id || "";
+    const field =
+      column === "company"
+        ? "company_id"
+        : column === "category"
+          ? "category_id"
+          : "default_vendor_id";
+    const options =
+      column === "company"
+        ? companies.map((item) => ({ id: item.id, label: item.name }))
+        : column === "category"
+          ? categories.map((item) => ({ id: item.id, label: item.name }))
+          : vendors.map((item) => ({ id: item.id, label: `${item.code} — ${item.name}` }));
+    return (
+      <select
+        className="parts-sheet-input"
+        aria-label={column}
+        value={value}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          void onSave(part, { [field]: e.target.value || null });
+        }}
+      >
+        <option value="">—</option>
+        {options.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  const numeric = column === "msrp" || column === "default_quote";
+  const value =
+    column === "name"
+      ? part.name
+      : column === "sku"
+        ? part.sku || ""
+        : column === "upc"
+          ? part.upc || ""
+          : column === "msrp"
+            ? String(part.msrp ?? 0)
+            : part.default_quote == null
+              ? ""
+              : String(part.default_quote);
+
+  const input = (
+    <SheetText
+      value={value}
+      numeric={numeric}
+      label={column}
+      onCommit={(draft) => {
+        const text = draft.trim();
+        if (column === "name") return onSave(part, { name: text });
+        if (column === "sku") return onSave(part, { sku: text || null });
+        if (column === "upc") return onSave(part, { upc: text || null });
+        if (!text) {
+          if (column === "default_quote") return onSave(part, { default_quote: null });
+          return Promise.resolve(false);
+        }
+        const amount = Number(text);
+        if (!Number.isFinite(amount)) return Promise.resolve(false);
+        if (column === "msrp") return onSave(part, { msrp: amount });
+        return onSave(part, { default_quote: amount });
+      }}
+    />
+  );
+
+  if (column !== "name" || part.active) return input;
+  return (
+    <span className="parts-sheet-name">
+      {input}
+      <span className="badge">inactive</span>
+    </span>
+  );
+}
+
+function SheetText({
+  value,
+  numeric,
+  label,
+  onCommit,
+}: {
+  value: string;
+  numeric: boolean;
+  label: string;
+  onCommit: (draft: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <input
+      className="parts-sheet-input"
+      aria-label={label}
+      inputMode={numeric ? "decimal" : undefined}
+      value={draft}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft === value) return;
+        void onCommit(draft).then((ok) => {
+          if (!ok) setDraft(value);
+        });
+      }}
+    />
   );
 }

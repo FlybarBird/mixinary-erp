@@ -1758,6 +1758,41 @@ tr.status-row--on-site.drag-over-after > td {
   font-weight: 650;
 }
 
+.parts-sheet-open {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.parts-sheet.editing tbody tr {
+  cursor: default;
+}
+
+.parts-sheet-input {
+  width: 100%;
+  min-width: 7rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 500;
+  padding: 0.28rem 0.4rem;
+}
+
+.parts-sheet td.num .parts-sheet-input {
+  min-width: 5.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.parts-sheet select.parts-sheet-input {
+  min-width: 9rem;
+}
+
 .part-card {
   display: flex;
   flex-direction: column;

@@ -3,8 +3,10 @@ import path from "node:path";
 import PDFDocument from "pdfkit";
 import { formatMoney } from "@/lib/pricing";
 import {
+  computeDocumentTotals,
   computePricingTotals,
   normalizePricingContent,
+  quoteBlockLabel,
 } from "@/lib/client-documents";
 import type {
   ClientDocument,
@@ -169,6 +171,8 @@ export async function buildClientDocumentPdf(params: {
     .stroke();
   doc.y += 18;
 
+  const documentTotals = computeDocumentTotals(blocks);
+
   // --- Blocks ---------------------------------------------------------------
   for (const block of blocks) {
     if (block.hidden || block.block_type === "cover") continue;
@@ -329,6 +333,44 @@ export async function buildClientDocumentPdf(params: {
           totalRow(pricing.tax.label || "Tax", formatMoney(totals.tax_total));
         }
         totalRow("Total", formatMoney(totals.total), true);
+        break;
+      }
+      case "quote_total": {
+        const label = quoteBlockLabel(content);
+        const note = str(content.note);
+        const boxH = note ? 78 : 56;
+        ensureSpace(boxH + 16);
+        const y = doc.y + 8;
+        doc
+          .roundedRect(left, y, pageWidth, boxH, 6)
+          .lineWidth(1.25)
+          .strokeColor(accent)
+          .fillColor("#f4f8fc")
+          .fillAndStroke();
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(9)
+          .fillColor(accent)
+          .text(label.toUpperCase(), left + 14, y + 10, {
+            width: pageWidth - 28,
+            lineBreak: false,
+          });
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(18)
+          .fillColor(ink)
+          .text(formatMoney(documentTotals.total), left + 14, y + 26, {
+            width: pageWidth - 28,
+            lineBreak: false,
+          });
+        if (note) {
+          doc
+            .font("Helvetica")
+            .fontSize(9)
+            .fillColor("#556b82")
+            .text(note, left + 14, y + 50, { width: pageWidth - 28 });
+        }
+        doc.y = y + boxH + 6;
         break;
       }
       case "acceptance": {

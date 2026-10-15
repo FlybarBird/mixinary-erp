@@ -624,6 +624,7 @@ export function ClientDocumentEditor({
                       onContent={(patch) => updateContent(block.id, patch)}
                       onOpenPricing={() => setPricingEditId(block.id)}
                       onClosePricing={() => setPricingEditId(null)}
+                      documentTotals={totals}
                       onDeletePricingLine={(lineIndex) =>
                         updatePricing(block.id, (pricing) => ({
                           ...pricing,

@@ -17,6 +17,7 @@ export type ClientDocBlockType =
   | "scope"
   | "deliverables"
   | "pricing"
+  | "quote_total"
   | "terms"
   | "acceptance"
   | "payment_instructions"
@@ -32,6 +33,7 @@ export const CLIENT_DOC_BLOCK_TYPES: ClientDocBlockType[] = [
   "scope",
   "deliverables",
   "pricing",
+  "quote_total",
   "terms",
   "acceptance",
   "payment_instructions",
@@ -48,6 +50,7 @@ export const CLIENT_DOC_BLOCK_LABELS: Record<ClientDocBlockType, string> = {
   scope: "Scope of Work",
   deliverables: "Deliverables",
   pricing: "Pricing Table",
+  quote_total: "Quote Total",
   terms: "Terms & Conditions",
   acceptance: "Acceptance & Signature",
   payment_instructions: "Payment Instructions",
@@ -140,6 +143,8 @@ export function defaultBlockContent(
         discount: { type: "none", value: 0 },
         tax: { type: "none", value: 0, label: "Tax" },
       } satisfies PricingBlockContent;
+    case "quote_total":
+      return { label: "Quote", note: "" };
     case "terms":
       return { title: "Terms & Conditions", body: "" };
     case "acceptance":
@@ -225,6 +230,14 @@ export function computePricingTotals(
     tax_total: tax,
     total: round2(taxable + tax),
   };
+}
+
+/** Customer-facing label for a dropped-in quote total block. */
+export function quoteBlockLabel(
+  content: Record<string, unknown> | null | undefined,
+): string {
+  const label = typeof content?.label === "string" ? content.label.trim() : "";
+  return label || "Quote";
 }
 
 /** Sum totals across all visible pricing blocks of a document. */

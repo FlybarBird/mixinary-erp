@@ -3,8 +3,10 @@
 import { FormEvent, useState } from "react";
 import { formatMoney } from "@/lib/pricing";
 import {
+  computeDocumentTotals,
   computePricingTotals,
   normalizePricingContent,
+  quoteBlockLabel,
 } from "@/lib/client-documents";
 import type {
   ClientDocumentBlock,
@@ -87,6 +89,7 @@ export function ClientDocumentRenderer({
   const accent = branding.brand_color_primary || "#0070f2";
   const ink = branding.brand_color_accent || "#223548";
   const visible = blocks.filter((b) => !b.hidden);
+  const documentTotals = computeDocumentTotals(blocks);
   const signed = signatures.length > 0;
 
   const [signName, setSignName] = useState("");
@@ -192,6 +195,24 @@ export function ClientDocumentRenderer({
                     <li key={i}>{item}</li>
                   ))}
                 </ul>
+              </section>
+            );
+          }
+          case "quote_total": {
+            const note = str(content.note).trim();
+            return (
+              <section key={block.id} className="cdoc-section">
+                <div className="cdoc-quote-total">
+                  <div className="cdoc-quote-total-copy">
+                    <div className="cdoc-quote-total-label">
+                      {quoteBlockLabel(content)}
+                    </div>
+                    {note ? <p className="cdoc-quote-total-note">{note}</p> : null}
+                  </div>
+                  <div className="cdoc-quote-total-amount">
+                    {formatMoney(documentTotals.total)}
+                  </div>
+                </div>
               </section>
             );
           }

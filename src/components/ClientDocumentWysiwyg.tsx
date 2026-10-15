@@ -10,6 +10,8 @@ import {
 import {
   computePricingTotals,
   normalizePricingContent,
+  quoteBlockLabel,
+  type DocumentTotals,
   CLIENT_DOC_BLOCK_LABELS,
   type ClientDocBlockType,
   type PricingBlockContent,
@@ -102,6 +104,7 @@ export function WysiwygBlock({
   docNumber,
   docVersion,
   expiresAt,
+  documentTotals,
   pricingSections,
   pricingPanelOpen,
   onSelect,
@@ -130,6 +133,7 @@ export function WysiwygBlock({
   docNumber: string;
   docVersion: number;
   expiresAt: string | null;
+  documentTotals: DocumentTotals;
   pricingSections: Array<{ id: string; title: string }>;
   pricingPanelOpen: boolean;
   onSelect: () => void;
@@ -223,6 +227,7 @@ export function WysiwygBlock({
         docNumber={docNumber}
         docVersion={docVersion}
         expiresAt={expiresAt}
+        documentTotals={documentTotals}
         pricingPanelOpen={pricingPanelOpen}
         onContent={onContent}
         onOpenPricing={onOpenPricing}
@@ -245,6 +250,7 @@ function WysiwygBlockBody({
   docNumber,
   docVersion,
   expiresAt,
+  documentTotals,
   pricingPanelOpen,
   onContent,
   onOpenPricing,
@@ -262,6 +268,7 @@ function WysiwygBlockBody({
   docNumber: string;
   docVersion: number;
   expiresAt: string | null;
+  documentTotals: DocumentTotals;
   pricingPanelOpen: boolean;
   onContent: (patch: Record<string, unknown>) => void;
   onOpenPricing: () => void;
@@ -401,6 +408,35 @@ function WysiwygBlockBody({
           onDeleteLine={onDeletePricingLine}
           pricingEditor={pricingEditor}
         />
+      );
+
+    case "quote_total":
+      return (
+        <section className="cdoc-section">
+          <div className="cdoc-quote-total">
+            <div className="cdoc-quote-total-copy">
+              <EditableText
+                as="div"
+                className="cdoc-quote-total-label"
+                value={str(content.label)}
+                placeholder="Quote"
+                disabled={!editable}
+                onCommit={(v) => onContent({ label: v })}
+              />
+              <EditableText
+                as="p"
+                className="cdoc-quote-total-note"
+                value={str(content.note)}
+                placeholder="Optional note for the customer"
+                disabled={!editable}
+                onCommit={(v) => onContent({ note: v })}
+              />
+            </div>
+            <div className="cdoc-quote-total-amount">
+              {formatMoney(documentTotals.total)}
+            </div>
+          </div>
+        </section>
       );
 
     case "acceptance":

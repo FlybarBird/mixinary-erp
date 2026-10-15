@@ -732,6 +732,8 @@ export function ClientDocumentEditor({
                       docNumber={doc.doc_number}
                       docVersion={doc.version}
                       expiresAt={doc.expires_at}
+                      projectId={projectId}
+                      documentId={doc.id}
                       pricingSections={pricingSections}
                       pricingPanelOpen={pricingEditId === block.id}
                       onSelect={() => setSelectedBlockId(block.id)}

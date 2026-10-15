@@ -160,6 +160,7 @@ export function PublicDocumentView({
           }
           onSign={(values) => void sign(values)}
           onDecline={(comment) => void decline(comment)}
+          shareToken={token}
         />
       </div>
     </div>

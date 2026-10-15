@@ -11,6 +11,7 @@ import {
   pricingSectionIncluded,
   quoteBlockLabel,
 } from "@/lib/client-documents";
+import { clientDocumentImageSrc } from "@/lib/client-document-image-url";
 import type {
   ClientDocumentBlock,
   ClientDocumentSignature,
@@ -66,6 +67,7 @@ export function ClientDocumentRenderer({
   onChangeQty,
   onSign,
   onDecline,
+  shareToken,
 }: {
   doc: {
     name: string;
@@ -90,6 +92,8 @@ export function ClientDocumentRenderer({
     signature_text: string;
   }) => void;
   onDecline?: (comment: string) => void;
+  /** Customer share token, so uploaded images load on the public quote. */
+  shareToken?: string | null;
 }) {
   const accent = branding.brand_color_primary || "#0070f2";
   const ink = branding.brand_color_accent || "#223548";
@@ -173,7 +177,7 @@ export function ClientDocumentRenderer({
             );
           }
           case "image": {
-            const url = str(content.url);
+            const url = clientDocumentImageSrc(str(content.url), shareToken);
             if (!url) return null;
             return (
               <section key={block.id} className="cdoc-section">

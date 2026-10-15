@@ -9,7 +9,10 @@ import {
 } from "react";
 import {
   computePricingTotals,
+  groupPricingLines,
   normalizePricingContent,
+  pricingLineIncluded,
+  pricingSectionIncluded,
   quoteBlockLabel,
   type DocumentTotals,
   CLIENT_DOC_BLOCK_LABELS,
@@ -147,7 +150,7 @@ export function WysiwygBlock({
   onContent: (patch: Record<string, unknown>) => void;
   onOpenPricing: () => void;
   onClosePricing: () => void;
-  onDeletePricingLine: (lineIndex: number) => void;
+  onDeletePricingLine: (lineId: string) => void;
   pricingEditor: ReactNode;
 }) {
   const type = block.block_type as ClientDocBlockType;
@@ -273,7 +276,7 @@ function WysiwygBlockBody({
   onContent: (patch: Record<string, unknown>) => void;
   onOpenPricing: () => void;
   onClosePricing: () => void;
-  onDeletePricingLine: (lineIndex: number) => void;
+  onDeletePricingLine: (lineId: string) => void;
   pricingEditor: ReactNode;
 }) {
   switch (type) {
@@ -536,24 +539,45 @@ function PricingWysiwyg({
   panelOpen: boolean;
   onOpen: () => void;
   onClose: () => void;
-  onDeleteLine: (lineIndex: number) => void;
+  onDeleteLine: (lineId: string) => void;
   pricingEditor: ReactNode;
 }) {
   const pricing = normalizePricingContent(block.content);
   const totals = computePricingTotals(block.content);
   const columns = editable ? 6 : 5;
+  const sectionOn = pricingSectionIncluded(pricing);
+  const groups = groupPricingLines(pricing.lines);
 
-  function deleteLine(index: number) {
-    const line = pricing.lines[index];
+  function deleteLine(lineId: string) {
+    const line = pricing.lines.find((candidate) => candidate.id === lineId);
     const label = line?.name.trim() || "this line";
-    if (!window.confirm(`Delete “${label}” from this pricing section?`)) return;
-    onDeleteLine(index);
+    const childCount = pricing.lines.filter((candidate) => candidate.parent_id === lineId).length;
+    const extra =
+      childCount > 0
+        ? ` and its ${childCount} sub-item${childCount === 1 ? "" : "s"}`
+        : "";
+    if (!window.confirm(`Delete “${label}”${extra} from this pricing section?`)) return;
+    onDeleteLine(lineId);
   }
 
   return (
     <section className="cdoc-section">
       <div className="cdoc-pricing-heading">
-        <h2>{pricing.title || "Pricing"}</h2>
+        {pricing.optional ? (
+          <label className="cdoc-section-optional-toggle">
+            <input
+              type="checkbox"
+              checked={pricing.selected}
+              disabled
+              readOnly
+              aria-label={`Include ${pricing.title || "pricing table"}`}
+            />
+          </label>
+        ) : null}
+        <h2>
+          {pricing.title || "Pricing"}
+          {pricing.optional ? <span className="cdoc-tag">Optional</span> : null}
+        </h2>
         <div className="cdoc-pricing-heading-total">
           <span>Total</span>
           <strong>{formatMoney(totals.total)}</strong>
@@ -579,7 +603,7 @@ function PricingWysiwyg({
         </div>
       ) : null}
 
-      <div className="cdoc-pricing">
+      <div className={sectionOn ? "cdoc-pricing" : "cdoc-pricing cdoc-section-off"}>
         <table>
           <thead>
             <tr>
@@ -592,7 +616,7 @@ function PricingWysiwyg({
             </tr>
           </thead>
           <tbody>
-            {pricing.lines.length === 0 ? (
+            {groups.length === 0 ? (
               <tr>
                 <td colSpan={columns} className="muted" style={{ padding: "0.75rem" }}>
                   No lines yet
@@ -600,46 +624,54 @@ function PricingWysiwyg({
                 </td>
               </tr>
             ) : (
-              pricing.lines.map((line, lineIndex) => {
-                const active = line.selected || !line.optional;
-                return (
-                  <tr key={line.id || lineIndex} className={active ? "" : "cdoc-line-off"}>
-                    <td className="cdoc-col-include">
-                      {line.optional ? (
-                        <input type="checkbox" checked={line.selected} disabled readOnly />
-                      ) : null}
-                    </td>
-                    <td>
-                      <div className="cdoc-line-name">
-                        {line.name || "Untitled"}
-                        {line.optional ? <span className="cdoc-tag">Optional</span> : null}
-                      </div>
-                      {line.description ? (
-                        <div className="cdoc-line-desc">{line.description}</div>
-                      ) : null}
-                    </td>
-                    <td className="cdoc-num">{line.qty}</td>
-                    <td className="cdoc-num">{formatMoney(line.unit_price)}</td>
-                    <td className="cdoc-num">
-                      {active ? formatMoney(line.qty * line.unit_price) : "—"}
-                    </td>
-                    {editable ? (
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-danger cdoc-line-delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteLine(lineIndex);
-                          }}
-                        >
-                          Delete
-                        </button>
+              groups.flatMap((group) =>
+                [group.line, ...group.children].map((line, rowIndex) => {
+                  const isChild = rowIndex > 0;
+                  const active = pricingLineIncluded(line, pricing.lines, sectionOn);
+                  return (
+                    <tr
+                      key={line.id || `${group.line.id}-${rowIndex}`}
+                      className={`${active ? "" : "cdoc-line-off"}${isChild ? " cdoc-line-child" : ""}`}
+                    >
+                      <td className="cdoc-col-include">
+                        {!isChild && line.optional ? (
+                          <input type="checkbox" checked={line.selected} disabled readOnly />
+                        ) : null}
                       </td>
-                    ) : null}
-                  </tr>
-                );
-              })
+                      <td>
+                        <div className="cdoc-line-name">
+                          {line.name || (isChild ? "Sub-item" : "Untitled")}
+                          {!isChild && line.optional ? (
+                            <span className="cdoc-tag">Optional</span>
+                          ) : null}
+                        </div>
+                        {line.description ? (
+                          <div className="cdoc-line-desc">{line.description}</div>
+                        ) : null}
+                      </td>
+                      <td className="cdoc-num">{line.qty}</td>
+                      <td className="cdoc-num">{formatMoney(line.unit_price)}</td>
+                      <td className="cdoc-num">
+                        {active ? formatMoney(line.qty * line.unit_price) : "—"}
+                      </td>
+                      {editable ? (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-danger cdoc-line-delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteLine(line.id);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                }),
+              )
             )}
           </tbody>
         </table>

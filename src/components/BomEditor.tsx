@@ -15,6 +15,7 @@ import {
   formatMoney,
   formatSignedMoney,
   outOfPocketStyle,
+  sumPricing,
 } from "@/lib/pricing";
 import { computeBomHeaderEconomics } from "@/lib/projects/bom-header-economics";
 import { getPoStatusVisual } from "@/lib/projects/procurement";
@@ -1071,7 +1072,22 @@ export function BomEditor({
                             aria-label={`Select all in ${section?.name ?? "General"}`}
                           />
                           <span className="section-title">
-                            {section?.name ?? "General"}
+                            {section?.name ?? "General"}{" "}
+                            <span className="section-total" title="Section sale total">
+                              {formatMoney(
+                                sumPricing(
+                                  groupLines.map((sectionLine) =>
+                                    calculateLinePricing({
+                                      qty: sectionLine.qty,
+                                      msrp: sectionLine.msrp,
+                                      quote: sectionLine.quote,
+                                      overridePct: sectionLine.override_pct,
+                                      projectDefaultOverridePct: defaultOverridePct,
+                                    }),
+                                  ),
+                                ).totalSale,
+                              )}
+                            </span>
                           </span>
                           {groupLines.length ? (
                             <span className="muted" style={{ fontWeight: 500 }}>

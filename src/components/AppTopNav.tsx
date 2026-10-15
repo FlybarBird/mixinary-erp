@@ -11,7 +11,6 @@ import { canViewFinancials } from "@/lib/permissions";
 const primaryLinks = [
   { href: "/dashboard", label: "My Home" },
   { href: "/projects", label: "Projects" },
-  { href: "/client-documents", label: "Client Documents" },
   { href: "/reports/portfolio", label: "Portfolio", financial: true },
   { href: "/parts", label: "Parts" },
   { href: "/clients", label: "Clients" },

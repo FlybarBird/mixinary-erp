@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import {
@@ -19,10 +19,21 @@ import {
   computeDocumentTotals,
   computePricingTotals,
   defaultBlockContent,
+  flattenPricingGroups,
+  groupPricingLines,
+  movePricingLine,
   normalizePricingContent,
+  pricingDropMarker,
+  pricingLineParent,
+  quoteLinkProposal,
+  removePricingLine,
+  applyQuoteLinkProposal,
+  type PricingDropPlace,
   type ClientDocBlockType,
   type PricingBlockContent,
   type PricingLine,
+  type PricingSourceLink,
+  type PricingSourcePrice,
 } from "@/lib/client-documents";
 import {
   WysiwygBlock,
@@ -107,6 +118,8 @@ export function ClientDocumentEditor({
   const [device, setDevice] = useState<Device>("desktop");
   const [error, setError] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<string | null>(null);
+  const [linkFor, setLinkFor] = useState<{ blockId: string; lineId: string } | null>(null);
+  const [sources, setSources] = useState<PricingSourcePrice[] | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [pricingEditId, setPricingEditId] = useState<string | null>(null);
@@ -120,6 +133,89 @@ export function ClientDocumentEditor({
 
   const editable =
     canEdit && !doc.archived_at && EDITABLE_STATUSES.includes(doc.status);
+
+  useEffect(() => {
+    if (!editable) return;
+    let cancelled = false;
+    async function loadSources() {
+      const res = await fetch(`/api/projects/${projectId}/documents/import-bom`);
+      const body = await res.json().catch(() => ({}));
+      if (cancelled || !res.ok) return;
+      const prices: PricingSourcePrice[] = [];
+      const sections = Array.isArray(body.sections) ? body.sections : [];
+      const labor = Array.isArray(body.labor) ? body.labor : [];
+      for (const section of sections) {
+        for (const row of section.lines ?? []) {
+          prices.push({
+            source: "bom",
+            id: String(row.id),
+            name: String(row.name ?? ""),
+            qty: Number(row.qty) || 0,
+            unit_price: Number(row.unit_price) || 0,
+            total: Number(row.total) || 0,
+          });
+        }
+      }
+      for (const row of labor) {
+        prices.push({
+          source: "labor",
+          id: String(row.id),
+          name: String(row.name ?? ""),
+          qty: Number(row.qty) || 0,
+          unit_price: Number(row.unit_price) || 0,
+          total: Number(row.total) || 0,
+        });
+      }
+      setSources(prices);
+    }
+    void loadSources();
+    window.addEventListener("focus", loadSources);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadSources);
+    };
+  }, [editable, projectId]);
+
+  const linkChanges = useMemo(() => {
+    if (!sources) return [];
+    const changes: Array<{ blockId: string; change: ReturnType<typeof quoteLinkProposal> }> = [];
+    for (const block of blocks) {
+      if (block.block_type !== "pricing" || block.hidden) continue;
+      for (const line of normalizePricingContent(block.content).lines) {
+        const change = quoteLinkProposal(line, sources);
+        if (change) changes.push({ blockId: block.id, change });
+      }
+    }
+    return changes;
+  }, [blocks, sources]);
+
+  function applyLinkedPrices(blockId: string, lineId?: string) {
+    if (!sources) return;
+    updatePricing(blockId, (pricing) => ({
+      ...pricing,
+      lines: pricing.lines.map((line) =>
+        !lineId || line.id === lineId ? applyQuoteLinkProposal(line, sources) : line,
+      ),
+    }));
+  }
+
+  function applyAllLinkedPrices() {
+    if (!sources) return;
+    const blockIds = new Set(linkChanges.map((entry) => entry.blockId));
+    mutate((prev) =>
+      prev.map((block) => {
+        if (!blockIds.has(block.id)) return block;
+        const pricing = normalizePricingContent(block.content);
+        return {
+          ...block,
+          content: {
+            ...pricing,
+            lines: pricing.lines.map((line) => applyQuoteLinkProposal(line, sources)),
+          } as unknown as Record<string, unknown>,
+        };
+      }),
+    );
+  }
 
   const totals = useMemo(() => computeDocumentTotals(blocks), [blocks]);
 
@@ -281,13 +377,19 @@ export function ClientDocumentEditor({
       const sourcePricing = normalizePricingContent(source.content);
       const line = sourcePricing.lines.find((l) => l.id === lineId);
       if (!line) return prev;
+      const moving = pricingLineParent(line, sourcePricing.lines)
+        ? [{ ...line, parent_id: null }]
+        : sourcePricing.lines.filter(
+            (candidate) => candidate.id === lineId || candidate.parent_id === lineId,
+          );
+      const movingIds = new Set(moving.map((candidate) => candidate.id));
       return prev.map((b) => {
         if (b.id === fromBlockId) {
           return {
             ...b,
             content: {
               ...sourcePricing,
-              lines: sourcePricing.lines.filter((l) => l.id !== lineId),
+              lines: sourcePricing.lines.filter((l) => !movingIds.has(l.id)),
             } as unknown as Record<string, unknown>,
           };
         }
@@ -297,7 +399,7 @@ export function ClientDocumentEditor({
             ...b,
             content: {
               ...targetPricing,
-              lines: [...targetPricing.lines, line],
+              lines: [...targetPricing.lines, ...moving],
             } as unknown as Record<string, unknown>,
           };
         }
@@ -357,9 +459,17 @@ export function ClientDocumentEditor({
     updatePricing(blockId, (pricing) => ({
       ...pricing,
       lines: pricing.lines.map((l) =>
-        l.id === lineId && l.optional ? { ...l, selected } : l,
+        l.id === lineId && l.optional && !pricingLineParent(l, pricing.lines)
+          ? { ...l, selected }
+          : l,
       ),
     }));
+  }
+
+  function previewToggleSection(blockId: string, selected: boolean) {
+    updatePricing(blockId, (pricing) =>
+      pricing.optional ? { ...pricing, selected } : pricing,
+    );
   }
 
   function previewChangeQty(blockId: string, lineId: string, qty: number) {
@@ -444,6 +554,19 @@ export function ClientDocumentEditor({
         {label ? <span className="muted">{label}</span> : null}
         {error ? <span style={{ color: "var(--danger)" }}>{error}</span> : null}
       </div>
+      {editable && linkChanges.length > 0 ? (
+        <div className="cdoc-link-notice">
+          <span>
+            {linkChanges.length === 1
+              ? `${linkChanges[0]!.change!.lineName} is out of date with the BOM or labor.`
+              : `${linkChanges.length} quote items are out of date with the BOM or labor.`}{" "}
+            Review the change, then update the quote.
+          </span>
+          <button className="btn btn-primary" type="button" onClick={applyAllLinkedPrices}>
+            Update linked prices
+          </button>
+        </div>
+      ) : null}
 
       <div
         className="row"
@@ -559,6 +682,7 @@ export function ClientDocumentEditor({
               signatures={signatures}
               interactive={editable}
               onToggleLine={previewToggleLine}
+              onToggleSection={previewToggleSection}
               onChangeQty={previewChangeQty}
             />
           </div>
@@ -625,18 +749,23 @@ export function ClientDocumentEditor({
                       onOpenPricing={() => setPricingEditId(block.id)}
                       onClosePricing={() => setPricingEditId(null)}
                       documentTotals={totals}
-                      onDeletePricingLine={(lineIndex) =>
+                      onDeletePricingLine={(lineId) =>
                         updatePricing(block.id, (pricing) => ({
                           ...pricing,
-                          lines: pricing.lines.filter((_, i) => i !== lineIndex),
+                          lines: removePricingLine(pricing.lines, lineId),
                         }))
                       }
                       pricingEditor={
                         <PricingBlockEditor
                           block={block}
                           editable={editable}
+                          sources={sources}
                           onPricing={(fn) => updatePricing(block.id, fn)}
                           onOpenImport={() => setImportFor(block.id)}
+                          onLinkLine={(lineId) =>
+                            setLinkFor({ blockId: block.id, lineId })
+                          }
+                          onApplyLink={(lineId) => applyLinkedPrices(block.id, lineId)}
                           pricingSections={pricingSections}
                           onMoveLineTo={(toBlockId, lineId) =>
                             movePricingLineBetween(block.id, toBlockId, lineId)
@@ -656,6 +785,7 @@ export function ClientDocumentEditor({
       {importFor ? (
         <ImportBomModal
           projectId={projectId}
+          mode="import"
           onClose={() => setImportFor(null)}
           onAdd={(lines) => {
             updatePricing(importFor, (pricing) => ({
@@ -663,6 +793,28 @@ export function ClientDocumentEditor({
               lines: [...pricing.lines, ...lines],
             }));
             setImportFor(null);
+          }}
+        />
+      ) : null}
+      {linkFor ? (
+        <ImportBomModal
+          projectId={projectId}
+          mode="link"
+          initialLinks={
+            normalizePricingContent(
+              blocks.find((block) => block.id === linkFor.blockId)?.content,
+            ).lines.find((line) => line.id === linkFor.lineId)?.links ?? []
+          }
+          onClose={() => setLinkFor(null)}
+          onLink={(links) => {
+            const target = linkFor;
+            updatePricing(target.blockId, (pricing) => ({
+              ...pricing,
+              lines: pricing.lines.map((line) =>
+                line.id === target.lineId ? { ...line, links } : line,
+              ),
+            }));
+            setLinkFor(null);
           }}
         />
       ) : null}
@@ -708,15 +860,21 @@ function TextField({
 function PricingBlockEditor({
   block,
   editable,
+  sources,
   onPricing,
   onOpenImport,
+  onLinkLine,
+  onApplyLink,
   pricingSections,
   onMoveLineTo,
 }: {
   block: ClientDocumentBlock;
   editable: boolean;
+  sources: PricingSourcePrice[] | null;
   onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
   onOpenImport: () => void;
+  onLinkLine: (lineId: string) => void;
+  onApplyLink: (lineId: string) => void;
   pricingSections: Array<{ id: string; title: string }>;
   onMoveLineTo: (toBlockId: string, lineId: string) => void;
 }) {
@@ -724,6 +882,81 @@ function PricingBlockEditor({
   const totals = computePricingTotals(block.content);
   const disabled = !editable;
   const otherSections = pricingSections.filter((s) => s.id !== block.id);
+  const groups = groupPricingLines(pricing.lines);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [hover, setHover] = useState<{
+    id: string;
+    place: PricingDropPlace;
+    nest: boolean;
+  } | null>(null);
+  const marker =
+    dragId && hover
+      ? pricingDropMarker(pricing.lines, dragId, hover.id, hover.place, hover.nest)
+      : null;
+
+  function lineIsBlock(lineId: string) {
+    const group = groups.find((candidate) => candidate.line.id === lineId);
+    return Boolean(group && group.children.length > 0);
+  }
+
+  function dropIntent(e: DragEvent, isChild: boolean) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const place: PricingDropPlace =
+      e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    const fromId = dragId;
+    const nest = !fromId || lineIsBlock(fromId) ? false : isChild || (place === "after" && e.clientX > rect.left + 56);
+    return { place, nest };
+  }
+
+  function onLineDragStart(e: DragEvent, lineId: string) {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", lineId);
+    setDragId(lineId);
+  }
+
+  function onLineDragOver(e: DragEvent, lineId: string, isChild: boolean) {
+    if (!editable || !dragId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (dragId === lineId) return;
+    const intent = dropIntent(e, isChild);
+    setHover((prev) =>
+      prev &&
+      prev.id === lineId &&
+      prev.place === intent.place &&
+      prev.nest === intent.nest
+        ? prev
+        : { id: lineId, ...intent },
+    );
+  }
+
+  function onLineDrop(e: DragEvent, lineId: string, isChild: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    const fromId = e.dataTransfer.getData("text/plain") || dragId;
+    if (fromId && fromId !== lineId) {
+      const intent = dropIntent(e, isChild);
+      onPricing((current) => {
+        const lines = movePricingLine(
+          current.lines,
+          fromId,
+          lineId,
+          intent.place,
+          intent.nest && !lineIsBlock(fromId),
+        );
+        return lines === current.lines ? current : { ...current, lines };
+      });
+    }
+    setDragId(null);
+    setHover(null);
+  }
+
+  function onLineDragEnd() {
+    setDragId(null);
+    setHover(null);
+  }
 
   function updateLine(lineId: string, patch: Partial<PricingLine>) {
     onPricing((p) => ({
@@ -732,43 +965,80 @@ function PricingBlockEditor({
     }));
   }
 
-  function removeLine(index: number) {
-    const line = pricing.lines[index];
+  function removeLine(lineId: string) {
+    const line = pricing.lines.find((candidate) => candidate.id === lineId);
     const label = line?.name.trim() || "this line";
-    if (!window.confirm(`Delete “${label}” from this pricing section?`)) return;
-    onPricing((p) => ({ ...p, lines: p.lines.filter((_, i) => i !== index) }));
+    const childCount = pricing.lines.filter((candidate) => candidate.parent_id === lineId).length;
+    const extra =
+      childCount > 0
+        ? ` and its ${childCount} sub-item${childCount === 1 ? "" : "s"}`
+        : "";
+    if (!window.confirm(`Delete “${label}”${extra} from this pricing section?`)) return;
+    onPricing((p) => ({ ...p, lines: removePricingLine(p.lines, lineId) }));
   }
 
   function moveLine(lineId: string, delta: number) {
     onPricing((p) => {
-      const from = p.lines.findIndex((l) => l.id === lineId);
+      const groups = groupPricingLines(p.lines);
+      const childGroupIndex = groups.findIndex((group) =>
+        group.children.some((child) => child.id === lineId),
+      );
+      if (childGroupIndex >= 0) {
+        const group = groups[childGroupIndex]!;
+        const from = group.children.findIndex((child) => child.id === lineId);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= group.children.length) return p;
+        const children = [...group.children];
+        const [item] = children.splice(from, 1);
+        children.splice(to, 0, item!);
+        const next = groups.map((candidate, index) =>
+          index === childGroupIndex ? { ...candidate, children } : candidate,
+        );
+        return { ...p, lines: flattenPricingGroups(next) };
+      }
+      const from = groups.findIndex((group) => group.line.id === lineId);
       const to = from + delta;
-      if (from < 0 || to < 0 || to >= p.lines.length) return p;
-      const lines = [...p.lines];
-      const [item] = lines.splice(from, 1);
-      lines.splice(to, 0, item!);
-      return { ...p, lines };
+      if (from < 0 || to < 0 || to >= groups.length) return p;
+      const next = [...groups];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item!);
+      return { ...p, lines: flattenPricingGroups(next) };
     });
+  }
+
+  function blankLine(parentId: string | null): PricingLine {
+    return {
+      id: newBlockId(),
+      name: "",
+      description: null,
+      category: null,
+      qty: 1,
+      unit_price: 0,
+      optional: false,
+      selected: true,
+      qty_editable: false,
+      parent_id: parentId,
+      links: [],
+    };
   }
 
   function addLine() {
     onPricing((p) => ({
       ...p,
-      lines: [
-        ...p.lines,
-        {
-          id: newBlockId(),
-          name: "",
-          description: null,
-          category: null,
-          qty: 1,
-          unit_price: 0,
-          optional: false,
-          selected: true,
-          qty_editable: false,
-        },
-      ],
+      lines: [...p.lines, blankLine(null)],
     }));
+  }
+
+  function addSubItem(parentId: string) {
+    onPricing((p) => {
+      const groups = groupPricingLines(p.lines);
+      const next = groups.map((group) =>
+        group.line.id === parentId
+          ? { ...group, children: [...group.children, blankLine(parentId)] }
+          : group,
+      );
+      return { ...p, lines: flattenPricingGroups(next) };
+    });
   }
 
   return (
@@ -793,165 +1063,276 @@ function PricingBlockEditor({
           </>
         ) : null}
       </div>
+      <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+        <label className="cdoc-section-optional-toggle">
+          <input
+            type="checkbox"
+            checked={pricing.optional}
+            disabled={disabled}
+            onChange={(e) =>
+              onPricing((p) => ({
+                ...p,
+                optional: e.target.checked,
+                selected: e.target.checked ? p.selected : true,
+              }))
+            }
+          />
+          Optional table
+        </label>
+        {pricing.optional ? (
+          <label className="cdoc-section-optional-toggle">
+            <input
+              type="checkbox"
+              checked={pricing.selected}
+              disabled={disabled}
+              onChange={(e) => onPricing((p) => ({ ...p, selected: e.target.checked }))}
+            />
+            Included by default
+          </label>
+        ) : null}
+        {pricing.optional && !pricing.selected ? (
+          <span className="muted">This table is left out of the quote total.</span>
+        ) : null}
+      </div>
 
       <div className="table-wrap">
-        <table className="bom-table">
+        <table className="bom-table cdoc-pricing-editor">
           <thead>
             <tr>
+              <th className="cdoc-drag-col" />
               <th style={{ minWidth: 220 }}>Item</th>
               <th>Category</th>
               <th style={{ width: 70 }}>Qty</th>
               <th style={{ width: 100 }}>Unit price</th>
               <th style={{ width: 100, textAlign: "right" }}>Total</th>
-              <th title="Customer may include/exclude">Optional</th>
+              <th style={{ minWidth: 112 }} title="Customer may include/exclude">
+                Optional
+              </th>
               <th title="Customer may change quantity">Qty editable</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {pricing.lines.length === 0 ? (
+            {groups.length === 0 ? (
               <tr>
-                <td colSpan={8} className="muted" style={{ padding: "0.75rem" }}>
+                <td colSpan={9} className="muted" style={{ padding: "0.75rem" }}>
                   No lines yet — import from the BOM or add lines manually. Only
                   customer-facing sale prices are used.
                 </td>
               </tr>
             ) : (
-              pricing.lines.map((line, lineIndex) => (
-                <tr key={line.id}>
-                  <td>
-                    <input
-                      className="field-light"
-                      value={line.name}
-                      disabled={disabled}
-                      placeholder="Item name"
-                      onChange={(e) => updateLine(line.id, { name: e.target.value })}
-                    />
-                    <input
-                      className="field-light"
-                      style={{ marginTop: 4, fontSize: "0.82rem" }}
-                      value={line.description ?? ""}
-                      disabled={disabled}
-                      placeholder="Customer-facing description (optional)"
-                      onChange={(e) =>
-                        updateLine(line.id, { description: e.target.value || null })
-                      }
-                    />
-                    {editable ? (
-                      <button
-                        className="btn btn-danger"
-                        type="button"
-                        style={{ marginTop: 6 }}
-                        onClick={() => removeLine(lineIndex)}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </td>
-                  <td>
-                    <input
-                      className="field-light"
-                      value={line.category ?? ""}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, { category: e.target.value || null })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="field-light"
-                      type="number"
-                      min={0}
-                      value={line.qty}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, { qty: Math.max(0, Number(e.target.value)) })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <CurrencyInput
-                      value={line.unit_price}
-                      disabled={disabled}
-                      onChange={(v) => updateLine(line.id, { unit_price: v ?? 0 })}
-                    />
-                  </td>
-                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                    {formatMoney(line.qty * line.unit_price)}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={line.optional}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, {
-                          optional: e.target.checked,
-                          selected: e.target.checked ? line.selected : true,
-                        })
-                      }
-                    />
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={line.qty_editable}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        updateLine(line.id, { qty_editable: e.target.checked })
-                      }
-                    />
-                  </td>
-                  <td>
-                    {editable ? (
-                      <div
-                        className="row"
-                        style={{ gap: "0.25rem", flexWrap: "nowrap" }}
-                      >
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => moveLine(line.id, -1)}
-                          disabled={lineIndex === 0}
-                          title="Move line up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => moveLine(line.id, 1)}
-                          disabled={lineIndex === pricing.lines.length - 1}
-                          title="Move line down"
-                        >
-                          ↓
-                        </button>
-                        {otherSections.length > 0 ? (
-                          <select
-                            className="field-light"
-                            value=""
-                            title="Move line to another pricing section"
-                            style={{ width: 92 }}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                onMoveLineTo(e.target.value, line.id);
-                              }
-                            }}
+              groups.flatMap((group, groupIndex) =>
+                [group.line, ...group.children].map((line, rowIndex) => {
+                  const isChild = rowIndex > 0;
+                  const atStart = isChild ? rowIndex === 1 : groupIndex === 0;
+                  const atEnd = isChild
+                    ? rowIndex === group.children.length
+                    : groupIndex === groups.length - 1;
+                  const dragging =
+                    dragId === line.id || (dragId != null && line.parent_id === dragId);
+                  const marked = marker?.rowId === line.id;
+                  return (
+                    <tr
+                      key={line.id}
+                      className={[
+                        isChild ? "cdoc-editor-subrow" : "",
+                        dragging ? "cdoc-row-dragging" : "",
+                        marked && marker?.place === "before" ? "cdoc-drop-before" : "",
+                        marked && marker?.place === "after" ? "cdoc-drop-after" : "",
+                        marked && marker?.nest ? "cdoc-drop-nest" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onDragOver={(e) => onLineDragOver(e, line.id, isChild)}
+                      onDrop={(e) => onLineDrop(e, line.id, isChild)}
+                      onDragEnd={onLineDragEnd}
+                    >
+                      <td className="bom-drag-cell">
+                        {editable ? (
+                          <span
+                            className="bom-drag-handle"
+                            draggable
+                            title={
+                              isChild
+                                ? "Drag to reorder this sub-item"
+                                : group.children.length > 0
+                                  ? "Drag to reorder. Sub-items move with this item."
+                                  : "Drag to reorder, or drop under an item to make it a sub-item"
+                            }
+                            aria-label={isChild ? "Drag sub-item" : "Drag item"}
+                            onDragStart={(e) => onLineDragStart(e, line.id)}
+                            onDragEnd={onLineDragEnd}
                           >
-                            <option value="">Move to…</option>
-                            {otherSections.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.title}
-                              </option>
-                            ))}
-                          </select>
+                            ⋮⋮
+                          </span>
                         ) : null}
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))
+                      </td>
+                      <td>
+                        <div className={isChild ? "cdoc-editor-subitem" : undefined}>
+                          <input
+                            className="field-light"
+                            value={line.name}
+                            disabled={disabled}
+                            placeholder={isChild ? "Sub-item name" : "Item name"}
+                            onChange={(e) => updateLine(line.id, { name: e.target.value })}
+                          />
+                          <input
+                            className="field-light"
+                            style={{ marginTop: 4, fontSize: "0.82rem" }}
+                            value={line.description ?? ""}
+                            disabled={disabled}
+                            placeholder="Customer-facing description (optional)"
+                            onChange={(e) =>
+                              updateLine(line.id, { description: e.target.value || null })
+                            }
+                          />
+                          {isChild ? (
+                            <div className="cdoc-follows-parent">Follows parent</div>
+                          ) : null}
+                          <PricingLinkNote
+                            line={line}
+                            sources={sources}
+                            editable={editable}
+                            onApply={() => onApplyLink(line.id)}
+                          />
+                          {editable ? (
+                            <div className="row" style={{ gap: "0.35rem", marginTop: 6 }}>
+                              {isChild ? null : (
+                                <button
+                                  className="btn"
+                                  type="button"
+                                  onClick={() => addSubItem(line.id)}
+                                >
+                                  Add sub-item
+                                </button>
+                              )}
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => onLinkLine(line.id)}
+                              >
+                                {line.links.length ? "Edit links" : "Link items"}
+                              </button>
+                              <button
+                                className="btn btn-danger"
+                                type="button"
+                                onClick={() => removeLine(line.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          className="field-light"
+                          value={line.category ?? ""}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLine(line.id, { category: e.target.value || null })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="field-light"
+                          type="number"
+                          min={0}
+                          value={line.qty}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLine(line.id, { qty: Math.max(0, Number(e.target.value)) })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <CurrencyInput
+                          value={line.unit_price}
+                          disabled={disabled}
+                          onChange={(v) => updateLine(line.id, { unit_price: v ?? 0 })}
+                        />
+                      </td>
+                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {formatMoney(line.qty * line.unit_price)}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        {isChild ? null : (
+                          <input
+                            type="checkbox"
+                            checked={line.optional}
+                            disabled={disabled}
+                            title="Customer may include or exclude this item. Sub-items follow it."
+                            onChange={(e) =>
+                              updateLine(line.id, {
+                                optional: e.target.checked,
+                                selected: e.target.checked ? line.selected : true,
+                              })
+                            }
+                          />
+                        )}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={line.qty_editable}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            updateLine(line.id, { qty_editable: e.target.checked })
+                          }
+                        />
+                      </td>
+                      <td>
+                        {editable ? (
+                          <div
+                            className="row"
+                            style={{ gap: "0.25rem", flexWrap: "nowrap" }}
+                          >
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => moveLine(line.id, -1)}
+                              disabled={atStart}
+                              title={isChild ? "Move sub-item up" : "Move line up"}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => moveLine(line.id, 1)}
+                              disabled={atEnd}
+                              title={isChild ? "Move sub-item down" : "Move line down"}
+                            >
+                              ↓
+                            </button>
+                            {!isChild && otherSections.length > 0 ? (
+                              <select
+                                className="field-light"
+                                value=""
+                                title="Move line and its sub-items to another pricing section"
+                                style={{ width: 92 }}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    onMoveLineTo(e.target.value, line.id);
+                                  }
+                                }}
+                              >
+                                <option value="">Move to…</option>
+                                {otherSections.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.title}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                }),
+              )
             )}
           </tbody>
         </table>
@@ -1085,18 +1466,72 @@ function PricingBlockEditor({
  * BOM / Labor import modal
  * ------------------------------------------------------------------------ */
 
+function PricingLinkNote({
+  line,
+  sources,
+  editable,
+  onApply,
+}: {
+  line: PricingLine;
+  sources: PricingSourcePrice[] | null;
+  editable: boolean;
+  onApply: () => void;
+}) {
+  if (!line.links.length) return null;
+  const names = line.links.map((link) => {
+    const match = sources?.find(
+      (source) => source.source === link.source && source.id === link.id,
+    );
+    return match?.name || (link.source === "labor" ? "Removed labor item" : "Removed BOM item");
+  });
+  const change = sources ? quoteLinkProposal(line, sources) : null;
+  const label =
+    names.length === 1 ? `Linked to ${names[0]}` : `Linked to ${names.length} items`;
+  return (
+    <div className={change ? "cdoc-link-meta cdoc-link-meta-stale" : "cdoc-link-meta"}>
+      <span title={names.join(", ")}>{label}</span>
+      {change?.priceChanged ? (
+        <span>
+          {" "}
+          {formatMoney(change.currentTotal)} → {formatMoney(change.nextTotal)}
+        </span>
+      ) : null}
+      {change && change.missingCount > 0 ? (
+        <span>
+          {" "}
+          {change.missingCount} linked{" "}
+          {change.missingCount === 1 ? "item is" : "items are"} no longer on the BOM or labor.
+        </span>
+      ) : null}
+      {change && editable ? (
+        <button className="btn" type="button" onClick={onApply}>
+          Update
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ImportBomModal({
   projectId,
+  mode,
+  initialLinks = [],
   onClose,
   onAdd,
+  onLink,
 }: {
   projectId: string;
+  mode: "import" | "link";
+  initialLinks?: PricingSourceLink[];
   onClose: () => void;
-  onAdd: (lines: PricingLine[]) => void;
+  onAdd?: (lines: PricingLine[]) => void;
+  onLink?: (links: PricingSourceLink[]) => void;
 }) {
   const [data, setData] = useState<ImportData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(
+    () => new Set(initialLinks.map((link) => `${link.source}:${link.id}`)),
+  );
   const [asOptional, setAsOptional] = useState(false);
 
   useEffect(() => {
@@ -1151,6 +1586,8 @@ function ImportBomModal({
         optional: asOptional,
         selected: true,
         qty_editable: false,
+        parent_id: null,
+        links: [{ source: source === "labor" ? "labor" : "bom", id: line.id }],
       });
     };
     for (const section of data.sections) {
@@ -1158,6 +1595,20 @@ function ImportBomModal({
     }
     for (const line of data.labor) push(line, "labor");
     return lines;
+  }
+
+  function collectLinks(): PricingSourceLink[] {
+    if (!data) return [];
+    const links: PricingSourceLink[] = [];
+    for (const section of data.sections) {
+      for (const row of section.lines) {
+        if (checked.has(`bom:${row.id}`)) links.push({ source: "bom", id: row.id });
+      }
+    }
+    for (const row of data.labor) {
+      if (checked.has(`labor:${row.id}`)) links.push({ source: "labor", id: row.id });
+    }
+    return links;
   }
 
   const selectedCount = checked.size;
@@ -1170,14 +1621,15 @@ function ImportBomModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <strong>Import from BOM &amp; Labor</strong>
+          <strong>{mode === "link" ? "Link BOM & Labor" : "Import from BOM & Labor"}</strong>
           <button className="btn" onClick={onClose}>
             Close
           </button>
         </div>
         <p className="muted" style={{ margin: "0.4rem 0 0.8rem" }}>
-          Items are copied with customer sale prices only — vendor costs, quotes,
-          and margins are never included. Prices are frozen at import.
+          {mode === "link"
+            ? "Link one or more BOM or labor items to this quote line. Several items roll up into one price. The quote stays as it is until you click Update."
+            : "Imported lines use customer sale prices and stay linked to the BOM or labor. A later change shows a notice so you can update the quote when you are ready."}
         </p>
         {error ? <p style={{ color: "var(--danger)" }}>{error}</p> : null}
         {!data && !error ? <p className="muted">Loading…</p> : null}
@@ -1236,20 +1688,29 @@ function ImportBomModal({
             )}
 
             <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-              <label className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={asOptional}
-                  onChange={(e) => setAsOptional(e.target.checked)}
-                />
-                Add as optional items
-              </label>
+              {mode === "import" ? (
+                <label className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={asOptional}
+                    onChange={(e) => setAsOptional(e.target.checked)}
+                  />
+                  Add as optional items
+                </label>
+              ) : null}
               <button
                 className="btn btn-primary"
-                disabled={!selectedCount}
-                onClick={() => onAdd(collectSelected())}
+                disabled={mode === "import" && !selectedCount}
+                onClick={() => {
+                  if (mode === "link") onLink?.(collectLinks());
+                  else onAdd?.(collectSelected());
+                }}
               >
-                Add {selectedCount || ""} selected
+                {mode === "link"
+                  ? selectedCount
+                    ? `Link ${selectedCount} selected`
+                    : "Remove links"
+                  : `Add ${selectedCount || ""} selected`}
               </button>
             </div>
           </div>

@@ -484,15 +484,6 @@ export function PartsLibrary({
                   ) : null}
                 </div>
               </button>
-              {canEdit ? (
-                <button
-                  type="button"
-                  className="btn btn-danger part-card-delete"
-                  onClick={() => void deletePart(part)}
-                >
-                  Delete
-                </button>
-              ) : null}
             </div>
           ))}
           {!parts.length ? (
@@ -503,7 +494,7 @@ export function PartsLibrary({
         </div>
 
         {editing ? (
-          <form className="panel stack" style={{ padding: "1rem" }} onSubmit={savePart}>
+          <form className="panel stack part-editor" style={{ padding: "1rem" }} onSubmit={savePart}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <strong>{editing.id ? "Edit part" : "New part"}</strong>
               <button type="button" className="btn" onClick={() => setEditing(null)}>
@@ -695,8 +686,12 @@ export function PartsLibrary({
                 }
               />
             </div>
+            <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
+              Enrich uses Icecat (brand+SKU) then UPCitemdb. Configure keys in
+              .env.local for best results.
+            </p>
             {canEdit ? (
-              <div className="row">
+              <div className="part-editor-actions">
                 <button className="btn btn-primary" type="submit">
                   Save
                 </button>
@@ -737,10 +732,6 @@ export function PartsLibrary({
                 ) : null}
               </div>
             ) : null}
-            <p className="muted" style={{ fontSize: "0.8rem", margin: 0 }}>
-              Enrich uses Icecat (brand+SKU) then UPCitemdb. Configure keys in
-              .env.local for best results.
-            </p>
           </form>
         ) : null}
       </div>

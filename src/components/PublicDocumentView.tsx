@@ -75,6 +75,18 @@ export function PublicDocumentView({
     if (data.document) setDoc(data.document as ClientDocument);
   }
 
+  async function persistSection(blockId: string, selected: boolean) {
+    const data = await api("selection", {
+      block_id: blockId,
+      section_selected: selected,
+    });
+    if (!data) return;
+    if (Array.isArray(data.blocks)) {
+      setBlocks(data.blocks as ClientDocumentBlock[]);
+    }
+    if (data.document) setDoc(data.document as ClientDocument);
+  }
+
   async function sign(values: {
     signer_name: string;
     signer_email: string;
@@ -142,6 +154,7 @@ export function PublicDocumentView({
           onToggleLine={(blockId, lineId, selected) =>
             void persistSelection(blockId, lineId, { selected })
           }
+          onToggleSection={(blockId, selected) => void persistSection(blockId, selected)}
           onChangeQty={(blockId, lineId, qty) =>
             void persistSelection(blockId, lineId, { qty })
           }

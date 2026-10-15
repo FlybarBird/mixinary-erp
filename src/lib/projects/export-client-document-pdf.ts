@@ -5,7 +5,10 @@ import { formatMoney } from "@/lib/pricing";
 import {
   computeDocumentTotals,
   computePricingTotals,
+  groupPricingLines,
   normalizePricingContent,
+  pricingLineIncluded,
+  pricingSectionIncluded,
   quoteBlockLabel,
 } from "@/lib/client-documents";
 import type {
@@ -234,74 +237,94 @@ export async function buildClientDocumentPdf(params: {
       case "pricing": {
         const pricing = normalizePricingContent(content);
         const totals = computePricingTotals(content);
-        sectionTitle(pricing.title || "Pricing");
+        const sectionOn = pricingSectionIncluded(pricing);
+        sectionTitle(
+          (pricing.title || "Pricing") + (pricing.optional ? "  (optional)" : ""),
+        );
 
         const colQty = right - 220;
         const colUnit = right - 160;
         const colTotal = right - 80;
-        ensureSpace(30);
-        const yHead = doc.y;
-        doc.font("Helvetica-Bold").fontSize(8).fillColor("#667");
-        doc.text("Item", left, yHead, { width: colQty - left - 8 });
-        doc.text("Qty", colQty, yHead, { width: 50, align: "right" });
-        doc.text("Unit", colUnit, yHead, { width: 70, align: "right" });
-        doc.text("Total", colTotal, yHead, { width: 80, align: "right" });
-        doc
-          .moveTo(left, yHead + 12)
-          .lineTo(right, yHead + 12)
-          .strokeColor("#d1dbe6")
-          .stroke();
-        doc.y = yHead + 16;
 
-        const selected = pricing.lines.filter((l) => l.selected || !l.optional);
-        for (const line of selected) {
-          ensureSpace(20);
-          const y = doc.y;
-          doc.font("Helvetica").fontSize(9).fillColor(ink);
-          doc.text(
-            line.name + (line.optional ? "  (optional)" : ""),
-            left,
-            y,
-            { width: colQty - left - 8 },
-          );
-          if (line.description) {
-            doc
-              .font("Helvetica")
-              .fontSize(8)
-              .fillColor("#556b82")
-              .text(line.description, left, doc.y + 1, {
-                width: colQty - left - 8,
-              });
-          }
-          const afterName = doc.y;
-          doc.font("Helvetica").fontSize(9).fillColor(ink);
-          doc.text(String(line.qty), colQty, y, { width: 50, align: "right", lineBreak: false });
-          doc.text(formatMoney(line.unit_price), colUnit, y, {
-            width: 70,
-            align: "right",
-            lineBreak: false,
-          });
-          doc.text(formatMoney(line.qty * line.unit_price), colTotal, y, {
-            width: 80,
-            align: "right",
-            lineBreak: false,
-          });
-          doc.y = Math.max(afterName, y + 14) + 2;
-        }
-
-        const skipped = pricing.lines.filter((l) => l.optional && !l.selected);
-        if (skipped.length) {
-          doc.moveDown(0.2);
+        if (!sectionOn) {
           doc
             .font("Helvetica-Oblique")
-            .fontSize(8)
+            .fontSize(9)
             .fillColor("#556b82")
-            .text(
-              `Not included: ${skipped.map((l) => l.name).join(", ")}`,
-              left,
-              doc.y,
-              { width: pageWidth },
-            );
+            .text("Optional — not included", left, doc.y, { width: pageWidth });
+          doc.moveDown(0.4);
+        } else {
+          ensureSpace(30);
+          const yHead = doc.y;
+          doc.font("Helvetica-Bold").fontSize(8).fillColor("#667");
+          doc.text("Item", left, yHead, { width: colQty - left - 8 });
+          doc.text("Qty", colQty, yHead, { width: 50, align: "right" });
+          doc.text("Unit", colUnit, yHead, { width: 70, align: "right" });
+          doc.text("Total", colTotal, yHead, { width: 80, align: "right" });
+          doc
+            .moveTo(left, yHead + 12)
+            .lineTo(right, yHead + 12)
+            .strokeColor("#d1dbe6")
+            .stroke();
+          doc.y = yHead + 16;
+
+          const groups = groupPricingLines(pricing.lines);
+          for (const group of groups) {
+            for (const line of [group.line, ...group.children]) {
+              if (!pricingLineIncluded(line, pricing.lines, true)) continue;
+              const isChild = line.id !== group.line.id;
+              const nameLeft = isChild ? left + 14 : left;
+              ensureSpace(20);
+              const y = doc.y;
+              doc.font("Helvetica").fontSize(9).fillColor(ink);
+              doc.text(
+                line.name + (!isChild && line.optional ? "  (optional)" : ""),
+                nameLeft,
+                y,
+                { width: colQty - nameLeft - 8 },
+              );
+              if (line.description) {
+                doc
+                  .font("Helvetica")
+                  .fontSize(8)
+                  .fillColor("#556b82")
+                  .text(line.description, nameLeft, doc.y + 1, {
+                    width: colQty - nameLeft - 8,
+                  });
+              }
+              const afterName = doc.y;
+              doc.font("Helvetica").fontSize(9).fillColor(ink);
+              doc.text(String(line.qty), colQty, y, { width: 50, align: "right", lineBreak: false });
+              doc.text(formatMoney(line.unit_price), colUnit, y, {
+                width: 70,
+                align: "right",
+                lineBreak: false,
+              });
+              doc.text(formatMoney(line.qty * line.unit_price), colTotal, y, {
+                width: 80,
+                align: "right",
+                lineBreak: false,
+              });
+              doc.y = Math.max(afterName, y + 14) + 2;
+            }
+          }
+
+          const skipped = groups
+            .map((group) => group.line)
+            .filter((line) => line.optional && !line.selected);
+          if (skipped.length) {
+            doc.moveDown(0.2);
+            doc
+              .font("Helvetica-Oblique")
+              .fontSize(8)
+              .fillColor("#556b82")
+              .text(
+                `Not included: ${skipped.map((l) => l.name).join(", ")}`,
+                left,
+                doc.y,
+                { width: pageWidth },
+              );
+          }
         }
 
         doc.moveDown(0.5);

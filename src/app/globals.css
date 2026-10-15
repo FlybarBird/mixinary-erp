@@ -76,7 +76,9 @@ button {
   flex-direction: column;
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  /* clip keeps horizontal overflow off the viewport without turning this
+     into a scroll container, so position: sticky can lock to the window. */
+  overflow-x: clip;
 }
 
 /* ── Shell (Fiori-style) ── */
@@ -269,7 +271,7 @@ button {
   padding: 1.35rem 1.5rem 2.5rem;
   min-width: 0;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   flex: 1 1 auto;
 }
 
@@ -490,6 +492,13 @@ input.currency-edit.field {
   flex: 1 1 auto;
   min-width: 12rem;
   max-width: 100%;
+}
+
+.section-title .section-total {
+  margin-left: 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .section-select .section-title {
@@ -1666,9 +1675,28 @@ tr.status-row--on-site.drag-over-after > td {
   font: inherit;
 }
 
-.part-card-delete {
-  margin: 0 0.65rem 0.65rem;
-  align-self: flex-start;
+.part-editor {
+  position: sticky;
+  top: 6.25rem;
+  align-self: start;
+  z-index: 6;
+  max-height: calc(100dvh - 7.25rem);
+  overflow: auto;
+}
+
+.part-editor-actions {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 -1rem -1rem;
+  padding: 0.7rem 1rem;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: 0 -6px 12px rgba(34, 53, 72, 0.06);
 }
 
 .part-card:hover,
@@ -2262,6 +2290,100 @@ tr.status-row--on-site.drag-over-after > td {
   opacity: 0.45;
 }
 
+.cdoc-section-off {
+  opacity: 0.5;
+}
+
+.cdoc-line-child .cdoc-line-name {
+  padding-left: 1.15rem;
+  font-weight: 550;
+}
+
+.cdoc-editor-subitem {
+  margin-left: 1.15rem;
+}
+
+.cdoc-pricing-editor .cdoc-drag-col {
+  width: 1.6rem;
+}
+
+.cdoc-pricing-editor tr.cdoc-row-dragging {
+  opacity: 0.45;
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-before td {
+  box-shadow: inset 0 2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-after td {
+  box-shadow: inset 0 -2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-nest td {
+  box-shadow: inset 3px 0 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-nest.cdoc-drop-before td {
+  box-shadow:
+    inset 3px 0 0 0 var(--accent, #0070f2),
+    inset 0 2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-pricing-editor tr.cdoc-drop-nest.cdoc-drop-after td {
+  box-shadow:
+    inset 3px 0 0 0 var(--accent, #0070f2),
+    inset 0 -2px 0 0 var(--accent, #0070f2);
+}
+
+.cdoc-follows-parent,
+.cdoc-section-optional-toggle {
+  font-size: 0.78rem;
+  color: #556b82;
+}
+
+.cdoc-editor-subitem .cdoc-follows-parent {
+  margin-top: 0.35rem;
+}
+
+.cdoc-link-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #e3c56a;
+  background: #fff8e6;
+  border-radius: 8px;
+  color: #5c4813;
+}
+
+.cdoc-link-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #556b82;
+}
+
+.cdoc-link-meta-stale {
+  color: #8a5a00;
+}
+
+.cdoc-link-meta .btn {
+  padding: 0.12rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.cdoc-section-optional-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 .cdoc-line-name {
   font-weight: 650;
 }
@@ -2481,10 +2603,25 @@ tr.status-row--on-site.drag-over-after > td {
 
 .cdoc-palette {
   position: sticky;
-  top: 0.75rem;
+  top: 6.25rem;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  max-height: calc(100dvh - 7.25rem);
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .cdoc-palette {
+    top: 5.5rem;
+    max-height: 42dvh;
+  }
+
+  .part-editor {
+    top: 5.5rem;
+    max-height: calc(100dvh - 6.5rem);
+  }
 }
 
 .cdoc-palette button {

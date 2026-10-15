@@ -2613,7 +2613,11 @@ tr.status-row--on-site.drag-over-after > td {
 }
 
 @media (max-width: 900px) {
-  .cdoc-palette,
+  .cdoc-palette {
+    top: 5.5rem;
+    max-height: 42dvh;
+  }
+
   .part-editor {
     top: 5.5rem;
     max-height: calc(100dvh - 6.5rem);

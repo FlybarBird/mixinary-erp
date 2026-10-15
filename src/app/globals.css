@@ -76,7 +76,9 @@ button {
   flex-direction: column;
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  /* clip keeps horizontal overflow off the viewport without turning this
+     into a scroll container, so position: sticky can lock to the window. */
+  overflow-x: clip;
 }
 
 /* ── Shell (Fiori-style) ── */
@@ -269,7 +271,7 @@ button {
   padding: 1.35rem 1.5rem 2.5rem;
   min-width: 0;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
   flex: 1 1 auto;
 }
 
@@ -1673,9 +1675,28 @@ tr.status-row--on-site.drag-over-after > td {
   font: inherit;
 }
 
-.part-card-delete {
-  margin: 0 0.65rem 0.65rem;
-  align-self: flex-start;
+.part-editor {
+  position: sticky;
+  top: 6.25rem;
+  align-self: start;
+  z-index: 6;
+  max-height: calc(100dvh - 7.25rem);
+  overflow: auto;
+}
+
+.part-editor-actions {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 -1rem -1rem;
+  padding: 0.7rem 1rem;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: 0 -6px 12px rgba(34, 53, 72, 0.06);
 }
 
 .part-card:hover,
@@ -2582,10 +2603,21 @@ tr.status-row--on-site.drag-over-after > td {
 
 .cdoc-palette {
   position: sticky;
-  top: 0.75rem;
+  top: 6.25rem;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  max-height: calc(100dvh - 7.25rem);
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .cdoc-palette,
+  .part-editor {
+    top: 5.5rem;
+    max-height: calc(100dvh - 6.5rem);
+  }
 }
 
 .cdoc-palette button {

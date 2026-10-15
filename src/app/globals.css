@@ -492,6 +492,13 @@ input.currency-edit.field {
   max-width: 100%;
 }
 
+.section-total {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .section-select .section-title {
   flex: 1 1 auto;
   min-width: 10rem;
@@ -2315,6 +2322,38 @@ tr.status-row--on-site.drag-over-after > td {
 
 .cdoc-editor-subitem .cdoc-follows-parent {
   margin-top: 0.35rem;
+}
+
+.cdoc-link-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #e3c56a;
+  background: #fff8e6;
+  border-radius: 8px;
+  color: #5c4813;
+}
+
+.cdoc-link-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #556b82;
+}
+
+.cdoc-link-meta-stale {
+  color: #8a5a00;
+}
+
+.cdoc-link-meta .btn {
+  padding: 0.12rem 0.45rem;
+  font-size: 0.75rem;
 }
 
 .cdoc-section-optional-toggle {

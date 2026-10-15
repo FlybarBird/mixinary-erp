@@ -2,14 +2,18 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyCustomerSelections,
+  applyQuoteLinkProposal,
   computeDocumentTotals,
   computePricingTotals,
   groupPricingLines,
   movePricingLine,
   normalizePricingContent,
   pricingDropMarker,
+  quoteLinkProposal,
   removePricingLine,
   type DocBlockSnapshot,
+  type PricingLine,
+  type PricingSourcePrice,
 } from "./client-documents";
 
 function line(partial: Record<string, unknown>) {
@@ -358,5 +362,132 @@ describe("pricing drag and drop", () => {
   it("marks a nest when a sub-item is dropped under another item", () => {
     const marker = pricingDropMarker(sample(), "shelf", "cable", "after", true);
     assert.deepEqual(marker, { rowId: "cable", place: "after", nest: true });
+  });
+});
+
+function quoteLine(partial: Partial<PricingLine> & Pick<PricingLine, "id" | "name">): PricingLine {
+  return {
+    qty: 1,
+    unit_price: 0,
+    optional: false,
+    selected: true,
+    qty_editable: false,
+    parent_id: null,
+    links: [],
+    description: null,
+    category: null,
+    ...partial,
+  };
+}
+
+describe("quote links to BOM and labor", () => {
+  const speaker: PricingSourcePrice = {
+    source: "bom",
+    id: "spk",
+    name: "Speaker",
+    qty: 2,
+    unit_price: 50,
+    total: 100,
+  };
+  const cable: PricingSourcePrice = {
+    source: "bom",
+    id: "cbl",
+    name: "Cable",
+    qty: 1,
+    unit_price: 20,
+    total: 20,
+  };
+  const install: PricingSourcePrice = {
+    source: "labor",
+    id: "lab",
+    name: "Install",
+    qty: 4,
+    unit_price: 75,
+    total: 300,
+  };
+
+  it("follows one linked item's quantity and unit price", () => {
+    const line = quoteLine({
+      id: "q",
+      name: "Speaker",
+      qty: 1,
+      unit_price: 40,
+      links: [{ source: "bom", id: "spk" }],
+    });
+    const change = quoteLinkProposal(line, [speaker]);
+    assert.equal(change?.nextQty, 2);
+    assert.equal(change?.nextUnit, 50);
+    assert.equal(change?.nextTotal, 100);
+    const applied = applyQuoteLinkProposal(line, [speaker]);
+    assert.equal(applied.qty, 2);
+    assert.equal(applied.unit_price, 50);
+  });
+
+  it("rolls several linked items into one quote line", () => {
+    const line = quoteLine({
+      id: "q",
+      name: "Rack package",
+      qty: 1,
+      unit_price: 100,
+      links: [
+        { source: "bom", id: "spk" },
+        { source: "bom", id: "cbl" },
+        { source: "labor", id: "lab" },
+      ],
+    });
+    const change = quoteLinkProposal(line, [speaker, cable, install]);
+    assert.equal(change?.nextQty, 1);
+    assert.equal(change?.nextUnit, 420);
+    assert.deepEqual(change?.linkedNames, ["Speaker", "Cable", "Install"]);
+  });
+
+  it("stays quiet when the quote already matches the linked sale price", () => {
+    const line = quoteLine({
+      id: "q",
+      name: "Speaker",
+      qty: 2,
+      unit_price: 50,
+      links: [{ source: "bom", id: "spk" }],
+    });
+    assert.equal(quoteLinkProposal(line, [speaker]), null);
+    assert.equal(applyQuoteLinkProposal(line, [speaker]), line);
+  });
+
+  it("reports a removed source and keeps the quote price until update", () => {
+    const line = quoteLine({
+      id: "q",
+      name: "Speaker",
+      qty: 2,
+      unit_price: 50,
+      links: [
+        { source: "bom", id: "spk" },
+        { source: "bom", id: "gone" },
+      ],
+    });
+    const change = quoteLinkProposal(line, [speaker]);
+    assert.equal(change?.priceChanged, false);
+    assert.equal(change?.missingCount, 1);
+    assert.equal(change?.nextTotal, 100);
+    const applied = applyQuoteLinkProposal(line, [speaker]);
+    assert.equal(applied.unit_price, 50);
+    assert.deepEqual(applied.links, [{ source: "bom", id: "spk" }]);
+  });
+
+  it("keeps only real links when a pricing block is normalized", () => {
+    const pricing = normalizePricingContent({
+      lines: [
+        line({
+          id: "q",
+          name: "Speaker",
+          links: [
+            { source: "bom", id: "spk" },
+            { source: "bom", id: "spk" },
+            { source: "nope", id: "x" },
+            { source: "labor", id: "" },
+          ],
+        }),
+      ],
+    });
+    assert.deepEqual(pricing.lines[0]?.links, [{ source: "bom", id: "spk" }]);
   });
 });

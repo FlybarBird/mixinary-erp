@@ -15,6 +15,7 @@ import {
   formatMoney,
   formatSignedMoney,
   outOfPocketStyle,
+  sumPricing,
 } from "@/lib/pricing";
 import { computeBomHeaderEconomics } from "@/lib/projects/bom-header-economics";
 import { getPoStatusVisual } from "@/lib/projects/procurement";
@@ -1079,6 +1080,21 @@ export function BomEditor({
                             </span>
                           ) : null}
                         </label>
+                        <span className="section-total" title="Section sale total">
+                          {formatMoney(
+                            sumPricing(
+                              groupLines.map((sectionLine) =>
+                                calculateLinePricing({
+                                  qty: sectionLine.qty,
+                                  msrp: sectionLine.msrp,
+                                  quote: sectionLine.quote,
+                                  overridePct: sectionLine.override_pct,
+                                  projectDefaultOverridePct: defaultOverridePct,
+                                }),
+                              ),
+                            ).totalSale,
+                          )}
+                        </span>
                         {canEditPricing ? (
                           <div className="row">
                             <button

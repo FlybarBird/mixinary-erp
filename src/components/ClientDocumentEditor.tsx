@@ -25,11 +25,15 @@ import {
   normalizePricingContent,
   pricingDropMarker,
   pricingLineParent,
+  quoteLinkProposal,
   removePricingLine,
+  applyQuoteLinkProposal,
   type PricingDropPlace,
   type ClientDocBlockType,
   type PricingBlockContent,
   type PricingLine,
+  type PricingSourceLink,
+  type PricingSourcePrice,
 } from "@/lib/client-documents";
 import {
   WysiwygBlock,
@@ -114,6 +118,8 @@ export function ClientDocumentEditor({
   const [device, setDevice] = useState<Device>("desktop");
   const [error, setError] = useState<string | null>(null);
   const [importFor, setImportFor] = useState<string | null>(null);
+  const [linkFor, setLinkFor] = useState<{ blockId: string; lineId: string } | null>(null);
+  const [sources, setSources] = useState<PricingSourcePrice[] | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [pricingEditId, setPricingEditId] = useState<string | null>(null);
@@ -127,6 +133,89 @@ export function ClientDocumentEditor({
 
   const editable =
     canEdit && !doc.archived_at && EDITABLE_STATUSES.includes(doc.status);
+
+  useEffect(() => {
+    if (!editable) return;
+    let cancelled = false;
+    async function loadSources() {
+      const res = await fetch(`/api/projects/${projectId}/documents/import-bom`);
+      const body = await res.json().catch(() => ({}));
+      if (cancelled || !res.ok) return;
+      const prices: PricingSourcePrice[] = [];
+      const sections = Array.isArray(body.sections) ? body.sections : [];
+      const labor = Array.isArray(body.labor) ? body.labor : [];
+      for (const section of sections) {
+        for (const row of section.lines ?? []) {
+          prices.push({
+            source: "bom",
+            id: String(row.id),
+            name: String(row.name ?? ""),
+            qty: Number(row.qty) || 0,
+            unit_price: Number(row.unit_price) || 0,
+            total: Number(row.total) || 0,
+          });
+        }
+      }
+      for (const row of labor) {
+        prices.push({
+          source: "labor",
+          id: String(row.id),
+          name: String(row.name ?? ""),
+          qty: Number(row.qty) || 0,
+          unit_price: Number(row.unit_price) || 0,
+          total: Number(row.total) || 0,
+        });
+      }
+      setSources(prices);
+    }
+    void loadSources();
+    window.addEventListener("focus", loadSources);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadSources);
+    };
+  }, [editable, projectId]);
+
+  const linkChanges = useMemo(() => {
+    if (!sources) return [];
+    const changes: Array<{ blockId: string; change: ReturnType<typeof quoteLinkProposal> }> = [];
+    for (const block of blocks) {
+      if (block.block_type !== "pricing" || block.hidden) continue;
+      for (const line of normalizePricingContent(block.content).lines) {
+        const change = quoteLinkProposal(line, sources);
+        if (change) changes.push({ blockId: block.id, change });
+      }
+    }
+    return changes;
+  }, [blocks, sources]);
+
+  function applyLinkedPrices(blockId: string, lineId?: string) {
+    if (!sources) return;
+    updatePricing(blockId, (pricing) => ({
+      ...pricing,
+      lines: pricing.lines.map((line) =>
+        !lineId || line.id === lineId ? applyQuoteLinkProposal(line, sources) : line,
+      ),
+    }));
+  }
+
+  function applyAllLinkedPrices() {
+    if (!sources) return;
+    const blockIds = new Set(linkChanges.map((entry) => entry.blockId));
+    mutate((prev) =>
+      prev.map((block) => {
+        if (!blockIds.has(block.id)) return block;
+        const pricing = normalizePricingContent(block.content);
+        return {
+          ...block,
+          content: {
+            ...pricing,
+            lines: pricing.lines.map((line) => applyQuoteLinkProposal(line, sources)),
+          } as unknown as Record<string, unknown>,
+        };
+      }),
+    );
+  }
 
   const totals = useMemo(() => computeDocumentTotals(blocks), [blocks]);
 
@@ -465,6 +554,19 @@ export function ClientDocumentEditor({
         {label ? <span className="muted">{label}</span> : null}
         {error ? <span style={{ color: "var(--danger)" }}>{error}</span> : null}
       </div>
+      {editable && linkChanges.length > 0 ? (
+        <div className="cdoc-link-notice">
+          <span>
+            {linkChanges.length === 1
+              ? `${linkChanges[0]!.change!.lineName} is out of date with the BOM or labor.`
+              : `${linkChanges.length} quote items are out of date with the BOM or labor.`}{" "}
+            Review the change, then update the quote.
+          </span>
+          <button className="btn btn-primary" type="button" onClick={applyAllLinkedPrices}>
+            Update linked prices
+          </button>
+        </div>
+      ) : null}
 
       <div
         className="row"
@@ -657,8 +759,13 @@ export function ClientDocumentEditor({
                         <PricingBlockEditor
                           block={block}
                           editable={editable}
+                          sources={sources}
                           onPricing={(fn) => updatePricing(block.id, fn)}
                           onOpenImport={() => setImportFor(block.id)}
+                          onLinkLine={(lineId) =>
+                            setLinkFor({ blockId: block.id, lineId })
+                          }
+                          onApplyLink={(lineId) => applyLinkedPrices(block.id, lineId)}
                           pricingSections={pricingSections}
                           onMoveLineTo={(toBlockId, lineId) =>
                             movePricingLineBetween(block.id, toBlockId, lineId)
@@ -678,6 +785,7 @@ export function ClientDocumentEditor({
       {importFor ? (
         <ImportBomModal
           projectId={projectId}
+          mode="import"
           onClose={() => setImportFor(null)}
           onAdd={(lines) => {
             updatePricing(importFor, (pricing) => ({
@@ -685,6 +793,28 @@ export function ClientDocumentEditor({
               lines: [...pricing.lines, ...lines],
             }));
             setImportFor(null);
+          }}
+        />
+      ) : null}
+      {linkFor ? (
+        <ImportBomModal
+          projectId={projectId}
+          mode="link"
+          initialLinks={
+            normalizePricingContent(
+              blocks.find((block) => block.id === linkFor.blockId)?.content,
+            ).lines.find((line) => line.id === linkFor.lineId)?.links ?? []
+          }
+          onClose={() => setLinkFor(null)}
+          onLink={(links) => {
+            const target = linkFor;
+            updatePricing(target.blockId, (pricing) => ({
+              ...pricing,
+              lines: pricing.lines.map((line) =>
+                line.id === target.lineId ? { ...line, links } : line,
+              ),
+            }));
+            setLinkFor(null);
           }}
         />
       ) : null}
@@ -730,15 +860,21 @@ function TextField({
 function PricingBlockEditor({
   block,
   editable,
+  sources,
   onPricing,
   onOpenImport,
+  onLinkLine,
+  onApplyLink,
   pricingSections,
   onMoveLineTo,
 }: {
   block: ClientDocumentBlock;
   editable: boolean;
+  sources: PricingSourcePrice[] | null;
   onPricing: (fn: (pricing: PricingBlockContent) => PricingBlockContent) => void;
   onOpenImport: () => void;
+  onLinkLine: (lineId: string) => void;
+  onApplyLink: (lineId: string) => void;
   pricingSections: Array<{ id: string; title: string }>;
   onMoveLineTo: (toBlockId: string, lineId: string) => void;
 }) {
@@ -882,6 +1018,7 @@ function PricingBlockEditor({
       selected: true,
       qty_editable: false,
       parent_id: parentId,
+      links: [],
     };
   }
 
@@ -1052,6 +1189,12 @@ function PricingBlockEditor({
                           {isChild ? (
                             <div className="cdoc-follows-parent">Follows parent</div>
                           ) : null}
+                          <PricingLinkNote
+                            line={line}
+                            sources={sources}
+                            editable={editable}
+                            onApply={() => onApplyLink(line.id)}
+                          />
                           {editable ? (
                             <div className="row" style={{ gap: "0.35rem", marginTop: 6 }}>
                               {isChild ? null : (
@@ -1063,6 +1206,13 @@ function PricingBlockEditor({
                                   Add sub-item
                                 </button>
                               )}
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => onLinkLine(line.id)}
+                              >
+                                {line.links.length ? "Edit links" : "Link items"}
+                              </button>
                               <button
                                 className="btn btn-danger"
                                 type="button"
@@ -1316,18 +1466,72 @@ function PricingBlockEditor({
  * BOM / Labor import modal
  * ------------------------------------------------------------------------ */
 
+function PricingLinkNote({
+  line,
+  sources,
+  editable,
+  onApply,
+}: {
+  line: PricingLine;
+  sources: PricingSourcePrice[] | null;
+  editable: boolean;
+  onApply: () => void;
+}) {
+  if (!line.links.length) return null;
+  const names = line.links.map((link) => {
+    const match = sources?.find(
+      (source) => source.source === link.source && source.id === link.id,
+    );
+    return match?.name || (link.source === "labor" ? "Removed labor item" : "Removed BOM item");
+  });
+  const change = sources ? quoteLinkProposal(line, sources) : null;
+  const label =
+    names.length === 1 ? `Linked to ${names[0]}` : `Linked to ${names.length} items`;
+  return (
+    <div className={change ? "cdoc-link-meta cdoc-link-meta-stale" : "cdoc-link-meta"}>
+      <span title={names.join(", ")}>{label}</span>
+      {change?.priceChanged ? (
+        <span>
+          {" "}
+          {formatMoney(change.currentTotal)} → {formatMoney(change.nextTotal)}
+        </span>
+      ) : null}
+      {change && change.missingCount > 0 ? (
+        <span>
+          {" "}
+          {change.missingCount} linked{" "}
+          {change.missingCount === 1 ? "item is" : "items are"} no longer on the BOM or labor.
+        </span>
+      ) : null}
+      {change && editable ? (
+        <button className="btn" type="button" onClick={onApply}>
+          Update
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ImportBomModal({
   projectId,
+  mode,
+  initialLinks = [],
   onClose,
   onAdd,
+  onLink,
 }: {
   projectId: string;
+  mode: "import" | "link";
+  initialLinks?: PricingSourceLink[];
   onClose: () => void;
-  onAdd: (lines: PricingLine[]) => void;
+  onAdd?: (lines: PricingLine[]) => void;
+  onLink?: (links: PricingSourceLink[]) => void;
 }) {
   const [data, setData] = useState<ImportData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(
+    () => new Set(initialLinks.map((link) => `${link.source}:${link.id}`)),
+  );
   const [asOptional, setAsOptional] = useState(false);
 
   useEffect(() => {
@@ -1383,6 +1587,7 @@ function ImportBomModal({
         selected: true,
         qty_editable: false,
         parent_id: null,
+        links: [{ source: source === "labor" ? "labor" : "bom", id: line.id }],
       });
     };
     for (const section of data.sections) {
@@ -1390,6 +1595,20 @@ function ImportBomModal({
     }
     for (const line of data.labor) push(line, "labor");
     return lines;
+  }
+
+  function collectLinks(): PricingSourceLink[] {
+    if (!data) return [];
+    const links: PricingSourceLink[] = [];
+    for (const section of data.sections) {
+      for (const row of section.lines) {
+        if (checked.has(`bom:${row.id}`)) links.push({ source: "bom", id: row.id });
+      }
+    }
+    for (const row of data.labor) {
+      if (checked.has(`labor:${row.id}`)) links.push({ source: "labor", id: row.id });
+    }
+    return links;
   }
 
   const selectedCount = checked.size;
@@ -1402,14 +1621,15 @@ function ImportBomModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <strong>Import from BOM &amp; Labor</strong>
+          <strong>{mode === "link" ? "Link BOM & Labor" : "Import from BOM & Labor"}</strong>
           <button className="btn" onClick={onClose}>
             Close
           </button>
         </div>
         <p className="muted" style={{ margin: "0.4rem 0 0.8rem" }}>
-          Items are copied with customer sale prices only — vendor costs, quotes,
-          and margins are never included. Prices are frozen at import.
+          {mode === "link"
+            ? "Link one or more BOM or labor items to this quote line. Several items roll up into one price. The quote stays as it is until you click Update."
+            : "Imported lines use customer sale prices and stay linked to the BOM or labor. A later change shows a notice so you can update the quote when you are ready."}
         </p>
         {error ? <p style={{ color: "var(--danger)" }}>{error}</p> : null}
         {!data && !error ? <p className="muted">Loading…</p> : null}
@@ -1468,20 +1688,29 @@ function ImportBomModal({
             )}
 
             <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-              <label className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={asOptional}
-                  onChange={(e) => setAsOptional(e.target.checked)}
-                />
-                Add as optional items
-              </label>
+              {mode === "import" ? (
+                <label className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={asOptional}
+                    onChange={(e) => setAsOptional(e.target.checked)}
+                  />
+                  Add as optional items
+                </label>
+              ) : null}
               <button
                 className="btn btn-primary"
-                disabled={!selectedCount}
-                onClick={() => onAdd(collectSelected())}
+                disabled={mode === "import" && !selectedCount}
+                onClick={() => {
+                  if (mode === "link") onLink?.(collectLinks());
+                  else onAdd?.(collectSelected());
+                }}
               >
-                Add {selectedCount || ""} selected
+                {mode === "link"
+                  ? selectedCount
+                    ? `Link ${selectedCount} selected`
+                    : "Remove links"
+                  : `Add ${selectedCount || ""} selected`}
               </button>
             </div>
           </div>

@@ -57,7 +57,7 @@ export const CLIENT_DOC_BLOCK_LABELS: Record<ClientDocBlockType, string> = {
   contact: "Contact Information",
 };
 
-/** Customer-facing pricing line. Prices are frozen sale prices at import. */
+/** Customer-facing pricing line. Sale prices never include vendor cost. */
 export interface PricingLine {
   id: string;
   name: string;
@@ -73,6 +73,35 @@ export interface PricingLine {
   qty_editable: boolean;
   /** Parent line this sub-item follows. Null for top-level lines. */
   parent_id: string | null;
+  /** BOM or labor rows whose sale price this quote line follows. */
+  links: PricingSourceLink[];
+}
+
+/** A BOM line or labor entry tied to a customer-facing quote line. */
+export interface PricingSourceLink {
+  source: "bom" | "labor";
+  id: string;
+}
+
+/** Current customer sale price of a linked BOM or labor row. */
+export interface PricingSourcePrice extends PricingSourceLink {
+  name: string;
+  qty: number;
+  unit_price: number;
+  total: number;
+}
+
+/** A linked quote line whose BOM or labor price has changed, or whose source is gone. */
+export interface QuoteLinkChange {
+  lineId: string;
+  lineName: string;
+  currentTotal: number;
+  nextQty: number;
+  nextUnit: number;
+  nextTotal: number;
+  priceChanged: boolean;
+  missingCount: number;
+  linkedNames: string[];
 }
 
 export interface PricingDiscount {
@@ -125,6 +154,89 @@ function round2(n: number) {
 function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeSourceLinks(value: unknown): PricingSourceLink[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const links: PricingSourceLink[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const source = (raw as { source?: unknown }).source;
+    const id = String((raw as { id?: unknown }).id ?? "").trim();
+    if ((source !== "bom" && source !== "labor") || !id) continue;
+    const key = `${source}:${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({ source, id });
+  }
+  return links;
+}
+
+function sourceKey(link: PricingSourceLink) {
+  return `${link.source}:${link.id}`;
+}
+
+/**
+ * Compare a quote line with the live sale prices of its linked BOM and labor
+ * rows. One link keeps that row's quantity and unit price. Several links roll
+ * up into a single quantity of 1. Nothing is changed until the proposal is applied.
+ */
+export function quoteLinkProposal(
+  line: Pick<PricingLine, "id" | "name" | "qty" | "unit_price" | "links">,
+  sources: PricingSourcePrice[],
+): QuoteLinkChange | null {
+  const links = line.links ?? [];
+  if (!links.length) return null;
+  const byKey = new Map(sources.map((source) => [sourceKey(source), source]));
+  const present: PricingSourcePrice[] = [];
+  let missingCount = 0;
+  for (const link of links) {
+    const found = byKey.get(sourceKey(link));
+    if (found) present.push(found);
+    else missingCount += 1;
+  }
+  let nextQty = line.qty;
+  let nextUnit = line.unit_price;
+  if (present.length === 1) {
+    nextQty = present[0]!.qty;
+    nextUnit = present[0]!.unit_price;
+  } else if (present.length > 1) {
+    nextQty = 1;
+    nextUnit = round2(present.reduce((sum, source) => sum + source.total, 0));
+  }
+  const priceChanged =
+    round2(nextQty) !== round2(line.qty) || round2(nextUnit) !== round2(line.unit_price);
+  if (!priceChanged && missingCount === 0) return null;
+  return {
+    lineId: line.id,
+    lineName: line.name.trim() || "Untitled item",
+    currentTotal: round2(line.qty * line.unit_price),
+    nextQty,
+    nextUnit,
+    nextTotal: round2(nextQty * nextUnit),
+    priceChanged,
+    missingCount,
+    linkedNames: present.map((source) => source.name),
+  };
+}
+
+/** Apply a link proposal: refresh the sale price and drop links whose source is gone. */
+export function applyQuoteLinkProposal(
+  line: PricingLine,
+  sources: PricingSourcePrice[],
+): PricingLine {
+  const proposal = quoteLinkProposal(line, sources);
+  if (!proposal) return line;
+  const live = new Set(sources.map((source) => sourceKey(source)));
+  const links = line.links.filter((link) => live.has(sourceKey(link)));
+  if (!proposal.priceChanged) return { ...line, links };
+  return {
+    ...line,
+    links,
+    qty: proposal.nextQty,
+    unit_price: proposal.nextUnit,
+  };
 }
 
 export function defaultBlockContent(
@@ -207,6 +319,7 @@ export function normalizePricingContent(
           selected: lineOptional ? line.selected !== false : true,
           qty_editable: Boolean(line.qty_editable),
           parent_id: parentId,
+          links: normalizeSourceLinks(line.links),
         };
       }),
     ),

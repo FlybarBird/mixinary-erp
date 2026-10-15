@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CatalogScrapeReview } from "@/components/CatalogScrapeReview";
+import { DeleteReviewButton } from "@/components/DeleteReviewButton";
 import { MsrpReview } from "@/components/MsrpReview";
 import { QuoteReview } from "@/components/QuoteReview";
 import { requireProfile } from "@/lib/auth";
@@ -49,6 +50,7 @@ export default async function ReviewDetailPage({
           <p className="page-sub">
             {project?.project_number} · {project?.name} · {job.status}
           </p>
+          <DeleteReviewButton jobId={job.id} redirectTo="/review" />
         </div>
         {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
         <MsrpReview
@@ -164,6 +166,7 @@ export default async function ReviewDetailPage({
               ? ` · ${result.finalUrl || input.url}`
               : ""}
           </p>
+          <DeleteReviewButton jobId={job.id} redirectTo="/review" />
         </div>
         {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
         <CatalogScrapeReview jobId={job.id} proposals={annotated} />
@@ -205,6 +208,7 @@ export default async function ReviewDetailPage({
           {project?.project_number} · {upload?.file_name} ·{" "}
           {upload?.quote_number || "No quote #"}
         </p>
+        <DeleteReviewButton jobId={job.id} redirectTo="/review" />
       </div>
       {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
       <QuoteReview

@@ -18,7 +18,6 @@ Web-based multi-user ERP for Mixinary AVL installs. Replaces the master project-
 - Supabase (Auth, Postgres, RLS, Storage) **or** local SQLite (`MIXINARY_LOCAL_MODE`)
 - OpenAI for structured extraction
 - Optional SMTP (`nodemailer`) **or Resend** for invites and project notifications
-- Suite Project Management: OpenProject packaging under `services/project-management/` (see [docs/openproject-pm/README.md](./docs/openproject-pm/README.md))
 
 ## Brand
 

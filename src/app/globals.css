@@ -1653,6 +1653,24 @@ tr.status-row--on-site.drag-over-after > td {
   cursor: default;
 }
 
+.part-card-open {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.part-card-delete {
+  margin: 0 0.65rem 0.65rem;
+  align-self: flex-start;
+}
+
 .part-card:hover,
 .part-card.selected {
   border-color: #90cdf4;

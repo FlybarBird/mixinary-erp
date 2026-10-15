@@ -1,15 +1,4 @@
-import {
-  projectManagementOpenUrl,
-  resolvePmBasePath,
-  suitePmLauncherHref,
-} from "@/lib/suite/pm-base";
-
-export type SuiteAppId =
-  | "landing"
-  | "erp"
-  | "pm"
-  | "client-documents"
-  | "admin";
+export type SuiteAppId = "landing" | "erp" | "client-documents" | "admin";
 
 export type SuiteApp = {
   id: SuiteAppId;
@@ -19,11 +8,8 @@ export type SuiteApp = {
   external?: boolean;
 };
 
-export { projectManagementOpenUrl, resolvePmBasePath, suitePmLauncherHref };
-
-/** Same-domain suite apps (Cloudflare routes PM / auth / files). */
+/** Same-domain suite apps shown in the launcher and Apps dropdown. */
 export function getSuiteApps(): SuiteApp[] {
-  const pmHref = suitePmLauncherHref();
   return [
     {
       id: "landing",
@@ -38,14 +24,6 @@ export function getSuiteApps(): SuiteApp[] {
       description: "Projects, BOM, procurement, and financials",
     },
     {
-      id: "pm",
-      label: "Project Management",
-      href: pmHref,
-      description: "OpenProject — tasks, work packages, and execution",
-      // Full navigation to OpenProject (not an App Router page).
-      external: true,
-    },
-    {
       id: "client-documents",
       label: "Client Documents",
       href: "/client-documents",
@@ -55,7 +33,7 @@ export function getSuiteApps(): SuiteApp[] {
       id: "admin",
       label: "Administration",
       href: "/admin",
-      description: "Users, suite integrations, and system settings",
+      description: "Users and system settings",
     },
   ];
 }

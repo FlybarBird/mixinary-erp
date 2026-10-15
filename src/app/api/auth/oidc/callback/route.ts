@@ -4,7 +4,6 @@ import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import { suiteConfig } from "@/lib/suite/config";
 import { isLocalMode, getLocalDb, newId } from "@/lib/local/db";
 import { LOCAL_SESSION_COOKIE } from "@/lib/local/session";
-import { publishIntegrationEvent } from "@/lib/integration/client";
 import { createClient } from "@/lib/supabase/server";
 
 type UserInfo = {
@@ -141,18 +140,6 @@ export async function GET(request: Request) {
     const profile = isLocalMode()
       ? await upsertLocalUser(info)
       : await upsertCloudUser(info);
-
-    await publishIntegrationEvent({
-      eventType: "user.provision",
-      idempotencyKey: `user.provision:${profile.id}:${info.sub}`,
-      data: {
-        erpUserId: profile.id,
-        idpSubject: info.sub,
-        verifiedEmail: profile.email,
-        planeRole: profile.role === "administrator" ? "admin" : "member",
-        planeAccessStatus: "enabled",
-      },
-    });
 
     if (isLocalMode()) {
       const res = NextResponse.redirect(new URL(next, url.origin));

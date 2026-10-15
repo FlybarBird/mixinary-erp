@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
+import { DeleteReviewButton } from "@/components/DeleteReviewButton";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ReviewQueuePage() {
@@ -53,9 +54,12 @@ export default async function ReviewQueuePage() {
                   <span className="badge badge-review">{job.status}</span>
                 </td>
                 <td>
-                  <Link href={`/review/${job.id}`} style={{ color: "#0176d3" }}>
-                    Open
-                  </Link>
+                  <div className="row">
+                    <Link href={`/review/${job.id}`} style={{ color: "#0176d3" }}>
+                      Open
+                    </Link>
+                    <DeleteReviewButton jobId={job.id} />
+                  </div>
                 </td>
               </tr>
             ))}

@@ -47,7 +47,7 @@ const adminApps = [
   {
     href: "/admin/suite",
     title: "Suite",
-    sub: "OIDC, Project Management access, integrations",
+    sub: "OIDC and shared files",
     icon: "SUITE",
   },
 ] as const;

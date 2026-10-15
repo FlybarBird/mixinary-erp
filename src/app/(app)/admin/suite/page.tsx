@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { suiteConfig, suiteOidcEnabled } from "@/lib/suite/config";
-import { SuiteProvisionForm } from "@/components/suite/SuiteProvisionForm";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +12,7 @@ export default async function SuiteAdminPage() {
     <div className="stack">
       <div>
         <h1 className="page-title">Suite administration</h1>
-        <p className="page-sub">
-          Identity, Project Management access, and integration health.
-        </p>
+        <p className="page-sub">Identity and shared-file settings.</p>
       </div>
 
       <section className="panel-light" style={{ padding: "1rem" }}>
@@ -36,40 +33,11 @@ export default async function SuiteAdminPage() {
       </section>
 
       <section className="panel-light" style={{ padding: "1rem" }}>
-        <h2 className="section-title">Integration service</h2>
-        <p className="page-sub">Base URL: {cfg.integrationBaseUrl}</p>
-        <p className="page-sub">
-          Webhook secret: {cfg.integrationSecret ? "set" : "missing"}
-        </p>
-        <p className="page-sub">
-          PM path: {cfg.pmBasePath} · Shared files: {cfg.sharedFilesBaseUrl}
-        </p>
+        <h2 className="section-title">Shared files</h2>
+        <p className="page-sub">Base URL: {cfg.sharedFilesBaseUrl}</p>
         <Link href="/admin/users" className="btn btn-secondary">
           Manage users
         </Link>
-      </section>
-
-      <section className="panel-light" style={{ padding: "1rem" }}>
-        <h2 className="section-title">Project Management access</h2>
-        <SuiteProvisionForm />
-      </section>
-
-      <section className="panel-light" style={{ padding: "1rem" }}>
-        <h2 className="section-title">Runbooks</h2>
-        <ul>
-          <li>
-            <code>services/project-management/docs/LICENSE.md</code>
-          </li>
-          <li>
-            <code>services/project-management/docs/UPSTREAM-SYNC.md</code>
-          </li>
-          <li>
-            <code>services/project-management/docs/CLOUDFLARE.md</code>
-          </li>
-          <li>
-            <code>docs/openproject-pm/ACCEPTANCE.md</code>
-          </li>
-        </ul>
       </section>
     </div>
   );

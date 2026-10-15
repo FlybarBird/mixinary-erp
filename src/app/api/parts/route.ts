@@ -262,12 +262,20 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
 
+  if (isLocalMode()) {
+    const db = getLocalDb();
+    db.prepare(
+      "update line_items set catalog_part_id = null where catalog_part_id = ?",
+    ).run(id);
+    const result = db.prepare("delete from catalog_parts where id = ?").run(id);
+    if (!result.changes) {
+      return NextResponse.json({ error: "Part not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   const supabase = await createClient();
-  // Soft-delete by default
-  const { error } = await supabase
-    .from("catalog_parts")
-    .update({ active: false, updated_at: new Date().toISOString() })
-    .eq("id", id);
+  const { error } = await supabase.from("catalog_parts").delete().eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }

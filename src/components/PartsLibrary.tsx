@@ -11,6 +11,28 @@ type PartRow = CatalogPart & {
   vendor_code?: string;
 };
 
+type PartsView = "cards" | "sheet";
+type SheetSortKey =
+  | "name"
+  | "sku"
+  | "upc"
+  | "company"
+  | "category"
+  | "msrp"
+  | "default_quote"
+  | "vendor";
+
+const SHEET_COLUMNS: Array<{ key: SheetSortKey; label: string; numeric?: boolean }> = [
+  { key: "name", label: "Name" },
+  { key: "sku", label: "SKU" },
+  { key: "upc", label: "UPC" },
+  { key: "company", label: "Company" },
+  { key: "category", label: "Category" },
+  { key: "msrp", label: "MSRP", numeric: true },
+  { key: "default_quote", label: "Default quote", numeric: true },
+  { key: "vendor", label: "Vendor" },
+];
+
 export function PartsLibrary({
   canEdit,
   initialCategories,
@@ -39,6 +61,10 @@ export function PartsLibrary({
   const [scrapeCategory, setScrapeCategory] = useState("");
   const [scrapeForcePullImages, setScrapeForcePullImages] = useState(false);
   const [scraping, setScraping] = useState(false);
+  const [view, setView] = useState<PartsView>("cards");
+  const [sheetEdit, setSheetEdit] = useState(false);
+  const [sortKey, setSortKey] = useState<SheetSortKey>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   async function createCompany(): Promise<PartCompany | null> {
     const name = window.prompt("New company name")?.trim();
@@ -78,15 +104,146 @@ export function PartsLibrary({
     setParts(data.data || []);
   }
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const companyNameById = useMemo(
     () => new Map(companies.map((c) => [c.id, c.name])),
     [companies],
   );
+
+  useEffect(() => {
+    void load();
+    const saved = window.localStorage.getItem("mixinary.parts.view");
+    if (saved === "sheet" || saved === "cards") setView(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function chooseView(next: PartsView) {
+    setView(next);
+    if (next !== "sheet") setSheetEdit(false);
+    window.localStorage.setItem("mixinary.parts.view", next);
+  }
+
+  function mergeSheetPart(row: PartRow, patch: Partial<CatalogPart>): PartRow {
+    const next: PartRow = { ...row, ...patch };
+    if ("company_id" in patch) {
+      const company = companies.find((item) => item.id === patch.company_id) ?? null;
+      next.company_id = company?.id ?? null;
+      next.company_name = company?.name;
+      next.part_companies = company;
+    }
+    if ("category_id" in patch) {
+      const category = categories.find((item) => item.id === patch.category_id) ?? null;
+      next.category_id = category?.id ?? null;
+      next.category_name = category?.name;
+      next.part_categories = category;
+    }
+    if ("default_vendor_id" in patch) {
+      const vendor = vendors.find((item) => item.id === patch.default_vendor_id) ?? null;
+      next.default_vendor_id = vendor?.id ?? null;
+      next.vendor_code = vendor?.code;
+      next.vendors = vendor;
+    }
+    return next;
+  }
+
+  async function saveSheetCell(part: PartRow, patch: Partial<CatalogPart>) {
+    if ("name" in patch && !String(patch.name || "").trim()) {
+      setMessage("A part needs a name");
+      return false;
+    }
+    setMessage(null);
+    setParts((prev) =>
+      prev.map((row) => (row.id === part.id ? mergeSheetPart(row, patch) : row)),
+    );
+    setEditing((prev) =>
+      prev?.id === part.id ? mergeSheetPart(prev as PartRow, patch) : prev,
+    );
+    const res = await fetch("/api/parts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: part.id, ...patch }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setParts((prev) => prev.map((row) => (row.id === part.id ? part : row)));
+      setEditing((prev) => (prev?.id === part.id ? part : prev));
+      setMessage(data.error || "Save failed");
+      return false;
+    }
+    return true;
+  }
+
+  function openPart(part: PartRow) {
+    setEditing(part);
+    setEnrichBrand(
+      part.part_companies?.name ||
+        companyNameById.get(part.company_id || "") ||
+        "",
+    );
+  }
+
+  function partCompany(part: PartRow) {
+    return (
+      part.part_companies?.name ||
+      part.company_name ||
+      companyNameById.get(part.company_id || "") ||
+      ""
+    );
+  }
+
+  function partCategory(part: PartRow) {
+    return part.part_categories?.name || part.category_name || "";
+  }
+
+  function partVendor(part: PartRow) {
+    return part.vendors?.code || part.vendor_code || "";
+  }
+
+  function sortValue(part: PartRow, key: SheetSortKey) {
+    switch (key) {
+      case "name":
+        return part.name;
+      case "sku":
+        return part.sku || "";
+      case "upc":
+        return part.upc || "";
+      case "company":
+        return partCompany(part);
+      case "category":
+        return partCategory(part);
+      case "vendor":
+        return partVendor(part);
+      case "msrp":
+        return part.msrp ?? 0;
+      case "default_quote":
+        return part.default_quote ?? 0;
+    }
+  }
+
+  function toggleSort(key: SheetSortKey) {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "msrp" || key === "default_quote" ? "desc" : "asc");
+  }
+
+  const sheetParts = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...parts].sort((a, b) => {
+      const left = sortValue(a, sortKey);
+      const right = sortValue(b, sortKey);
+      if (typeof left === "number" && typeof right === "number") {
+        return (left - right) * dir;
+      }
+      return String(left).localeCompare(String(right), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }) * dir;
+    });
+    // sortValue closes over the latest label helpers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parts, sortKey, sortDir, companies]);
 
   function openNew() {
     setEditing({
@@ -308,6 +465,34 @@ export function PartsLibrary({
           <button type="button" className="btn btn-primary" onClick={() => void load()}>
             {loading ? "Loading…" : "Search"}
           </button>
+          <div className="parts-view-toggle" role="group" aria-label="Parts layout">
+            <button
+              type="button"
+              className={view === "cards" ? "active" : ""}
+              aria-pressed={view === "cards"}
+              onClick={() => chooseView("cards")}
+            >
+              Cards
+            </button>
+            <button
+              type="button"
+              className={view === "sheet" ? "active" : ""}
+              aria-pressed={view === "sheet"}
+              onClick={() => chooseView("sheet")}
+            >
+              Sheet
+            </button>
+          </div>
+          {canEdit && view === "sheet" ? (
+            <button
+              type="button"
+              className={`btn ${sheetEdit ? "btn-primary" : ""}`}
+              aria-pressed={sheetEdit}
+              onClick={() => setSheetEdit((on) => !on)}
+            >
+              {sheetEdit ? "Done editing" : "Edit sheet"}
+            </button>
+          ) : null}
           {canEdit ? (
             <>
               <button type="button" className="btn" onClick={openNew}>
@@ -447,20 +632,32 @@ export function PartsLibrary({
           alignItems: "start",
         }}
       >
+        {view === "sheet" ? (
+          <PartsSheet
+            parts={sheetParts}
+            editingId={editing?.id}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleSort}
+            onOpen={openPart}
+            companyName={partCompany}
+            categoryName={partCategory}
+            vendorCode={partVendor}
+            canEdit={canEdit}
+            sheetEdit={sheetEdit}
+            categories={categories}
+            companies={companies}
+            vendors={vendors}
+            onSave={saveSheetCell}
+          />
+        ) : (
         <div className="parts-grid">
           {parts.map((part) => (
-            <div key={part.id} className="part-card static">
+            <div key={part.id} className={`part-card static${editing?.id === part.id ? " selected" : ""}`}>
               <button
                 type="button"
                 className="part-card-open"
-                onClick={() => {
-                  setEditing(part);
-                  setEnrichBrand(
-                    part.part_companies?.name ||
-                      companyNameById.get(part.company_id || "") ||
-                      "",
-                  );
-                }}
+                onClick={() => openPart(part)}
               >
                 <div className="part-thumb">
                   {part.image_url ? (
@@ -492,6 +689,7 @@ export function PartsLibrary({
             </div>
           ) : null}
         </div>
+        )}
 
         {editing ? (
           <form className="panel stack part-editor" style={{ padding: "1rem" }} onSubmit={savePart}>
@@ -736,5 +934,290 @@ export function PartsLibrary({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function PartsSheet({
+  parts,
+  editingId,
+  sortKey,
+  sortDir,
+  onSort,
+  onOpen,
+  companyName,
+  categoryName,
+  vendorCode,
+  canEdit,
+  sheetEdit,
+  categories,
+  companies,
+  vendors,
+  onSave,
+}: {
+  parts: PartRow[];
+  editingId?: string;
+  sortKey: SheetSortKey;
+  sortDir: "asc" | "desc";
+  onSort: (key: SheetSortKey) => void;
+  onOpen: (part: PartRow) => void;
+  companyName: (part: PartRow) => string;
+  categoryName: (part: PartRow) => string;
+  vendorCode: (part: PartRow) => string;
+  canEdit: boolean;
+  sheetEdit: boolean;
+  categories: PartCategory[];
+  companies: PartCompany[];
+  vendors: Vendor[];
+  onSave: (part: PartRow, patch: Partial<CatalogPart>) => Promise<boolean>;
+}) {
+  if (!parts.length) {
+    return (
+      <div className="panel" style={{ padding: "1rem" }}>
+        No parts found. {canEdit ? "Create one or import an XLSX." : ""}
+      </div>
+    );
+  }
+
+  function cell(part: PartRow, key: SheetSortKey) {
+    switch (key) {
+      case "name":
+        return part.name;
+      case "sku":
+        return part.sku || "—";
+      case "upc":
+        return part.upc || "—";
+      case "company":
+        return companyName(part) || "—";
+      case "category":
+        return categoryName(part) || "—";
+      case "vendor":
+        return vendorCode(part) || "—";
+      case "msrp":
+        return formatMoney(part.msrp);
+      case "default_quote":
+        return part.default_quote == null ? "—" : formatMoney(part.default_quote);
+    }
+  }
+
+  return (
+    <div className={`parts-sheet${sheetEdit ? " editing" : ""}`}>
+      <table>
+        <thead>
+          <tr>
+            <th className="parts-sheet-thumb" aria-label="Image" />
+            {SHEET_COLUMNS.map((column) => (
+              <th
+                key={column.key}
+                className={column.numeric ? "num" : ""}
+                aria-sort={
+                  sortKey === column.key
+                    ? sortDir === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : "none"
+                }
+              >
+                <button type="button" onClick={() => onSort(column.key)}>
+                  {column.label}
+                  {sortKey === column.key ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                </button>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {parts.map((part) => (
+            <tr
+              key={part.id}
+              className={editingId === part.id ? "selected" : ""}
+              onClick={sheetEdit ? undefined : () => onOpen(part)}
+              onKeyDown={
+                sheetEdit
+                  ? undefined
+                  : (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpen(part);
+                      }
+                    }
+              }
+              tabIndex={sheetEdit ? undefined : 0}
+            >
+              <td className="parts-sheet-thumb">
+                <button
+                  type="button"
+                  className="parts-sheet-open"
+                  title="Open part"
+                  onClick={() => onOpen(part)}
+                >
+                  {part.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={part.image_url} alt="" />
+                  ) : (
+                    <span />
+                  )}
+                </button>
+              </td>
+              {SHEET_COLUMNS.map((column) => (
+                <td key={column.key} className={column.numeric ? "num" : ""}>
+                  {sheetEdit ? (
+                    <SheetEditor
+                      part={part}
+                      column={column.key}
+                      categories={categories}
+                      companies={companies}
+                      vendors={vendors}
+                      onSave={onSave}
+                    />
+                  ) : column.key === "name" ? (
+                    <span className="parts-sheet-name">
+                      {part.name}
+                      {!part.active ? <span className="badge">inactive</span> : null}
+                    </span>
+                  ) : (
+                    cell(part, column.key)
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SheetEditor({
+  part,
+  column,
+  categories,
+  companies,
+  vendors,
+  onSave,
+}: {
+  part: PartRow;
+  column: SheetSortKey;
+  categories: PartCategory[];
+  companies: PartCompany[];
+  vendors: Vendor[];
+  onSave: (part: PartRow, patch: Partial<CatalogPart>) => Promise<boolean>;
+}) {
+  if (column === "company" || column === "category" || column === "vendor") {
+    const value =
+      column === "company"
+        ? part.company_id || ""
+        : column === "category"
+          ? part.category_id || ""
+          : part.default_vendor_id || "";
+    const field =
+      column === "company"
+        ? "company_id"
+        : column === "category"
+          ? "category_id"
+          : "default_vendor_id";
+    const options =
+      column === "company"
+        ? companies.map((item) => ({ id: item.id, label: item.name }))
+        : column === "category"
+          ? categories.map((item) => ({ id: item.id, label: item.name }))
+          : vendors.map((item) => ({ id: item.id, label: `${item.code} — ${item.name}` }));
+    return (
+      <select
+        className="parts-sheet-input"
+        aria-label={column}
+        value={value}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          void onSave(part, { [field]: e.target.value || null });
+        }}
+      >
+        <option value="">—</option>
+        {options.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  const numeric = column === "msrp" || column === "default_quote";
+  const value =
+    column === "name"
+      ? part.name
+      : column === "sku"
+        ? part.sku || ""
+        : column === "upc"
+          ? part.upc || ""
+          : column === "msrp"
+            ? String(part.msrp ?? 0)
+            : part.default_quote == null
+              ? ""
+              : String(part.default_quote);
+
+  const input = (
+    <SheetText
+      value={value}
+      numeric={numeric}
+      label={column}
+      onCommit={(draft) => {
+        const text = draft.trim();
+        if (column === "name") return onSave(part, { name: text });
+        if (column === "sku") return onSave(part, { sku: text || null });
+        if (column === "upc") return onSave(part, { upc: text || null });
+        if (!text) {
+          if (column === "default_quote") return onSave(part, { default_quote: null });
+          return Promise.resolve(false);
+        }
+        const amount = Number(text);
+        if (!Number.isFinite(amount)) return Promise.resolve(false);
+        if (column === "msrp") return onSave(part, { msrp: amount });
+        return onSave(part, { default_quote: amount });
+      }}
+    />
+  );
+
+  if (column !== "name" || part.active) return input;
+  return (
+    <span className="parts-sheet-name">
+      {input}
+      <span className="badge">inactive</span>
+    </span>
+  );
+}
+
+function SheetText({
+  value,
+  numeric,
+  label,
+  onCommit,
+}: {
+  value: string;
+  numeric: boolean;
+  label: string;
+  onCommit: (draft: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <input
+      className="parts-sheet-input"
+      aria-label={label}
+      inputMode={numeric ? "decimal" : undefined}
+      value={draft}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft === value) return;
+        void onCommit(draft).then((ok) => {
+          if (!ok) setDraft(value);
+        });
+      }}
+    />
   );
 }

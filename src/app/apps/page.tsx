@@ -5,7 +5,6 @@ import { getSessionUser, getCurrentProfile } from "@/lib/auth";
 import { needsSetup } from "@/lib/setup";
 import { getSuiteApps } from "@/lib/suite/apps";
 import { suiteOidcEnabled } from "@/lib/suite/config";
-import { AppSelector } from "@/components/suite/AppSelector";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +28,6 @@ export default async function SuiteLandingPage() {
         <div className="suite-landing-actions">
           {profile ? (
             <>
-              <AppSelector apps={suiteApps} currentId="landing" />
               <span className="suite-landing-user">
                 {profile.full_name || profile.email}
               </span>

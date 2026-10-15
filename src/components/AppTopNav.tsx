@@ -7,9 +7,6 @@ import { usePathname } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/format";
 import { canViewFinancials } from "@/lib/permissions";
-import { AppSelector } from "@/components/suite/AppSelector";
-import type { SuiteApp } from "@/lib/suite/apps";
-import { getSuiteApps } from "@/lib/suite/apps";
 
 const primaryLinks = [
   { href: "/dashboard", label: "My Home" },
@@ -32,13 +29,7 @@ function initials(profile: UserProfile) {
   return source.slice(0, 2).toUpperCase();
 }
 
-export function AppTopNav({
-  profile,
-  suiteApps = getSuiteApps(),
-}: {
-  profile: UserProfile;
-  suiteApps?: SuiteApp[];
-}) {
+export function AppTopNav({ profile }: { profile: UserProfile }) {
   const pathname = usePathname();
   const isAdmin = profile.role === "administrator";
   const showFinancials = canViewFinancials(profile.role);
@@ -75,7 +66,6 @@ export function AppTopNav({
           </Link>
 
           <div className="shell-actions">
-            <AppSelector apps={suiteApps} currentId="erp" />
             <div className="shell-user-meta">
               <div className="shell-user-name">
                 {profile.full_name || profile.email}

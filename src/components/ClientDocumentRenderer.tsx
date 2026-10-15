@@ -11,7 +11,7 @@ import {
   pricingSectionIncluded,
   quoteBlockLabel,
 } from "@/lib/client-documents";
-import { clientDocumentImageSrc } from "@/lib/client-document-images";
+import { clientDocumentImageSrc } from "@/lib/client-document-image-url";
 import type {
   ClientDocumentBlock,
   ClientDocumentSignature,

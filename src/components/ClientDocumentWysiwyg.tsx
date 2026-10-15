@@ -23,6 +23,7 @@ import {
 } from "@/lib/client-documents";
 import { formatMoney } from "@/lib/pricing";
 import type { RendererBranding } from "@/components/ClientDocumentRenderer";
+import { parseClientDocumentImageUrl } from "@/lib/client-document-image-url";
 import type { ClientDocumentBlock } from "@/lib/types";
 
 function str(value: unknown): string {
@@ -712,6 +713,7 @@ function QuoteImageBlock({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const stored = Boolean(parseClientDocumentImageUrl(url));
 
   async function upload(file: File | null) {
     if (!file || !editable) return;
@@ -794,12 +796,14 @@ function QuoteImageBlock({
               </button>
             </div>
           ) : null}
-          <input
-            className="cdoc-wysiwyg-field"
-            value={url}
-            placeholder="Or paste an image URL"
-            onChange={(e) => onContent({ url: e.target.value })}
-          />
+          {stored ? null : (
+            <input
+              className="cdoc-wysiwyg-field"
+              value={url}
+              placeholder="Or paste an image URL"
+              onChange={(e) => onContent({ url: e.target.value })}
+            />
+          )}
           <input
             className="cdoc-wysiwyg-field"
             value={caption}

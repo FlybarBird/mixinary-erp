@@ -11,10 +11,8 @@ import {
   pricingSectionIncluded,
   quoteBlockLabel,
 } from "@/lib/client-documents";
-import {
-  parseClientDocumentImageUrl,
-  readClientDocumentImage,
-} from "@/lib/client-document-images";
+import { parseClientDocumentImageUrl } from "@/lib/client-document-image-url";
+import { readClientDocumentImage } from "@/lib/client-document-images";
 import type {
   ClientDocument,
   ClientDocumentBlock,

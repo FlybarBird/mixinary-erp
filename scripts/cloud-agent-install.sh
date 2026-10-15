@@ -17,7 +17,6 @@ NEXT_PUBLIC_MIXINARY_LOCAL_MODE=true
 MIXINARY_LOCAL_MODE=true
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 APP_BRAND_NAME=Mixinary ERP
-NEXT_PUBLIC_PM_BASE_PATH=/project-management
 EOF
 fi
 
@@ -27,7 +26,4 @@ if ! grep -q '^MIXINARY_LOCAL_MODE=true' .env.local 2>/dev/null; then
 fi
 if ! grep -q '^NEXT_PUBLIC_APP_URL=' .env.local 2>/dev/null; then
   printf '\nNEXT_PUBLIC_APP_URL=http://localhost:3000\n' >> .env.local
-fi
-if ! grep -q '^NEXT_PUBLIC_PM_BASE_PATH=' .env.local 2>/dev/null; then
-  printf '\nNEXT_PUBLIC_PM_BASE_PATH=/project-management\n' >> .env.local
 fi

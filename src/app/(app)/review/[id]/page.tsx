@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CatalogScrapeReview } from "@/components/CatalogScrapeReview";
+import { DeleteReviewButton } from "@/components/DeleteReviewButton";
 import { MsrpReview } from "@/components/MsrpReview";
 import { QuoteReview } from "@/components/QuoteReview";
-import { requireProfile } from "@/lib/auth";
+import { canEditPricing, requireProfile } from "@/lib/auth";
 import {
   loadCatalogDuplicateIndex,
   proposalIdentityKey,
@@ -16,7 +17,8 @@ export default async function ReviewDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireProfile();
+  const profile = await requireProfile();
+  const canDelete = canEditPricing(profile.role);
   const supabase = await createClient();
 
   const { data: job } = await supabase
@@ -49,6 +51,9 @@ export default async function ReviewDetailPage({
           <p className="page-sub">
             {project?.project_number} · {project?.name} · {job.status}
           </p>
+          {canDelete ? (
+            <DeleteReviewButton jobId={job.id} redirectTo="/review" />
+          ) : null}
         </div>
         {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
         <MsrpReview
@@ -164,6 +169,9 @@ export default async function ReviewDetailPage({
               ? ` · ${result.finalUrl || input.url}`
               : ""}
           </p>
+          {canDelete ? (
+            <DeleteReviewButton jobId={job.id} redirectTo="/review" />
+          ) : null}
         </div>
         {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
         <CatalogScrapeReview jobId={job.id} proposals={annotated} />
@@ -205,6 +213,9 @@ export default async function ReviewDetailPage({
           {project?.project_number} · {upload?.file_name} ·{" "}
           {upload?.quote_number || "No quote #"}
         </p>
+        {canDelete ? (
+          <DeleteReviewButton jobId={job.id} redirectTo="/review" />
+        ) : null}
       </div>
       {job.error ? <p style={{ color: "var(--danger)" }}>{job.error}</p> : null}
       <QuoteReview

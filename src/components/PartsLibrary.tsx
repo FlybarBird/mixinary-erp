@@ -123,6 +123,24 @@ export function PartsLibrary({
     await load();
   }
 
+  async function deletePart(part: { id: string; name: string }) {
+    const ok = window.confirm(
+      `Delete “${part.name}” from the catalog? This cannot be undone.`,
+    );
+    if (!ok) return;
+    setMessage(null);
+    const res = await fetch(`/api/parts?id=${encodeURIComponent(part.id)}`, {
+      method: "DELETE",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(data.error || "Delete failed");
+      return;
+    }
+    if (editing?.id === part.id) setEditing(null);
+    await load();
+  }
+
   async function enrich() {
     if (!editing) return;
     setMessage("Enriching…");
@@ -431,41 +449,51 @@ export function PartsLibrary({
       >
         <div className="parts-grid">
           {parts.map((part) => (
-            <button
-              type="button"
-              key={part.id}
-              className="part-card"
-              onClick={() => {
-                setEditing(part);
-                setEnrichBrand(
-                  part.part_companies?.name ||
-                    companyNameById.get(part.company_id || "") ||
-                    "",
-                );
-              }}
-            >
-              <div className="part-thumb">
-                {part.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={part.image_url} alt={part.name} />
-                ) : (
-                  <span>No image</span>
-                )}
-              </div>
-              <div className="part-meta">
-                <div className="part-name">{part.name}</div>
-                <div className="muted">
-                  {part.sku || "—"} ·{" "}
-                  {part.part_companies?.name ||
-                    companyNameById.get(part.company_id || "") ||
-                    "—"}
+            <div key={part.id} className="part-card static">
+              <button
+                type="button"
+                className="part-card-open"
+                onClick={() => {
+                  setEditing(part);
+                  setEnrichBrand(
+                    part.part_companies?.name ||
+                      companyNameById.get(part.company_id || "") ||
+                      "",
+                  );
+                }}
+              >
+                <div className="part-thumb">
+                  {part.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={part.image_url} alt={part.name} />
+                  ) : (
+                    <span>No image</span>
+                  )}
                 </div>
-                <div style={{ fontWeight: 650 }}>{formatMoney(part.msrp)}</div>
-                {!part.active ? (
-                  <span className="badge">inactive</span>
-                ) : null}
-              </div>
-            </button>
+                <div className="part-meta">
+                  <div className="part-name">{part.name}</div>
+                  <div className="muted">
+                    {part.sku || "—"} ·{" "}
+                    {part.part_companies?.name ||
+                      companyNameById.get(part.company_id || "") ||
+                      "—"}
+                  </div>
+                  <div style={{ fontWeight: 650 }}>{formatMoney(part.msrp)}</div>
+                  {!part.active ? (
+                    <span className="badge">inactive</span>
+                  ) : null}
+                </div>
+              </button>
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="btn btn-danger part-card-delete"
+                  onClick={() => void deletePart(part)}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>
           ))}
           {!parts.length ? (
             <div className="panel" style={{ padding: "1rem" }}>
@@ -697,15 +725,14 @@ export function PartsLibrary({
                   <button
                     type="button"
                     className="btn btn-danger"
-                    onClick={async () => {
-                      await fetch(`/api/parts?id=${editing.id}`, {
-                        method: "DELETE",
-                      });
-                      setEditing(null);
-                      await load();
-                    }}
+                    onClick={() =>
+                      void deletePart({
+                        id: editing.id!,
+                        name: editing.name || "this part",
+                      })
+                    }
                   >
-                    Deactivate
+                    Delete
                   </button>
                 ) : null}
               </div>

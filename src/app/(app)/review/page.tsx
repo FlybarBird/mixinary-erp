@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { requireProfile } from "@/lib/auth";
+import { canEditPricing, requireProfile } from "@/lib/auth";
+import { DeleteReviewButton } from "@/components/DeleteReviewButton";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ReviewQueuePage() {
-  await requireProfile();
+  const profile = await requireProfile();
+  const canDelete = canEditPricing(profile.role);
   const supabase = await createClient();
   const { data: jobs } = await supabase
     .from("ai_jobs")
@@ -53,9 +55,12 @@ export default async function ReviewQueuePage() {
                   <span className="badge badge-review">{job.status}</span>
                 </td>
                 <td>
-                  <Link href={`/review/${job.id}`} style={{ color: "#0176d3" }}>
-                    Open
-                  </Link>
+                  <div className="row">
+                    <Link href={`/review/${job.id}`} style={{ color: "#0176d3" }}>
+                      Open
+                    </Link>
+                    {canDelete ? <DeleteReviewButton jobId={job.id} /> : null}
+                  </div>
                 </td>
               </tr>
             ))}

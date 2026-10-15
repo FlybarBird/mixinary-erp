@@ -62,20 +62,15 @@ In Supabase Dashboard → **Authentication → Providers**:
 
 Login UI offers password, email link, Google, and Microsoft. After first OAuth login, default role is `project_manager` unless invite metadata specifies otherwise; administrators can change roles in Admin → Users.
 
-## 2b. Suite Project Management (optional)
+## 2b. Optional suite identity
 
-OpenProject packaging, Authentik, integration, and shared files live under
-`services/` — see [docs/openproject-pm/README.md](./docs/openproject-pm/README.md).
+Authentik OIDC and shared files live under `services/suite/` and `services/shared-files/`. ERP projects, BOMs, and procurement stay in this app. There is no separate project-management app.
 
-ERP env additions (also in `.env.example`):
+Optional env (also in `.env.example`):
 
-- `NEXT_PUBLIC_PM_BASE_PATH=/project-management` (same-origin OpenProject — **unset** any legacy `https://plane-mixinary.shadowvis.com` value)
-- `INTEGRATION_BASE_URL` / `INTEGRATION_WEBHOOK_SECRET`
 - `AUTHENTIK_ISSUER` / `AUTHENTIK_CLIENT_ID` / `AUTHENTIK_CLIENT_SECRET`
+- `NEXT_PUBLIC_SHARED_FILES_URL`
 
-Apply migrations `023_suite_integration.sql`, `024` (legacy Plane cleanup), and `028` (OpenProject column rename). Root entry remains ERP (`/` → dashboard/login); suite app switcher is available from the ERP header (`/apps` optional).
-
-If the Apps menu still opens Plane, clear `NEXT_PUBLIC_PM_BASE_PATH` / `NEXT_PUBLIC_PM_BASE_URL` in Vercel (or set them to `/project-management`) and redeploy. The app ignores known Plane hosts automatically.
 ## 3. Vercel
 
 1. Import this Git repo into Vercel.

@@ -17,6 +17,7 @@ import {
   CLIENT_DOC_BLOCK_LABELS,
   CLIENT_DOC_BLOCK_TYPES,
   computeDocumentTotals,
+  computePricingTotals,
   defaultBlockContent,
   normalizePricingContent,
   type ClientDocBlockType,
@@ -623,6 +624,12 @@ export function ClientDocumentEditor({
                       onContent={(patch) => updateContent(block.id, patch)}
                       onOpenPricing={() => setPricingEditId(block.id)}
                       onClosePricing={() => setPricingEditId(null)}
+                      onDeletePricingLine={(lineIndex) =>
+                        updatePricing(block.id, (pricing) => ({
+                          ...pricing,
+                          lines: pricing.lines.filter((_, i) => i !== lineIndex),
+                        }))
+                      }
                       pricingEditor={
                         <PricingBlockEditor
                           block={block}
@@ -713,6 +720,7 @@ function PricingBlockEditor({
   onMoveLineTo: (toBlockId: string, lineId: string) => void;
 }) {
   const pricing = normalizePricingContent(block.content);
+  const totals = computePricingTotals(block.content);
   const disabled = !editable;
   const otherSections = pricingSections.filter((s) => s.id !== block.id);
 
@@ -723,8 +731,11 @@ function PricingBlockEditor({
     }));
   }
 
-  function removeLine(lineId: string) {
-    onPricing((p) => ({ ...p, lines: p.lines.filter((l) => l.id !== lineId) }));
+  function removeLine(index: number) {
+    const line = pricing.lines[index];
+    const label = line?.name.trim() || "this line";
+    if (!window.confirm(`Delete “${label}” from this pricing section?`)) return;
+    onPricing((p) => ({ ...p, lines: p.lines.filter((_, i) => i !== index) }));
   }
 
   function moveLine(lineId: string, delta: number) {
@@ -825,6 +836,16 @@ function PricingBlockEditor({
                         updateLine(line.id, { description: e.target.value || null })
                       }
                     />
+                    {editable ? (
+                      <button
+                        className="btn btn-danger"
+                        type="button"
+                        style={{ marginTop: 6 }}
+                        onClick={() => removeLine(lineIndex)}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
                   </td>
                   <td>
                     <input
@@ -925,14 +946,6 @@ function PricingBlockEditor({
                             ))}
                           </select>
                         ) : null}
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => removeLine(line.id)}
-                          title="Remove line"
-                        >
-                          ✕
-                        </button>
                       </div>
                     ) : null}
                   </td>
@@ -1038,6 +1051,29 @@ function PricingBlockEditor({
               </>
             ) : null}
           </div>
+        </div>
+      </div>
+
+      <div className="cdoc-totals cdoc-editor-totals">
+        <div>
+          <span>Subtotal</span>
+          <span>{formatMoney(totals.subtotal)}</span>
+        </div>
+        {totals.discount_total > 0 ? (
+          <div>
+            <span>Discount</span>
+            <span>−{formatMoney(totals.discount_total)}</span>
+          </div>
+        ) : null}
+        {totals.tax_total > 0 ? (
+          <div>
+            <span>{pricing.tax.label || "Tax"}</span>
+            <span>{formatMoney(totals.tax_total)}</span>
+          </div>
+        ) : null}
+        <div className="cdoc-total-row">
+          <span>Total</span>
+          <span>{formatMoney(totals.total)}</span>
         </div>
       </div>
     </div>

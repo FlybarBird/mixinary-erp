@@ -201,7 +201,13 @@ export function ClientDocumentRenderer({
             const canInteract = interactive && !signed && !busy;
             return (
               <section key={block.id} className="cdoc-section">
-                <h2>{pricing.title || "Pricing"}</h2>
+                <div className="cdoc-pricing-heading">
+                  <h2>{pricing.title || "Pricing"}</h2>
+                  <div className="cdoc-pricing-heading-total">
+                    <span>Total</span>
+                    <strong>{formatMoney(totals.total)}</strong>
+                  </div>
+                </div>
                 <div className="cdoc-pricing">
                   <table>
                     <thead>
